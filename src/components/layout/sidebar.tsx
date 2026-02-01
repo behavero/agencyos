@@ -29,8 +29,8 @@ const navigation = [
     title: 'Tools',
     items: [
       { name: 'CRM', href: '/dashboard/crm', icon: Briefcase },
-      { name: 'AI Chatter', href: '/dashboard/ai-chatter', icon: Sparkles },
-      { name: 'Content Intel', href: '/dashboard/content', icon: Target },
+      { name: 'Quests', href: '/dashboard/quests', icon: Target },
+      { name: 'Content Intel', href: '/dashboard/content', icon: Sparkles },
     ],
   },
   {
