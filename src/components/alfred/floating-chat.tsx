@@ -10,7 +10,7 @@ import {
   MessageCircle,
   X,
   Send,
-  Sparkles,
+  Leaf,
   Minimize2,
   Maximize2,
   Bot,
@@ -110,31 +110,31 @@ export function AlfredFloatingChat() {
     }
   }
 
-  // Floating button when closed
+  // Floating button when closed - Lime theme
   if (!isOpen) {
     return (
       <Button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 w-14 h-14 rounded-full shadow-2xl bg-gradient-to-br from-violet-600 to-purple-700 hover:from-violet-500 hover:to-purple-600 z-50"
+        className="fixed bottom-6 right-6 w-14 h-14 rounded-full shadow-2xl bg-gradient-to-br from-lime-400 to-green-500 hover:from-lime-300 hover:to-green-400 z-50 glow-lime"
         size="icon"
       >
-        <Sparkles className="w-6 h-6 text-white" />
+        <Leaf className="w-6 h-6 text-green-900" />
       </Button>
     )
   }
 
-  // Minimized state
+  // Minimized state - Lime theme
   if (isMinimized) {
     return (
       <div className="fixed bottom-6 right-6 z-50">
-        <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-700 rounded-full px-4 py-2 shadow-2xl">
-          <Sparkles className="w-5 h-5 text-violet-400" />
-          <span className="text-sm font-medium text-white">Alfred</span>
+        <div className="flex items-center gap-2 bg-card border border-border rounded-full px-4 py-2 shadow-2xl">
+          <Leaf className="w-5 h-5 text-primary" />
+          <span className="text-sm font-medium text-foreground">Alfred</span>
           <AlfredConnectionStatus showLabel={false} />
           <Button
             variant="ghost"
             size="icon"
-            className="h-6 w-6 text-zinc-400 hover:text-white"
+            className="h-6 w-6 text-muted-foreground hover:text-foreground"
             onClick={() => setIsMinimized(false)}
           >
             <Maximize2 className="w-4 h-4" />
@@ -142,7 +142,7 @@ export function AlfredFloatingChat() {
           <Button
             variant="ghost"
             size="icon"
-            className="h-6 w-6 text-zinc-400 hover:text-white"
+            className="h-6 w-6 text-muted-foreground hover:text-foreground"
             onClick={() => setIsOpen(false)}
           >
             <X className="w-4 h-4" />
@@ -152,17 +152,17 @@ export function AlfredFloatingChat() {
     )
   }
 
-  // Full chat window
+  // Full chat window - Lime theme
   return (
-    <div className="fixed bottom-6 right-6 w-96 h-[500px] bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-violet-600/20 to-purple-600/20 border-b border-zinc-700">
+    <div className="fixed bottom-6 right-6 w-96 h-[500px] bg-card border border-border rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden">
+      {/* Header - Lime gradient */}
+      <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-primary/20 to-green-500/20 border-b border-border">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-600 to-purple-700 flex items-center justify-center">
-            <Sparkles className="w-5 h-5 text-white" />
+          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-lime-400 to-green-500 flex items-center justify-center">
+            <Leaf className="w-5 h-5 text-green-900" />
           </div>
           <div>
-            <h3 className="font-semibold text-white">Alfred</h3>
+            <h3 className="font-semibold text-foreground">Alfred</h3>
             <AlfredConnectionStatus className="mt-0.5" />
           </div>
         </div>
@@ -170,7 +170,7 @@ export function AlfredFloatingChat() {
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 text-zinc-400 hover:text-white"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
             onClick={() => setIsMinimized(true)}
           >
             <Minimize2 className="w-4 h-4" />
@@ -178,7 +178,7 @@ export function AlfredFloatingChat() {
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 text-zinc-400 hover:text-white"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
             onClick={() => setIsOpen(false)}
           >
             <X className="w-4 h-4" />
@@ -200,8 +200,8 @@ export function AlfredFloatingChat() {
               <Avatar className="w-8 h-8 flex-shrink-0">
                 <AvatarFallback className={cn(
                   message.role === 'assistant'
-                    ? 'bg-violet-600 text-white'
-                    : 'bg-zinc-700 text-white'
+                    ? 'bg-gradient-to-br from-lime-400 to-green-500 text-green-900'
+                    : 'bg-secondary text-foreground'
                 )}>
                   {message.role === 'assistant' ? (
                     <Bot className="w-4 h-4" />
@@ -214,12 +214,12 @@ export function AlfredFloatingChat() {
                 className={cn(
                   'max-w-[75%] rounded-2xl px-4 py-2.5',
                   message.role === 'assistant'
-                    ? 'bg-zinc-800 text-white'
-                    : 'bg-violet-600 text-white'
+                    ? 'bg-secondary text-foreground'
+                    : 'bg-primary text-primary-foreground'
                 )}
               >
                 <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                <p className="text-xs text-zinc-400 mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </p>
               </div>
@@ -228,15 +228,15 @@ export function AlfredFloatingChat() {
           {isLoading && (
             <div className="flex gap-3">
               <Avatar className="w-8 h-8">
-                <AvatarFallback className="bg-violet-600 text-white">
+                <AvatarFallback className="bg-gradient-to-br from-lime-400 to-green-500 text-green-900">
                   <Bot className="w-4 h-4" />
                 </AvatarFallback>
               </Avatar>
-              <div className="bg-zinc-800 rounded-2xl px-4 py-3">
+              <div className="bg-secondary rounded-2xl px-4 py-3">
                 <div className="flex gap-1">
-                  <span className="w-2 h-2 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <span className="w-2 h-2 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <span className="w-2 h-2 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  <span className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                 </div>
               </div>
             </div>
@@ -246,7 +246,7 @@ export function AlfredFloatingChat() {
       </ScrollArea>
 
       {/* Input */}
-      <div className="p-4 border-t border-zinc-700">
+      <div className="p-4 border-t border-border">
         <div className="flex gap-2">
           <Input
             ref={inputRef}
@@ -254,19 +254,18 @@ export function AlfredFloatingChat() {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Ask Alfred anything..."
-            className="flex-1 bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
+            className="flex-1"
             disabled={isLoading}
           />
           <Button
             onClick={sendMessage}
             disabled={!input.trim() || isLoading}
-            className="bg-violet-600 hover:bg-violet-700"
             size="icon"
           >
             <Send className="w-4 h-4" />
           </Button>
         </div>
-        <p className="text-xs text-zinc-500 mt-2 text-center">
+        <p className="text-xs text-muted-foreground mt-2 text-center">
           Alfred has access to Fanvue data, analytics & more
         </p>
       </div>

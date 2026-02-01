@@ -3,7 +3,6 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import { Separator } from '@/components/ui/separator'
 import {
   LayoutDashboard,
   MessageSquare,
@@ -13,9 +12,9 @@ import {
   Users,
   Crown,
   CreditCard,
-  Settings,
   Bot,
   Building2,
+  Leaf,
 } from 'lucide-react'
 
 const navigation = [
@@ -55,22 +54,22 @@ export function Sidebar() {
   const pathname = usePathname()
 
   return (
-    <aside className="fixed left-0 top-0 z-40 h-screen w-[250px] bg-zinc-900 border-r border-zinc-800 flex flex-col">
+    <aside className="fixed left-0 top-0 z-40 h-screen w-[250px] bg-sidebar border-r border-sidebar-border flex flex-col">
       {/* Logo */}
-      <div className="flex h-16 items-center px-6 border-b border-zinc-800">
-        <Link href="/dashboard" className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center">
-            <span className="text-zinc-900 font-bold text-lg">O</span>
+      <div className="flex h-16 items-center px-6 border-b border-sidebar-border">
+        <Link href="/dashboard" className="flex items-center gap-3 group">
+          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center transition-transform group-hover:scale-105">
+            <Leaf className="w-5 h-5 text-primary-foreground" />
           </div>
-          <span className="font-bold text-xl text-white">OnyxOS</span>
+          <span className="font-bold text-xl text-sidebar-foreground">OnyxOS</span>
         </Link>
       </div>
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-4 scrollbar-thin">
-        {navigation.map((section, idx) => (
+        {navigation.map((section) => (
           <div key={section.title} className="px-3 mb-6">
-            <h3 className="px-3 mb-2 text-xs font-medium text-zinc-500 uppercase tracking-wider">
+            <h3 className="px-3 mb-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
               {section.title}
             </h3>
             <ul className="space-y-1">
@@ -83,14 +82,18 @@ export function Sidebar() {
                     <Link
                       href={item.href}
                       className={cn(
-                        'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-                        isActive
-                          ? 'bg-zinc-800 text-white'
-                          : 'text-zinc-400 hover:text-white hover:bg-zinc-800/50'
+                        'menu-item-subtle',
+                        isActive && 'bg-sidebar-accent text-sidebar-primary'
                       )}
                     >
-                      <item.icon className="w-5 h-5" />
+                      <item.icon className={cn(
+                        "w-5 h-5",
+                        isActive && "text-sidebar-primary"
+                      )} />
                       {item.name}
+                      {isActive && (
+                        <span className="ml-auto w-1.5 h-1.5 rounded-full bg-sidebar-primary" />
+                      )}
                     </Link>
                   </li>
                 )
@@ -101,14 +104,14 @@ export function Sidebar() {
       </nav>
 
       {/* Footer */}
-      <div className="p-4 border-t border-zinc-800">
-        <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-zinc-800/50">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-            <span className="text-white text-sm font-medium">F</span>
+      <div className="p-4 border-t border-sidebar-border">
+        <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-sidebar-accent/50">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-green-400 flex items-center justify-center">
+            <span className="text-primary-foreground text-sm font-medium">F</span>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-white truncate">FFA Partners</p>
-            <p className="text-xs text-zinc-500">Pro Plan</p>
+            <p className="text-sm font-medium text-sidebar-foreground truncate">FFA Partners</p>
+            <p className="text-xs text-muted-foreground">Pro Plan</p>
           </div>
         </div>
       </div>

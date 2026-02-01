@@ -1,9 +1,15 @@
 import type { Metadata } from 'next'
-import { GeistSans } from 'geist/font/sans'
-import { GeistMono } from 'geist/font/mono'
+import { Inter } from 'next/font/google'
 import { Toaster } from '@/components/ui/sonner'
 import { AlfredFloatingChat } from '@/components/alfred/floating-chat'
 import './globals.css'
+
+// Vega Style uses Inter font
+const inter = Inter({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-inter',
+})
 
 export const metadata: Metadata = {
   title: 'OnyxOS - Agency Management',
@@ -16,8 +22,8 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className={`dark ${GeistSans.variable} ${GeistMono.variable}`}>
-      <body className="min-h-screen bg-zinc-950 font-sans antialiased text-zinc-50">
+    <html lang="en" className={`dark ${inter.variable}`} suppressHydrationWarning>
+      <body className="min-h-screen bg-background font-sans antialiased">
         {children}
         <Toaster />
         <AlfredFloatingChat />

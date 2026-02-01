@@ -8,21 +8,21 @@ import { Separator } from '@/components/ui/separator'
 
 export function Header() {
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur supports-[backdrop-filter]:bg-zinc-950/80 px-6">
+    <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 px-6">
       {/* Search */}
       <div className="flex-1 max-w-md">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             type="search"
             placeholder="Search..."
-            className="pl-9 bg-zinc-900 border-zinc-800 text-zinc-100 placeholder:text-zinc-500 focus-visible:ring-zinc-700 h-9"
+            className="pl-9 h-9"
           />
-          <div className="absolute right-2 top-1/2 -translate-y-1/2 hidden md:flex items-center gap-1 text-xs text-zinc-600">
-            <kbd className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700">
+          <div className="absolute right-2 top-1/2 -translate-y-1/2 hidden md:flex items-center gap-1 text-xs text-muted-foreground">
+            <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono">
               <Command className="w-3 h-3 inline" />
             </kbd>
-            <kbd className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700">K</kbd>
+            <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border font-mono">K</kbd>
           </div>
         </div>
       </div>
@@ -33,23 +33,23 @@ export function Header() {
         <Button 
           size="icon" 
           variant="ghost" 
-          className="relative text-zinc-400 hover:text-white hover:bg-zinc-800"
+          className="relative text-muted-foreground hover:text-foreground"
         >
           <Bell className="w-5 h-5" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
+          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-primary rounded-full animate-pulse-lime" />
         </Button>
 
-        <Separator orientation="vertical" className="h-6 bg-zinc-800" />
+        <Separator orientation="vertical" className="h-6" />
 
         {/* User */}
         <div className="flex items-center gap-3">
           <div className="hidden md:block text-right">
-            <p className="text-sm font-medium text-white">Martin</p>
-            <p className="text-xs text-zinc-500">Grandmaster</p>
+            <p className="text-sm font-medium text-foreground">Martin</p>
+            <p className="text-xs text-muted-foreground">Grandmaster</p>
           </div>
-          <Avatar className="h-8 w-8 border border-zinc-700">
+          <Avatar className="h-8 w-8 border border-border">
             <AvatarImage src="" alt="User" />
-            <AvatarFallback className="bg-gradient-to-br from-purple-500 to-pink-500 text-white text-sm">
+            <AvatarFallback className="bg-gradient-to-br from-primary to-green-400 text-primary-foreground text-sm font-medium">
               M
             </AvatarFallback>
           </Avatar>

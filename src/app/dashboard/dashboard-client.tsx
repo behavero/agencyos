@@ -61,33 +61,33 @@ interface DashboardClientProps {
   totalExpenses: number
 }
 
-// Chart configs
+// Chart configs - Lime Theme
 const revenueChartConfig = {
   revenue: {
     label: 'Revenue',
-    color: 'hsl(142, 76%, 36%)',
+    color: 'oklch(0.841 0.238 116.029)', // Lime primary
   },
   expenses: {
     label: 'Expenses',
-    color: 'hsl(0, 84%, 60%)',
+    color: 'oklch(0.704 0.191 22.216)', // Destructive
   },
 } satisfies ChartConfig
 
 const subscriberChartConfig = {
   subscribers: {
     label: 'Subscribers',
-    color: 'hsl(262, 83%, 58%)',
+    color: 'oklch(0.6 0.118 184.704)', // Teal
   },
   followers: {
     label: 'Followers',
-    color: 'hsl(221, 83%, 53%)',
+    color: 'oklch(0.841 0.238 116.029)', // Lime
   },
 } satisfies ChartConfig
 
 const modelChartConfig = {
   revenue: {
     label: 'Revenue',
-    color: 'hsl(142, 76%, 36%)',
+    color: 'oklch(0.841 0.238 116.029)', // Lime primary
   },
 } satisfies ChartConfig
 
@@ -171,13 +171,14 @@ export default function DashboardClient({ user, profile, agency, models, totalEx
     }))
   }, [models])
 
-  // Pie chart data for revenue distribution
+  // Pie chart data for revenue distribution - Lime palette
   const revenueDistribution = useMemo(() => {
     if (models.length === 0) return []
+    const colors = ['#a3e635', '#84cc16', '#65a30d', '#4d7c0f', '#3f6212']
     return models.map((m, i) => ({
       name: m.name || 'Unknown',
       value: Number(m.revenue_total || 0),
-      fill: `hsl(${262 + i * 30}, 70%, ${50 + i * 5}%)`,
+      fill: colors[i % colors.length],
     }))
   }, [models])
 
@@ -213,28 +214,28 @@ export default function DashboardClient({ user, profile, agency, models, totalEx
       {/* Top KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Gross Revenue */}
-        <Card className="glass border-green-500/20">
+        <Card className="glass border-primary/20 card-interactive">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Gross Revenue</CardTitle>
-            <DollarSign className="h-4 w-4 text-green-500" />
+            <DollarSign className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-500">{formatCurrency(totalGrossRevenue)}</div>
+            <div className="text-2xl font-bold text-primary">{formatCurrency(totalGrossRevenue)}</div>
             <div className="flex items-center gap-1 mt-1">
-              <ArrowUpRight className="h-3 w-3 text-green-500" />
-              <span className="text-xs text-green-500">All-time from Fanvue</span>
+              <ArrowUpRight className="h-3 w-3 text-primary" />
+              <span className="text-xs text-primary/80">All-time from Fanvue</span>
             </div>
           </CardContent>
         </Card>
 
         {/* Net Profit */}
-        <Card className="glass border-primary/20">
+        <Card className="glass border-green-500/20 card-interactive">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Net Profit</CardTitle>
-            <PiggyBank className="h-4 w-4 text-primary" />
+            <PiggyBank className="h-4 w-4 text-green-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-primary">{formatCurrency(netProfit)}</div>
+            <div className="text-2xl font-bold text-green-400">{formatCurrency(netProfit)}</div>
             <div className="flex items-center gap-1 mt-1">
               <span className="text-xs text-muted-foreground">{profitMargin}% margin</span>
             </div>
@@ -282,7 +283,7 @@ export default function DashboardClient({ user, profile, agency, models, totalEx
         <Card className="glass">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-green-500" />
+              <TrendingUp className="h-5 w-5 text-primary" />
               Revenue vs Expenses
             </CardTitle>
             <CardDescription>Monthly financial overview</CardDescription>
@@ -292,12 +293,12 @@ export default function DashboardClient({ user, profile, agency, models, totalEx
               <AreaChart data={monthlyData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="hsl(142, 76%, 36%)" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="hsl(142, 76%, 36%)" stopOpacity={0} />
+                    <stop offset="5%" stopColor="#a3e635" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#a3e635" stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="colorExpenses" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="hsl(0, 84%, 60%)" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="hsl(0, 84%, 60%)" stopOpacity={0} />
+                    <stop offset="5%" stopColor="#f87171" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#f87171" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" vertical={false} />
@@ -318,14 +319,14 @@ export default function DashboardClient({ user, profile, agency, models, totalEx
                 <Area
                   type="monotone"
                   dataKey="revenue"
-                  stroke="hsl(142, 76%, 36%)"
+                  stroke="#a3e635"
                   strokeWidth={2}
                   fill="url(#colorRevenue)"
                 />
                 <Area
                   type="monotone"
                   dataKey="expenses"
-                  stroke="hsl(0, 84%, 60%)"
+                  stroke="#f87171"
                   strokeWidth={2}
                   fill="url(#colorExpenses)"
                 />
@@ -338,7 +339,7 @@ export default function DashboardClient({ user, profile, agency, models, totalEx
         <Card className="glass">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-violet-500" />
+              <Users className="h-5 w-5 text-teal-400" />
               Audience Growth
             </CardTitle>
             <CardDescription>Subscribers & followers over time</CardDescription>
@@ -362,16 +363,16 @@ export default function DashboardClient({ user, profile, agency, models, totalEx
                 <Line
                   type="monotone"
                   dataKey="subscribers"
-                  stroke="hsl(262, 83%, 58%)"
+                  stroke="#2dd4bf"
                   strokeWidth={2}
-                  dot={{ fill: 'hsl(262, 83%, 58%)', strokeWidth: 0 }}
+                  dot={{ fill: '#2dd4bf', strokeWidth: 0 }}
                 />
                 <Line
                   type="monotone"
                   dataKey="followers"
-                  stroke="hsl(221, 83%, 53%)"
+                  stroke="#a3e635"
                   strokeWidth={2}
-                  dot={{ fill: 'hsl(221, 83%, 53%)', strokeWidth: 0 }}
+                  dot={{ fill: '#a3e635', strokeWidth: 0 }}
                 />
               </LineChart>
             </ChartContainer>
@@ -409,7 +410,7 @@ export default function DashboardClient({ user, profile, agency, models, totalEx
                   <ChartTooltip content={<ChartTooltipContent />} />
                   <Bar 
                     dataKey="revenue" 
-                    fill="hsl(142, 76%, 36%)" 
+                    fill="#a3e635" 
                     radius={[4, 4, 0, 0]}
                   />
                 </BarChart>
@@ -470,9 +471,9 @@ export default function DashboardClient({ user, profile, agency, models, totalEx
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 rounded-lg bg-green-500/10">
+              <div className="flex items-center justify-between p-3 rounded-lg bg-primary/10">
                 <span className="text-sm font-medium">Gross Revenue</span>
-                <span className="text-lg font-bold text-green-500">{formatCurrency(totalGrossRevenue)}</span>
+                <span className="text-lg font-bold text-primary">{formatCurrency(totalGrossRevenue)}</span>
               </div>
               <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                 <span className="text-sm">Platform Fee (20%)</span>
@@ -563,13 +564,13 @@ export default function DashboardClient({ user, profile, agency, models, totalEx
                   <div className="flex items-start gap-3">
                     <Avatar className="w-12 h-12">
                       <AvatarImage src={model.avatar_url || undefined} alt={model.name || ''} />
-                      <AvatarFallback className="bg-gradient-to-br from-primary to-secondary text-white">
+                      <AvatarFallback className="bg-gradient-to-br from-primary to-green-400 text-primary-foreground font-medium">
                         {model.name?.charAt(0) || 'M'}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
                       <h3 className="font-semibold truncate">{model.name}</h3>
-                      <p className="text-sm text-green-500 font-medium">
+                      <p className="text-sm text-primary font-medium">
                         {formatCurrency(Number(model.revenue_total || 0))}
                       </p>
                       <div className="flex items-center gap-2 mt-1">
