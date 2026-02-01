@@ -29,7 +29,14 @@ import {
   Check,
   CheckCheck,
   Crown,
+  ImageIcon as VaultIcon,
 } from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { toast } from 'sonner'
 import { useChatRoster, ChatThread } from '@/hooks/use-chat-roster'
@@ -37,8 +44,19 @@ import { useChatMessages, ChatMessage } from '@/hooks/use-chat-messages'
 
 type Model = Database['public']['Tables']['models']['Row']
 
+interface VaultAsset {
+  id: string
+  title: string | null
+  file_name: string
+  url: string
+  file_type: string
+  price: number
+  content_type: string
+}
+
 interface MessagesClientProps {
   models: Model[]
+  vaultAssets?: VaultAsset[]
 }
 
 function formatTime(dateStr: string | null): string {
@@ -64,7 +82,7 @@ function formatRelativeTime(dateStr: string | null): string {
   return date.toLocaleDateString()
 }
 
-export default function MessagesClient({ models }: MessagesClientProps) {
+export default function MessagesClient({ models, vaultAssets = [] }: MessagesClientProps) {
   const [selectedModel, setSelectedModel] = useState<Model | null>(models[0] || null)
   const [selectedChat, setSelectedChat] = useState<ChatThread | null>(null)
   const [messageInput, setMessageInput] = useState('')
@@ -72,6 +90,8 @@ export default function MessagesClient({ models }: MessagesClientProps) {
   const [filter, setFilter] = useState<'all' | 'unread'>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [notes, setNotes] = useState('')
+  const [isVaultOpen, setIsVaultOpen] = useState(false)
+  const [selectedAttachment, setSelectedAttachment] = useState<VaultAsset | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   // Chat roster hook
@@ -466,9 +486,29 @@ export default function MessagesClient({ models }: MessagesClientProps) {
                 <Button variant="ghost" size="icon" className="text-zinc-400 hover:text-white">
                   <Smile className="w-5 h-5" />
                 </Button>
-                <Button variant="ghost" size="icon" className="text-zinc-400 hover:text-white">
-                  <ImageIcon className="w-5 h-5" />
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className={`text-zinc-400 hover:text-white ${selectedAttachment ? 'text-primary' : ''}`}
+                  onClick={() => setIsVaultOpen(true)}
+                  title="Attach from Vault"
+                >
+                  <VaultIcon className="w-5 h-5" />
                 </Button>
+                {selectedAttachment && (
+                  <div className="flex items-center gap-2 px-2 py-1 bg-zinc-800 rounded-lg">
+                    <ImageIcon className="w-4 h-4 text-primary" />
+                    <span className="text-xs text-zinc-300 max-w-20 truncate">
+                      {selectedAttachment.title || selectedAttachment.file_name}
+                    </span>
+                    <button 
+                      onClick={() => setSelectedAttachment(null)}
+                      className="text-zinc-500 hover:text-red-400"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
                 <Button variant="ghost" size="icon" className="text-zinc-400 hover:text-white">
                   <DollarSign className="w-5 h-5" />
                 </Button>
@@ -586,7 +626,11 @@ export default function MessagesClient({ models }: MessagesClientProps) {
                       <Sparkles className="w-4 h-4 mr-2" />
                       Use AI Script
                     </Button>
-                    <Button variant="outline" className="w-full justify-start border-zinc-700 text-zinc-300">
+                    <Button 
+                      variant="outline" 
+                      className="w-full justify-start border-zinc-700 text-zinc-300"
+                      onClick={() => setIsVaultOpen(true)}
+                    >
                       <ImageIcon className="w-4 h-4 mr-2" />
                       Open Vault
                     </Button>
@@ -642,6 +686,57 @@ export default function MessagesClient({ models }: MessagesClientProps) {
           </div>
         )}
       </div>
+
+      {/* Vault Modal */}
+      <Dialog open={isVaultOpen} onOpenChange={setIsVaultOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Select from Vault</DialogTitle>
+          </DialogHeader>
+          
+          <div className="grid grid-cols-3 gap-3 max-h-96 overflow-y-auto py-4">
+            {vaultAssets.map((asset) => (
+              <button
+                key={asset.id}
+                onClick={() => {
+                  setSelectedAttachment(asset)
+                  setIsVaultOpen(false)
+                  toast.success('Attachment selected')
+                }}
+                className={`aspect-square rounded-lg overflow-hidden border transition-all hover:border-primary ${
+                  selectedAttachment?.id === asset.id
+                    ? 'border-primary ring-2 ring-primary'
+                    : 'border-border'
+                }`}
+              >
+                {asset.file_type === 'image' ? (
+                  <img src={asset.url} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center bg-muted">
+                    <ImageIcon className="w-8 h-8 text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground mt-1 px-2 truncate max-w-full">
+                      {asset.title || asset.file_name}
+                    </span>
+                  </div>
+                )}
+              </button>
+            ))}
+            {vaultAssets.length === 0 && (
+              <div className="col-span-3 py-8 text-center text-muted-foreground">
+                <ImageIcon className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                <p>No assets in vault</p>
+                <Button
+                  variant="outline"
+                  className="mt-4"
+                  onClick={() => window.location.href = '/dashboard/content/vault'}
+                >
+                  Go to Vault
+                </Button>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

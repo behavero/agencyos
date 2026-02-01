@@ -15,6 +15,8 @@ import {
   Bot,
   Building2,
   Leaf,
+  Image,
+  Megaphone,
 } from 'lucide-react'
 
 const navigation = [
@@ -33,6 +35,8 @@ const navigation = [
       { name: 'CRM', href: '/dashboard/crm', icon: Briefcase },
       { name: 'Quests', href: '/dashboard/quests', icon: Target },
       { name: 'Content', href: '/dashboard/content', icon: Sparkles },
+      { name: 'Vault', href: '/dashboard/content/vault', icon: Image },
+      { name: 'Campaigns', href: '/dashboard/messages/campaigns', icon: Megaphone },
     ],
   },
   {

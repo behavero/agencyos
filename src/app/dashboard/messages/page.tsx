@@ -26,13 +26,24 @@ export default async function MessagesPage() {
     .select('*')
     .eq('agency_id', profile?.agency_id)
 
+  // Fetch vault assets for message attachments
+  const { data: vaultAssets } = await supabase
+    .from('content_assets')
+    .select('id, title, file_name, url, file_type, price, content_type')
+    .eq('agency_id', profile?.agency_id)
+    .order('created_at', { ascending: false })
+    .limit(50)
+
   return (
     <div className="flex min-h-screen bg-zinc-950">
       <Sidebar />
       <div className="flex-1 ml-[250px]">
         <Header />
         <main className="p-0">
-          <MessagesClient models={models || []} />
+          <MessagesClient 
+            models={models || []} 
+            vaultAssets={vaultAssets || []}
+          />
         </main>
       </div>
     </div>
