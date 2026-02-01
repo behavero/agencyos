@@ -12,11 +12,14 @@ import {
   Search,
   Users, 
   DollarSign, 
-  Eye, 
   MoreVertical,
   Trash2,
   Settings,
-  RefreshCw
+  RefreshCw,
+  MessageCircle,
+  Image,
+  Heart,
+  Link2
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -35,11 +38,48 @@ interface CreatorManagementClientProps {
   agencyId?: string
 }
 
+// Format number with K/M suffix
+function formatNumber(num: number | null | undefined): string {
+  if (!num) return '0'
+  if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`
+  if (num >= 1000) return `${(num / 1000).toFixed(1)}K`
+  return num.toString()
+}
+
+// Format currency
+function formatCurrency(amount: number | null | undefined): string {
+  if (!amount) return '$0'
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount)
+}
+
+// Format relative time
+function formatRelativeTime(dateStr: string | null | undefined): string {
+  if (!dateStr) return 'Never'
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+  const diffDays = Math.floor(diffMs / 86400000)
+
+  if (diffMins < 1) return 'Just now'
+  if (diffMins < 60) return `${diffMins}m ago`
+  if (diffHours < 24) return `${diffHours}h ago`
+  if (diffDays < 7) return `${diffDays}d ago`
+  return date.toLocaleDateString()
+}
+
 export default function CreatorManagementClient({ models, agencyId }: CreatorManagementClientProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [refreshingIds, setRefreshingIds] = useState<Set<string>>(new Set())
   
   // Handle OAuth success/error from URL params
   useEffect(() => {
@@ -49,6 +89,13 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
     if (success === 'connected') {
       toast.success('🎉 Creator connected successfully!')
       window.history.replaceState({}, '', '/dashboard/creator-management')
+      
+      // Auto-refresh stats for new creator
+      const latestModel = models[0]
+      if (latestModel) {
+        handleRefreshStats(latestModel.id, latestModel.name || 'Creator')
+      }
+      
       router.refresh()
     } else if (error) {
       const errorMessages: Record<string, string> = {
@@ -64,7 +111,7 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
       toast.error(errorMessages[error] || 'An error occurred')
       window.history.replaceState({}, '', '/dashboard/creator-management')
     }
-  }, [searchParams, router])
+  }, [searchParams, router, models])
 
   // Navigate to OAuth connect page
   const handleConnectCreator = () => {
@@ -92,10 +139,43 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
     }
   }
 
-  // Handle refresh stats
-  const handleRefreshStats = async (id: string) => {
-    toast.info('Refreshing stats... (coming soon)')
-    // TODO: Implement real Fanvue API call
+  // Handle refresh stats - REAL API CALL
+  const handleRefreshStats = async (id: string, name?: string) => {
+    if (refreshingIds.has(id)) return
+
+    setRefreshingIds(prev => new Set(prev).add(id))
+    toast.info(`Fetching stats for ${name || 'creator'}...`)
+
+    try {
+      const response = await fetch(`/api/creators/${id}/stats`, {
+        method: 'POST',
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to refresh stats')
+      }
+
+      toast.success(`✅ Stats updated for ${name || 'creator'}!`)
+      router.refresh()
+    } catch (error: any) {
+      console.error('[Refresh Stats] Error:', error)
+      toast.error(error.message || 'Failed to refresh stats')
+    } finally {
+      setRefreshingIds(prev => {
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
+    }
+  }
+
+  // Refresh all creators
+  const handleRefreshAll = async () => {
+    for (const model of filteredModels) {
+      await handleRefreshStats(model.id, model.name || undefined)
+    }
   }
 
   const filteredModels = models.filter((model) => {
@@ -115,13 +195,26 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
           </p>
         </div>
         
-        <Button
-          onClick={handleConnectCreator}
-          className="gap-2 shadow-lg bg-violet-600 hover:bg-violet-700"
-        >
-          <Plus className="w-4 h-4" />
-          Add Creator
-        </Button>
+        <div className="flex gap-2">
+          {filteredModels.length > 0 && (
+            <Button
+              onClick={handleRefreshAll}
+              variant="outline"
+              className="gap-2"
+              disabled={refreshingIds.size > 0}
+            >
+              <RefreshCw className={`w-4 h-4 ${refreshingIds.size > 0 ? 'animate-spin' : ''}`} />
+              Refresh All
+            </Button>
+          )}
+          <Button
+            onClick={handleConnectCreator}
+            className="gap-2 shadow-lg bg-violet-600 hover:bg-violet-700"
+          >
+            <Plus className="w-4 h-4" />
+            Add Creator
+          </Button>
+        </div>
       </div>
 
       {/* Search and Filters */}
@@ -169,83 +262,140 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
         </Card>
       ) : (
         <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-          {filteredModels.map((model) => (
-            <Card key={model.id} className="hover:shadow-lg transition-shadow">
-              <CardContent className="pt-6">
-                <div className="flex items-start gap-4">
-                  <Avatar className="w-16 h-16">
-                    <AvatarImage src={model.avatar_url || undefined} alt={model.name || ''} />
-                    <AvatarFallback className="bg-primary/10 text-primary text-xl">
-                      {model.name?.[0]?.toUpperCase() || 'C'}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <h3 className="font-semibold text-lg truncate">{model.name || 'Unnamed Creator'}</h3>
-                        <Badge variant={model.status === 'active' ? 'default' : 'secondary'} className="mt-1">
-                          {model.status === 'active' ? '🟢 Active' : '⚫ Inactive'}
-                        </Badge>
+          {filteredModels.map((model) => {
+            const isRefreshing = refreshingIds.has(model.id)
+            
+            return (
+              <Card key={model.id} className="hover:shadow-lg transition-shadow">
+                <CardContent className="pt-6">
+                  <div className="flex items-start gap-4">
+                    <Avatar className="w-16 h-16">
+                      <AvatarImage src={model.avatar_url || undefined} alt={model.name || ''} />
+                      <AvatarFallback className="bg-primary/10 text-primary text-xl">
+                        {model.name?.[0]?.toUpperCase() || 'C'}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <h3 className="font-semibold text-lg truncate">{model.name || 'Unnamed Creator'}</h3>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge variant={model.status === 'active' ? 'default' : 'secondary'}>
+                              {model.status === 'active' ? '🟢 Active' : '⚫ Inactive'}
+                            </Badge>
+                            {model.stats_updated_at && (
+                              <span className="text-xs text-muted-foreground">
+                                Updated {formatRelativeTime(model.stats_updated_at)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <MoreVertical className="w-4 h-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem 
+                              onClick={() => handleRefreshStats(model.id, model.name || undefined)}
+                              disabled={isRefreshing}
+                            >
+                              <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+                              {isRefreshing ? 'Refreshing...' : 'Refresh Stats'}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem>
+                              <Settings className="w-4 h-4 mr-2" />
+                              Settings
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem 
+                              onClick={() => handleDeleteCreator(model.id, model.name || 'Creator')}
+                              className="text-red-600 focus:text-red-600"
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <MoreVertical className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleRefreshStats(model.id)}>
-                            <RefreshCw className="w-4 h-4 mr-2" />
-                            Refresh Stats
-                          </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            <Settings className="w-4 h-4 mr-2" />
-                            Settings
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem 
-                            onClick={() => handleDeleteCreator(model.id, model.name || 'Creator')}
-                            className="text-red-600 focus:text-red-600"
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
                     </div>
                   </div>
-                </div>
-                
-                <div className="grid grid-cols-3 gap-4 text-center mt-6">
-                  <div>
-                    <div className="flex items-center justify-center gap-1 text-muted-foreground mb-1">
-                      <Eye className="w-3 h-3" />
-                      <span className="text-xs">Views</span>
+                  
+                  {/* Stats Grid - Real Data */}
+                  <div className="grid grid-cols-3 gap-4 text-center mt-6">
+                    <div>
+                      <div className="flex items-center justify-center gap-1 text-muted-foreground mb-1">
+                        <Heart className="w-3 h-3" />
+                        <span className="text-xs">Followers</span>
+                      </div>
+                      <p className="font-semibold">{formatNumber(model.followers_count)}</p>
                     </div>
-                    <p className="font-semibold">0</p>
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-center gap-1 text-muted-foreground mb-1">
-                      <Users className="w-3 h-3" />
-                      <span className="text-xs">Subs</span>
+                    <div>
+                      <div className="flex items-center justify-center gap-1 text-muted-foreground mb-1">
+                        <Users className="w-3 h-3" />
+                        <span className="text-xs">Subscribers</span>
+                      </div>
+                      <p className="font-semibold">{formatNumber(model.subscribers_count)}</p>
                     </div>
-                    <p className="font-semibold">0</p>
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-center gap-1 text-muted-foreground mb-1">
-                      <DollarSign className="w-3 h-3" />
-                      <span className="text-xs">Revenue</span>
+                    <div>
+                      <div className="flex items-center justify-center gap-1 text-muted-foreground mb-1">
+                        <DollarSign className="w-3 h-3" />
+                        <span className="text-xs">Revenue</span>
+                      </div>
+                      <p className="font-semibold text-green-600">{formatCurrency(model.revenue_total)}</p>
                     </div>
-                    <p className="font-semibold">$0</p>
                   </div>
-                </div>
-                
-                <Button className="w-full mt-4" variant="outline">
-                  View Details
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
+
+                  {/* Secondary Stats */}
+                  <div className="grid grid-cols-4 gap-2 text-center mt-4 pt-4 border-t">
+                    <div>
+                      <div className="flex items-center justify-center text-muted-foreground mb-1">
+                        <Image className="w-3 h-3" />
+                      </div>
+                      <p className="text-sm font-medium">{model.posts_count || 0}</p>
+                      <p className="text-xs text-muted-foreground">Posts</p>
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-center text-muted-foreground mb-1">
+                        <MessageCircle className="w-3 h-3" />
+                      </div>
+                      <p className="text-sm font-medium">{model.unread_messages || 0}</p>
+                      <p className="text-xs text-muted-foreground">Messages</p>
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-center text-muted-foreground mb-1">
+                        <Heart className="w-3 h-3" />
+                      </div>
+                      <p className="text-sm font-medium">{formatNumber(model.likes_count)}</p>
+                      <p className="text-xs text-muted-foreground">Likes</p>
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-center text-muted-foreground mb-1">
+                        <Link2 className="w-3 h-3" />
+                      </div>
+                      <p className="text-sm font-medium">{model.tracking_links_count || 0}</p>
+                      <p className="text-xs text-muted-foreground">Links</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex gap-2 mt-4">
+                    <Button className="flex-1" variant="outline">
+                      View Details
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="icon"
+                      onClick={() => handleRefreshStats(model.id, model.name || undefined)}
+                      disabled={isRefreshing}
+                    >
+                      <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
         </div>
       )}
     </div>

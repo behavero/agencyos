@@ -1,82 +1,11 @@
 /**
  * Fanvue API Client
- * Complete integration with all Fanvue API endpoints
- * Reference: https://api.fanvue.com/docs/api-reference/reference
+ * Comprehensive client for all Fanvue API endpoints
+ * Based on https://api.fanvue.com/docs
  */
 
 const FANVUE_API_BASE = 'https://api.fanvue.com'
 const FANVUE_API_VERSION = '2025-06-26'
-
-export interface FanvueUser {
-  uuid: string
-  email: string
-  handle: string
-  bio?: string
-  displayName: string
-  isCreator: boolean
-  createdAt: string
-  updatedAt?: string | null
-  avatarUrl?: string | null
-  bannerUrl?: string | null
-  likesCount?: number
-  fanCounts?: {
-    followersCount: number
-    subscribersCount: number
-  }
-  contentCounts?: {
-    imageCount: number
-    videoCount: number
-    audioCount: number
-    postCount: number
-    payToViewPostCount: number
-  }
-}
-
-export interface FanvueFollower {
-  uuid: string
-  handle: string
-  displayName: string
-  nickname?: string | null
-  isTopSpender: boolean
-  avatarUrl?: string | null
-  registeredAt: string
-}
-
-export interface FanvuePost {
-  uuid: string
-  content: string
-  createdAt: string
-  likesCount: number
-  commentsCount: number
-  // Add more fields as needed
-}
-
-export interface FanvueChat {
-  uuid: string
-  participantUuid: string
-  participantHandle: string
-  participantDisplayName: string
-  lastMessage?: string
-  unreadCount: number
-  createdAt: string
-}
-
-export interface FanvueMessage {
-  uuid: string
-  content: string
-  senderUuid: string
-  createdAt: string
-  isRead: boolean
-}
-
-export interface PaginatedResponse<T> {
-  data: T[]
-  pagination: {
-    page: number
-    size: number
-    hasMore: boolean
-  }
-}
 
 export class FanvueAPIError extends Error {
   constructor(
@@ -91,11 +20,9 @@ export class FanvueAPIError extends Error {
 
 export class FanvueClient {
   private accessToken: string
-  private creatorUuid?: string
 
-  constructor(accessToken: string, creatorUuid?: string) {
+  constructor(accessToken: string) {
     this.accessToken = accessToken
-    this.creatorUuid = creatorUuid
   }
 
   private async request<T>(
@@ -127,285 +54,371 @@ export class FanvueClient {
   }
 
   // ==================== USER ====================
-  
-  async getCurrentUser(): Promise<FanvueUser> {
-    return this.request<FanvueUser>('/users/me')
-  }
-
-  // ==================== FOLLOWERS & SUBSCRIBERS ====================
-  
-  async getFollowers(page = 1, size = 50): Promise<PaginatedResponse<FanvueFollower>> {
-    return this.request(`/followers?page=${page}&size=${size}`)
-  }
-
-  async getSubscribers(page = 1, size = 50): Promise<PaginatedResponse<FanvueFollower>> {
-    return this.request(`/subscribers?page=${page}&size=${size}`)
+  async getCurrentUser() {
+    return this.request<{
+      uuid: string
+      email: string
+      handle: string
+      bio?: string
+      displayName: string
+      isCreator: boolean
+      createdAt: string
+      updatedAt?: string | null
+      avatarUrl?: string | null
+      bannerUrl?: string | null
+      likesCount?: number | null
+      fanCounts?: {
+        followersCount: number
+        subscribersCount: number
+      } | null
+      contentCounts?: {
+        imageCount: number
+        videoCount: number
+        audioCount: number
+        postCount: number
+        payToViewPostCount: number
+      } | null
+    }>('/users/me')
   }
 
   // ==================== INSIGHTS ====================
-  
-  async getEarnings(startDate?: string, endDate?: string): Promise<any> {
-    let url = '/insights/earnings'
-    const params = new URLSearchParams()
-    if (startDate) params.append('startDate', startDate)
-    if (endDate) params.append('endDate', endDate)
-    if (params.toString()) url += `?${params.toString()}`
-    return this.request(url)
+  async getEarnings(params?: { from?: string; to?: string; interval?: 'day' | 'week' | 'month' }) {
+    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    return this.request<{
+      total: number
+      data: Array<{
+        date: string
+        amount: number
+        subscriptions: number
+        tips: number
+        messages: number
+        payToView: number
+      }>
+    }>(`/insights/earnings${query}`)
   }
 
-  async getTopFans(page = 1, size = 50): Promise<PaginatedResponse<FanvueFollower>> {
-    return this.request(`/insights/top-fans?page=${page}&size=${size}`)
+  async getSubscribersCount() {
+    return this.request<{
+      total: number
+      active: number
+      expired: number
+    }>('/insights/subscribers-count')
   }
 
-  async getSubscribersCount(): Promise<{ count: number }> {
-    return this.request('/insights/subscribers-count')
+  async getTopFans(params?: { page?: number; size?: number }) {
+    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    return this.request<{
+      data: Array<{
+        uuid: string
+        displayName: string
+        avatarUrl?: string
+        totalSpent: number
+      }>
+      totalCount: number
+    }>(`/insights/top-fans${query}`)
   }
 
-  async getFanInsights(): Promise<any> {
-    return this.request('/insights/fans')
+  async getFanInsights(fanUuid: string) {
+    return this.request<{
+      uuid: string
+      displayName: string
+      totalSpent: number
+      subscriptionStatus: string
+      lastActive: string
+    }>(`/insights/fans/${fanUuid}`)
+  }
+
+  // ==================== FOLLOWERS & SUBSCRIBERS ====================
+  async getFollowers(page: number = 1, size: number = 15) {
+    return this.request<{
+      data: Array<{
+        uuid: string
+        displayName: string
+        avatarUrl?: string
+        followedAt: string
+      }>
+      totalCount: number
+    }>(`/followers?page=${page}&size=${size}`)
+  }
+
+  async getSubscribers(page: number = 1, size: number = 15) {
+    return this.request<{
+      data: Array<{
+        uuid: string
+        displayName: string
+        avatarUrl?: string
+        subscribedAt: string
+        expiresAt: string
+        status: string
+      }>
+      totalCount: number
+    }>(`/subscribers?page=${page}&size=${size}`)
   }
 
   // ==================== POSTS ====================
-  
-  async getPosts(page = 1, size = 50): Promise<PaginatedResponse<FanvuePost>> {
-    return this.request(`/posts?page=${page}&size=${size}`)
+  async getPosts(params?: { page?: number; size?: number; type?: 'image' | 'video' | 'audio' | 'text' }) {
+    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    return this.request<{
+      data: Array<{
+        uuid: string
+        content: string
+        createdAt: string
+        likesCount: number
+        commentsCount: number
+        tipsCount: number
+        mediaCount: number
+        isPayToView: boolean
+        price?: number
+      }>
+      totalCount: number
+    }>(`/posts${query}`)
   }
 
-  async getPost(uuid: string): Promise<FanvuePost> {
-    return this.request(`/posts/${uuid}`)
+  async getPost(postUuid: string) {
+    return this.request<{
+      uuid: string
+      content: string
+      createdAt: string
+      likesCount: number
+      commentsCount: number
+      tipsCount: number
+    }>(`/posts/${postUuid}`)
   }
 
-  async createPost(data: {
-    content: string
-    mediaUuids?: string[]
-    isPayToView?: boolean
-    price?: number
-    scheduledAt?: string
-  }): Promise<FanvuePost> {
-    return this.request('/posts', {
+  async createPost(data: { content: string; mediaIds?: string[]; price?: number; scheduleAt?: string }) {
+    return this.request<{ uuid: string }>('/posts', {
       method: 'POST',
       body: JSON.stringify(data),
     })
   }
 
-  async getPostTips(postUuid: string): Promise<any> {
-    return this.request(`/posts/${postUuid}/tips`)
+  async deletePost(postUuid: string) {
+    return this.request(`/posts/${postUuid}`, { method: 'DELETE' })
   }
 
-  async getPostLikes(postUuid: string): Promise<any> {
-    return this.request(`/posts/${postUuid}/likes`)
+  async getPostTips(postUuid: string, params?: { page?: number; size?: number }) {
+    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    return this.request<{
+      data: Array<{ uuid: string; amount: number; createdAt: string; user: { displayName: string } }>
+      totalCount: number
+    }>(`/posts/${postUuid}/tips${query}`)
   }
 
-  async getPostComments(postUuid: string): Promise<any> {
-    return this.request(`/posts/${postUuid}/comments`)
+  async getPostLikes(postUuid: string, params?: { page?: number; size?: number }) {
+    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    return this.request<{
+      data: Array<{ uuid: string; displayName: string; avatarUrl?: string }>
+      totalCount: number
+    }>(`/posts/${postUuid}/likes${query}`)
+  }
+
+  async getPostComments(postUuid: string, params?: { page?: number; size?: number }) {
+    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    return this.request<{
+      data: Array<{ uuid: string; content: string; createdAt: string; user: { displayName: string } }>
+      totalCount: number
+    }>(`/posts/${postUuid}/comments${query}`)
   }
 
   // ==================== MEDIA ====================
-  
-  async getMedia(page = 1, size = 50): Promise<PaginatedResponse<any>> {
-    return this.request(`/media?page=${page}&size=${size}`)
+  async getMedia(params?: { page?: number; size?: number; type?: 'image' | 'video' | 'audio' }) {
+    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    return this.request<{
+      data: Array<{
+        uuid: string
+        type: string
+        url: string
+        thumbnailUrl?: string
+        createdAt: string
+      }>
+      totalCount: number
+    }>(`/media${query}`)
   }
 
-  async getMediaByUuid(uuid: string): Promise<any> {
-    return this.request(`/media/${uuid}`)
-  }
-
-  async createUploadSession(data: {
-    filename: string
-    contentType: string
-    size: number
-  }): Promise<any> {
-    return this.request('/media/upload', {
+  async createUploadSession(data: { fileName: string; fileSize: number; mimeType: string }) {
+    return this.request<{
+      uploadUrl: string
+      mediaUuid: string
+    }>('/media/upload-session', {
       method: 'POST',
       body: JSON.stringify(data),
     })
   }
 
   // ==================== CHATS ====================
-  
-  async getChats(page = 1, size = 50): Promise<PaginatedResponse<FanvueChat>> {
-    return this.request(`/chats?page=${page}&size=${size}`)
+  async getChats(params?: { page?: number; size?: number; unread?: boolean }) {
+    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    return this.request<{
+      data: Array<{
+        uuid: string
+        user: { uuid: string; displayName: string; avatarUrl?: string }
+        lastMessage?: { content: string; createdAt: string }
+        unreadCount: number
+      }>
+      totalCount: number
+    }>(`/chats${query}`)
   }
 
-  async getUnreadCount(): Promise<{ chats: number; messages: number; notifications: number }> {
-    return this.request('/chats/unread-count')
+  async getUnreadCount() {
+    return this.request<{ count: number }>('/chats/unread-count')
   }
 
-  async createChat(participantUuid: string): Promise<FanvueChat> {
-    return this.request('/chats', {
+  async createChat(userUuid: string) {
+    return this.request<{ uuid: string }>('/chats', {
       method: 'POST',
-      body: JSON.stringify({ participantUuid }),
+      body: JSON.stringify({ userUuid }),
     })
-  }
-
-  async getChatMedia(chatUuid: string): Promise<any> {
-    return this.request(`/chats/${chatUuid}/media`)
   }
 
   // ==================== MESSAGES ====================
-  
-  async getMessages(chatUuid: string, page = 1, size = 50): Promise<PaginatedResponse<FanvueMessage>> {
-    return this.request(`/chats/${chatUuid}/messages?page=${page}&size=${size}`)
+  async getMessages(chatUuid: string, params?: { page?: number; size?: number }) {
+    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    return this.request<{
+      data: Array<{
+        uuid: string
+        content: string
+        createdAt: string
+        isFromCreator: boolean
+        price?: number
+        isPurchased?: boolean
+      }>
+      totalCount: number
+    }>(`/chats/${chatUuid}/messages${query}`)
   }
 
-  async sendMessage(chatUuid: string, data: {
-    content: string
-    mediaUuids?: string[]
-    price?: number
-  }): Promise<FanvueMessage> {
-    return this.request(`/chats/${chatUuid}/messages`, {
+  async sendMessage(chatUuid: string, data: { content: string; mediaIds?: string[]; price?: number }) {
+    return this.request<{ uuid: string }>(`/chats/${chatUuid}/messages`, {
       method: 'POST',
       body: JSON.stringify(data),
     })
   }
 
-  async sendMassMessage(data: {
-    content: string
-    mediaUuids?: string[]
-    price?: number
-    recipientListUuid?: string
-    recipientUuids?: string[]
-  }): Promise<any> {
-    return this.request('/messages/mass', {
+  async deleteMessage(chatUuid: string, messageUuid: string) {
+    return this.request(`/chats/${chatUuid}/messages/${messageUuid}`, { method: 'DELETE' })
+  }
+
+  async sendMassMessage(data: { userUuids: string[]; content: string; mediaIds?: string[]; price?: number }) {
+    return this.request<{ messageCount: number }>('/chats/mass-message', {
       method: 'POST',
       body: JSON.stringify(data),
     })
   }
 
-  async deleteMessage(chatUuid: string, messageUuid: string): Promise<void> {
-    await this.request(`/chats/${chatUuid}/messages/${messageUuid}`, {
-      method: 'DELETE',
+  // ==================== CHAT TEMPLATES ====================
+  async getTemplates(params?: { page?: number; size?: number }) {
+    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    return this.request<{
+      data: Array<{ uuid: string; name: string; content: string }>
+      totalCount: number
+    }>(`/chat-templates${query}`)
+  }
+
+  async createTemplate(data: { name: string; content: string }) {
+    return this.request<{ uuid: string }>('/chat-templates', {
+      method: 'POST',
+      body: JSON.stringify(data),
     })
-  }
-
-  // ==================== TEMPLATES ====================
-  
-  async getTemplates(): Promise<any> {
-    return this.request('/templates')
-  }
-
-  async getTemplate(uuid: string): Promise<any> {
-    return this.request(`/templates/${uuid}`)
   }
 
   // ==================== SMART LISTS ====================
-  
-  async getSmartLists(): Promise<any> {
-    return this.request('/smart-lists')
+  async getSmartLists(params?: { page?: number; size?: number }) {
+    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    return this.request<{
+      data: Array<{ uuid: string; name: string; memberCount: number }>
+      totalCount: number
+    }>(`/chat-smart-lists${query}`)
   }
 
-  async getSmartListMembers(listUuid: string): Promise<any> {
-    return this.request(`/smart-lists/${listUuid}/members`)
+  async getSmartListMembers(listUuid: string, params?: { page?: number; size?: number }) {
+    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    return this.request<{
+      data: Array<{ uuid: string; displayName: string }>
+      totalCount: number
+    }>(`/chat-smart-lists/${listUuid}/members${query}`)
   }
 
   // ==================== CUSTOM LISTS ====================
-  
-  async getCustomLists(): Promise<any> {
-    return this.request('/custom-lists')
+  async getCustomLists(params?: { page?: number; size?: number }) {
+    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    return this.request<{
+      data: Array<{ uuid: string; name: string; memberCount: number }>
+      totalCount: number
+    }>(`/chat-custom-lists${query}`)
   }
 
-  async createCustomList(name: string): Promise<any> {
-    return this.request('/custom-lists', {
+  async createCustomList(name: string) {
+    return this.request<{ uuid: string }>('/chat-custom-lists', {
       method: 'POST',
       body: JSON.stringify({ name }),
-    })
-  }
-
-  async deleteCustomList(uuid: string): Promise<void> {
-    await this.request(`/custom-lists/${uuid}`, { method: 'DELETE' })
-  }
-
-  async addToCustomList(listUuid: string, memberUuids: string[]): Promise<void> {
-    await this.request(`/custom-lists/${listUuid}/members`, {
-      method: 'POST',
-      body: JSON.stringify({ memberUuids }),
-    })
-  }
-
-  async removeFromCustomList(listUuid: string, memberUuid: string): Promise<void> {
-    await this.request(`/custom-lists/${listUuid}/members/${memberUuid}`, {
-      method: 'DELETE',
     })
   }
 
   // ==================== VAULT ====================
-  
-  async getVaultFolders(): Promise<any> {
-    return this.request('/vault/folders')
+  async getVaultFolders(params?: { page?: number; size?: number }) {
+    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    return this.request<{
+      data: Array<{ uuid: string; name: string; mediaCount: number }>
+      totalCount: number
+    }>(`/vault/folders${query}`)
   }
 
-  async createVaultFolder(name: string): Promise<any> {
-    return this.request('/vault/folders', {
+  async createVaultFolder(name: string) {
+    return this.request<{ uuid: string }>('/vault/folders', {
       method: 'POST',
       body: JSON.stringify({ name }),
     })
   }
 
-  async deleteVaultFolder(uuid: string): Promise<void> {
-    await this.request(`/vault/folders/${uuid}`, { method: 'DELETE' })
-  }
-
-  async getVaultFolderMedia(folderUuid: string): Promise<any> {
-    return this.request(`/vault/folders/${folderUuid}/media`)
-  }
-
-  async addMediaToFolder(folderUuid: string, mediaUuids: string[]): Promise<void> {
-    await this.request(`/vault/folders/${folderUuid}/media`, {
-      method: 'POST',
-      body: JSON.stringify({ mediaUuids }),
-    })
+  async getVaultFolderMedia(folderUuid: string, params?: { page?: number; size?: number }) {
+    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    return this.request<{
+      data: Array<{ uuid: string; type: string; url: string }>
+      totalCount: number
+    }>(`/vault/folders/${folderUuid}/media${query}`)
   }
 
   // ==================== TRACKING LINKS ====================
-  
-  async getTrackingLinks(): Promise<any> {
-    return this.request('/tracking-links')
+  async getTrackingLinks(params?: { page?: number; size?: number }) {
+    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    return this.request<{
+      data: Array<{
+        uuid: string
+        name: string
+        url: string
+        clicks: number
+        conversions: number
+        revenue: number
+      }>
+      totalCount: number
+    }>(`/tracking-links${query}`)
   }
 
-  async createTrackingLink(data: { name: string; url: string }): Promise<any> {
-    return this.request('/tracking-links', {
+  async createTrackingLink(data: { name: string }) {
+    return this.request<{ uuid: string; url: string }>('/tracking-links', {
       method: 'POST',
       body: JSON.stringify(data),
     })
   }
 
-  async deleteTrackingLink(uuid: string): Promise<void> {
-    await this.request(`/tracking-links/${uuid}`, { method: 'DELETE' })
+  async deleteTrackingLink(linkUuid: string) {
+    return this.request(`/tracking-links/${linkUuid}`, { method: 'DELETE' })
   }
 
-  // ==================== AGENCY (For managing multiple creators) ====================
-  
-  async getAgencyCreators(): Promise<PaginatedResponse<any>> {
-    return this.request('/creators')
-  }
-
-  async getCreatorFollowers(creatorUuid: string): Promise<any> {
-    return this.request(`/creators/${creatorUuid}/followers`)
-  }
-
-  async getCreatorSubscribers(creatorUuid: string): Promise<any> {
-    return this.request(`/creators/${creatorUuid}/subscribers`)
-  }
-
-  async getCreatorEarnings(creatorUuid: string): Promise<any> {
-    return this.request(`/creators/${creatorUuid}/insights/earnings`)
-  }
-
-  async sendMessageAsCreator(creatorUuid: string, chatUuid: string, data: any): Promise<any> {
-    return this.request(`/creators/${creatorUuid}/chats/${chatUuid}/messages`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    })
-  }
-
-  async sendMassMessageAsCreator(creatorUuid: string, data: any): Promise<any> {
-    return this.request(`/creators/${creatorUuid}/messages/mass`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    })
+  // ==================== AGENCY ENDPOINTS ====================
+  async getAgencyCreators(params?: { page?: number; size?: number }) {
+    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    return this.request<{
+      data: Array<{
+        uuid: string
+        displayName: string
+        handle: string
+        avatarUrl?: string
+      }>
+      totalCount: number
+    }>(`/creators${query}`)
   }
 }
 
-export function createFanvueClient(accessToken: string, creatorUuid?: string) {
-  return new FanvueClient(accessToken, creatorUuid)
+export function createFanvueClient(accessToken: string) {
+  return new FanvueClient(accessToken)
 }
