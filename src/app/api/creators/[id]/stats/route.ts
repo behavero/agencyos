@@ -67,24 +67,79 @@ export async function POST(
 
     console.log('[Stats API] Fetching stats for', model.name)
 
-    // Fetch all data in parallel
-    const [userInfo, earnings, subscribersCount, followers, posts, chats, trackingLinks] = await Promise.all([
-      fanvue.getCurrentUser().catch(e => { console.error('User info error:', e); return null }),
-      fanvue.getEarnings({ interval: 'month' }).catch(e => { console.error('Earnings error:', e); return null }),
-      fanvue.getSubscribersCount().catch(e => { console.error('Subscribers count error:', e); return null }),
-      fanvue.getFollowers(1, 1).catch(e => { console.error('Followers error:', e); return null }),
-      fanvue.getPosts({ size: 1 }).catch(e => { console.error('Posts error:', e); return null }),
-      fanvue.getChats({ size: 1 }).catch(e => { console.error('Chats error:', e); return null }),
-      fanvue.getTrackingLinks().catch(e => { console.error('Tracking links error:', e); return null }),
+    // Fetch user info first (most reliable)
+    const userInfo = await fanvue.getCurrentUser().catch(e => {
+      console.error('[Stats API] User info error:', e.message)
+      return null
+    })
+
+    console.log('[Stats API] User info:', JSON.stringify(userInfo, null, 2))
+
+    // Fetch additional stats in parallel with detailed logging
+    const [earnings, unreadCount, trackingLinks] = await Promise.all([
+      // Earnings - try different response structures
+      fanvue.getEarnings({ interval: 'month' }).then(data => {
+        console.log('[Stats API] Earnings raw:', JSON.stringify(data, null, 2))
+        return data
+      }).catch(e => {
+        console.error('[Stats API] Earnings error:', e.message, e.statusCode)
+        return null
+      }),
+
+      // Unread messages count
+      fanvue.getUnreadCount().then(data => {
+        console.log('[Stats API] Unread count raw:', JSON.stringify(data, null, 2))
+        return data
+      }).catch(e => {
+        console.error('[Stats API] Unread count error:', e.message, e.statusCode)
+        return null
+      }),
+
+      // Tracking links
+      fanvue.getTrackingLinks({ size: 100 }).then(data => {
+        console.log('[Stats API] Tracking links raw:', JSON.stringify(data, null, 2))
+        return data
+      }).catch(e => {
+        console.error('[Stats API] Tracking links error:', e.message, e.statusCode)
+        return null
+      }),
     ])
 
-    // Calculate totals
-    const totalRevenue = earnings?.total || 0
-    const totalSubscribers = subscribersCount?.active || userInfo?.fanCounts?.subscribersCount || 0
-    const totalFollowers = followers?.totalCount || userInfo?.fanCounts?.followersCount || 0
-    const totalPosts = posts?.totalCount || userInfo?.contentCounts?.postCount || 0
-    const unreadChats = chats?.totalCount || 0
-    const totalTrackingLinks = trackingLinks?.totalCount || 0
+    // Extract values from user info (most reliable source)
+    const totalFollowers = userInfo?.fanCounts?.followersCount || 0
+    const totalSubscribers = userInfo?.fanCounts?.subscribersCount || 0
+    const totalPosts = userInfo?.contentCounts?.postCount || 0
+    const totalLikes = userInfo?.likesCount || 0
+
+    // Extract earnings - handle different response structures
+    let totalRevenue = 0
+    if (earnings) {
+      // Try different possible response structures
+      if (typeof earnings.total === 'number') {
+        totalRevenue = earnings.total
+      } else if (earnings.data && Array.isArray(earnings.data)) {
+        // Sum up earnings from data array
+        totalRevenue = earnings.data.reduce((sum: number, item: any) => sum + (item.amount || 0), 0)
+      } else if (typeof earnings === 'number') {
+        totalRevenue = earnings
+      }
+    }
+    console.log('[Stats API] Total revenue calculated:', totalRevenue)
+
+    // Unread messages
+    const unreadMessages = unreadCount?.count || 0
+    console.log('[Stats API] Unread messages:', unreadMessages)
+
+    // Tracking links count
+    let totalTrackingLinks = 0
+    if (trackingLinks) {
+      if (typeof trackingLinks.totalCount === 'number') {
+        totalTrackingLinks = trackingLinks.totalCount
+      } else if (trackingLinks.data && Array.isArray(trackingLinks.data)) {
+        totalTrackingLinks = trackingLinks.data.length
+      }
+    }
+    console.log('[Stats API] Tracking links:', totalTrackingLinks)
 
     // Build stats object
     const stats = {
@@ -92,18 +147,20 @@ export async function POST(
       subscribers_count: totalSubscribers,
       posts_count: totalPosts,
       revenue_total: totalRevenue,
-      unread_messages: unreadChats,
+      unread_messages: unreadMessages,
       tracking_links_count: totalTrackingLinks,
       avatar_url: userInfo?.avatarUrl || model.avatar_url,
       banner_url: userInfo?.bannerUrl,
       bio: userInfo?.bio,
-      likes_count: userInfo?.likesCount || 0,
+      likes_count: totalLikes,
       image_count: userInfo?.contentCounts?.imageCount || 0,
       video_count: userInfo?.contentCounts?.videoCount || 0,
       audio_count: userInfo?.contentCounts?.audioCount || 0,
       stats_updated_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
+
+    console.log('[Stats API] Final stats:', stats)
 
     // Update the model in database
     const { error: updateError } = await adminClient
@@ -124,6 +181,11 @@ export async function POST(
         ...stats,
         name: model.name,
       },
+      debug: {
+        earningsRaw: earnings,
+        unreadRaw: unreadCount,
+        trackingLinksRaw: trackingLinks,
+      }
     })
 
   } catch (error: any) {
