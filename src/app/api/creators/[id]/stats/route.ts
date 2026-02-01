@@ -96,18 +96,29 @@ export async function POST(
       }),
     ])
 
-    // Fetch ALL earnings with pagination (no date filter = all time)
+    // Fetch ALL earnings with pagination (from account creation to now)
+    // Use a very old start date to capture all historical data
+    const earningsStartDate = '2020-01-01' // Fanvue launched ~2021, so this captures everything
+    const earningsEndDate = new Date().toISOString().split('T')[0] // Today
+    
     let allEarnings: any[] = []
     let earningsCursor: string | null = null
     let earningsPageCount = 0
-    const MAX_EARNINGS_PAGES = 50 // Safety limit
+    const MAX_EARNINGS_PAGES = 100 // Increased limit for accounts with many transactions
 
     try {
       do {
-        const earningsPage = await fanvue.getEarnings({ 
+        const params: any = { 
+          startDate: earningsStartDate,
+          endDate: earningsEndDate,
           size: 100, // Max per page
-          cursor: earningsCursor || undefined 
-        })
+        }
+        if (earningsCursor) {
+          params.cursor = earningsCursor
+        }
+        
+        console.log(`[Stats API] Fetching earnings page ${earningsPageCount + 1} with params:`, params)
+        const earningsPage = await fanvue.getEarnings(params)
         
         if (earningsPage?.data && Array.isArray(earningsPage.data)) {
           allEarnings = [...allEarnings, ...earningsPage.data]

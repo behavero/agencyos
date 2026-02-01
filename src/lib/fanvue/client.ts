@@ -83,7 +83,13 @@ export class FanvueClient {
 
   // ==================== INSIGHTS ====================
   async getEarnings(params?: { startDate?: string; endDate?: string; size?: number; cursor?: string }) {
-    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    const queryParams = new URLSearchParams()
+    if (params?.startDate) queryParams.set('startDate', params.startDate)
+    if (params?.endDate) queryParams.set('endDate', params.endDate)
+    if (params?.size) queryParams.set('size', String(params.size))
+    if (params?.cursor) queryParams.set('cursor', params.cursor)
+    
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : ''
     return this.request<{
       data: Array<{
         date: string
