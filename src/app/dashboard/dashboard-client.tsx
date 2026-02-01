@@ -1,11 +1,12 @@
 'use client'
 
+import { useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import type { User } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
@@ -32,7 +33,42 @@ interface DashboardClientProps {
 
 export default function DashboardClient({ user, profile, agency, models }: DashboardClientProps) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const supabase = createClient()
+
+  // Handle OAuth success/error notifications
+  useEffect(() => {
+    const success = searchParams.get('success')
+    const error = searchParams.get('error')
+    const details = searchParams.get('details')
+
+    if (success === 'model_added') {
+      toast.success('🎉 Model added successfully!')
+      // Clear URL params and refresh
+      const url = new URL(window.location.href)
+      url.searchParams.delete('success')
+      window.history.replaceState({}, '', url.toString())
+      
+      // Refresh the page to show new model
+      setTimeout(() => router.refresh(), 1000)
+    } else if (error) {
+      const errorMessages: Record<string, string> = {
+        fanvue_oauth_failed: 'Failed to connect Fanvue account',
+        invalid_state: 'Security validation failed. Please try again.',
+        missing_verifier: 'Session expired. Please try again.',
+        not_logged_in: 'Please log in first',
+      }
+      const message = errorMessages[error] || 'An error occurred'
+      const fullMessage = details ? `${message}: ${decodeURIComponent(details)}` : message
+      toast.error(fullMessage)
+      
+      // Clear URL params
+      const url = new URL(window.location.href)
+      url.searchParams.delete('error')
+      url.searchParams.delete('details')
+      window.history.replaceState({}, '', url.toString())
+    }
+  }, [searchParams, router])
 
   const handleAddModel = () => {
     router.push('/api/auth/fanvue')

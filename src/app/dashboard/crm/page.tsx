@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Header } from '@/components/layout/header'
-import ModelsClient from './models-client'
+import ModelsClient from './models-client-new'
 
 export default async function ModelsPage() {
   const supabase = await createClient()
