@@ -1,13 +1,12 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { useChat } from 'ai/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { AlfredConnectionStatus } from './connection-status'
 import {
-  MessageCircle,
   X,
   Send,
   Leaf,
@@ -15,31 +14,41 @@ import {
   Maximize2,
   Bot,
   User,
+  Sparkles,
+  RefreshCw,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-interface Message {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-  timestamp: Date
+const SUGGESTED_PROMPTS = [
+  { icon: '📊', text: 'Give me a full agency performance report' },
+  { icon: '💡', text: 'What strategies can increase our revenue?' },
+  { icon: '🎯', text: 'Which quests should we prioritize today?' },
+  { icon: '📱', text: 'How can we improve social media reach?' },
+  { icon: '💰', text: 'Audit our expenses and find savings' },
+  { icon: '🌟', text: 'Analyze our top performer\'s growth potential' },
+]
+
+interface AlfredFloatingChatProps {
+  modelId?: string
 }
 
-export function AlfredFloatingChat() {
+export function AlfredFloatingChat({ modelId }: AlfredFloatingChatProps = {}) {
   const [isOpen, setIsOpen] = useState(false)
   const [isMinimized, setIsMinimized] = useState(false)
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      role: 'assistant',
-      content: "Hey! I'm Alfred, your AI agency assistant. I have access to all your Fanvue data, social media analytics, and can help you manage your creators. How can I help you today?",
-      timestamp: new Date(),
-    },
-  ])
-  const [input, setInput] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  const { messages, input, handleInputChange, handleSubmit, isLoading, setInput, reload, error } = useChat({
+    api: '/api/chat',
+    body: { modelId },
+    initialMessages: [
+      {
+        id: 'welcome',
+        role: 'assistant',
+        content: "Hello! I'm Alfred, your AI agency strategist. I have access to all your Fanvue data, revenue analytics, and social media stats. How can I help you grow today?",
+      },
+    ],
+  })
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -49,73 +58,27 @@ export function AlfredFloatingChat() {
   // Focus input when chat opens
   useEffect(() => {
     if (isOpen && !isMinimized) {
-      inputRef.current?.focus()
+      setTimeout(() => inputRef.current?.focus(), 100)
     }
   }, [isOpen, isMinimized])
 
-  const sendMessage = async () => {
-    if (!input.trim() || isLoading) return
-
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: input.trim(),
-      timestamp: new Date(),
-    }
-
-    setMessages(prev => [...prev, userMessage])
-    setInput('')
-    setIsLoading(true)
-
-    try {
-      const response = await fetch('/api/alfred/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: userMessage.content,
-          context: {
-            page: window.location.pathname,
-            timestamp: new Date().toISOString(),
-          },
-        }),
-      })
-
-      const data = await response.json()
-
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: data.response || data.error || 'Sorry, I encountered an error. Please try again.',
-        timestamp: new Date(),
-      }
-
-      setMessages(prev => [...prev, assistantMessage])
-    } catch (error) {
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: "I'm having trouble connecting. Please check if the API is available.",
-        timestamp: new Date(),
-      }
-      setMessages(prev => [...prev, errorMessage])
-    } finally {
-      setIsLoading(false)
-    }
+  const handleSuggestedPrompt = (prompt: string) => {
+    setInput(prompt)
+    // Trigger submit after setting input
+    setTimeout(() => {
+      const form = document.getElementById('alfred-chat-form') as HTMLFormElement
+      if (form) form.requestSubmit()
+    }, 50)
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      sendMessage()
-    }
-  }
+  const showSuggestions = messages.length <= 1 && !isLoading
 
   // Floating button when closed - Lime theme
   if (!isOpen) {
     return (
       <Button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 w-14 h-14 rounded-full shadow-2xl bg-gradient-to-br from-lime-400 to-green-500 hover:from-lime-300 hover:to-green-400 z-50 glow-lime"
+        className="fixed bottom-6 right-6 w-14 h-14 rounded-full shadow-2xl bg-gradient-to-br from-lime-400 to-green-500 hover:from-lime-300 hover:to-green-400 z-50 glow-lime transition-all hover:scale-105"
         size="icon"
       >
         <Leaf className="w-6 h-6 text-green-900" />
@@ -130,7 +93,7 @@ export function AlfredFloatingChat() {
         <div className="flex items-center gap-2 bg-card border border-border rounded-full px-4 py-2 shadow-2xl">
           <Leaf className="w-5 h-5 text-primary" />
           <span className="text-sm font-medium text-foreground">Alfred</span>
-          <AlfredConnectionStatus showLabel={false} />
+          <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
           <Button
             variant="ghost"
             size="icon"
@@ -154,16 +117,19 @@ export function AlfredFloatingChat() {
 
   // Full chat window - Lime theme
   return (
-    <div className="fixed bottom-6 right-6 w-96 h-[500px] bg-card border border-border rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden">
+    <div className="fixed bottom-6 right-6 w-[420px] h-[560px] bg-card border border-border rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden">
       {/* Header - Lime gradient */}
       <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-primary/20 to-green-500/20 border-b border-border">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-lime-400 to-green-500 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-lime-400 to-green-500 flex items-center justify-center shadow-lg">
             <Leaf className="w-5 h-5 text-green-900" />
           </div>
           <div>
             <h3 className="font-semibold text-foreground">Alfred</h3>
-            <AlfredConnectionStatus className="mt-0.5" />
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+              <span>AI Strategist • GPT-4o</span>
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-1">
@@ -212,19 +178,39 @@ export function AlfredFloatingChat() {
               </Avatar>
               <div
                 className={cn(
-                  'max-w-[75%] rounded-2xl px-4 py-2.5',
+                  'max-w-[80%] rounded-2xl px-4 py-2.5',
                   message.role === 'assistant'
                     ? 'bg-secondary text-foreground'
                     : 'bg-primary text-primary-foreground'
                 )}
               >
-                <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </p>
+                <p className="text-sm whitespace-pre-wrap leading-relaxed">{message.content}</p>
               </div>
             </div>
           ))}
+
+          {/* Suggested Prompts */}
+          {showSuggestions && (
+            <div className="mt-4 space-y-2">
+              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Suggested Questions</p>
+              <div className="grid gap-2">
+                {SUGGESTED_PROMPTS.slice(0, 4).map((prompt, i) => (
+                  <button
+                    key={i}
+                    onClick={() => handleSuggestedPrompt(prompt.text)}
+                    className="flex items-center gap-2 w-full p-2.5 rounded-lg bg-secondary/50 hover:bg-secondary text-left text-sm transition-colors group"
+                  >
+                    <span className="text-base">{prompt.icon}</span>
+                    <span className="text-muted-foreground group-hover:text-foreground transition-colors">
+                      {prompt.text}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Loading indicator */}
           {isLoading && (
             <div className="flex gap-3">
               <Avatar className="w-8 h-8">
@@ -233,40 +219,63 @@ export function AlfredFloatingChat() {
                 </AvatarFallback>
               </Avatar>
               <div className="bg-secondary rounded-2xl px-4 py-3">
-                <div className="flex gap-1">
-                  <span className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <span className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <span className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                <div className="flex items-center gap-2">
+                  <RefreshCw className="w-4 h-4 animate-spin text-primary" />
+                  <span className="text-sm text-muted-foreground">Alfred is thinking...</span>
                 </div>
               </div>
             </div>
           )}
+
+          {/* Error state */}
+          {error && (
+            <div className="flex gap-3">
+              <Avatar className="w-8 h-8">
+                <AvatarFallback className="bg-destructive/20 text-destructive">
+                  <Bot className="w-4 h-4" />
+                </AvatarFallback>
+              </Avatar>
+              <div className="bg-destructive/10 border border-destructive/20 rounded-2xl px-4 py-3">
+                <p className="text-sm text-destructive">
+                  {error.message || 'Something went wrong. Please try again.'}
+                </p>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => reload()}
+                  className="mt-2 text-xs"
+                >
+                  Retry
+                </Button>
+              </div>
+            </div>
+          )}
+
           <div ref={messagesEndRef} />
         </div>
       </ScrollArea>
 
       {/* Input */}
       <div className="p-4 border-t border-border">
-        <div className="flex gap-2">
+        <form id="alfred-chat-form" onSubmit={handleSubmit} className="flex gap-2">
           <Input
             ref={inputRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
+            onChange={handleInputChange}
             placeholder="Ask Alfred anything..."
             className="flex-1"
             disabled={isLoading}
           />
           <Button
-            onClick={sendMessage}
+            type="submit"
             disabled={!input.trim() || isLoading}
             size="icon"
           >
             <Send className="w-4 h-4" />
           </Button>
-        </div>
+        </form>
         <p className="text-xs text-muted-foreground mt-2 text-center">
-          Alfred has access to Fanvue data, analytics & more
+          Powered by GPT-4o • Has access to your Fanvue data
         </p>
       </div>
     </div>
