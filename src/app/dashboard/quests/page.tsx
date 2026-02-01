@@ -20,11 +20,19 @@ export default async function QuestsPage() {
     .eq('id', user.id)
     .single()
 
-  // Fetch quests
+  // Fetch agency for level
+  const { data: agency } = await supabase
+    .from('agencies')
+    .select('current_level')
+    .eq('id', profile?.agency_id)
+    .single()
+
+  // Fetch quests for the agency
   const { data: quests } = await supabase
     .from('quests')
     .select('*')
-    .order('completed_at', { ascending: true })
+    .or(`agency_id.eq.${profile?.agency_id},agency_id.is.null`)
+    .order('completed_at', { ascending: true, nullsFirst: true })
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -35,6 +43,7 @@ export default async function QuestsPage() {
           <QuestsClient 
             quests={quests || []} 
             profile={profile}
+            agencyLevel={agency?.current_level || 1}
           />
         </main>
       </div>

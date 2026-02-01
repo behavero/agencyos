@@ -253,6 +253,82 @@ export type Database = {
           }
         ]
       }
+      quests: {
+        Row: {
+          id: string
+          agency_id: string | null
+          model_id: string | null
+          role_target: string | null
+          title: string | null
+          description: string | null
+          xp_reward: number
+          is_daily: boolean
+          verification_type: 'MANUAL' | 'API_MESSAGES' | 'API_POSTS' | 'API_REVENUE' | 'API_SUBSCRIBERS' | null
+          target_count: number | null
+          current_progress: number | null
+          completed_at: string | null
+          assigned_to: string | null
+          last_synced_at: string | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          agency_id?: string | null
+          model_id?: string | null
+          role_target?: string | null
+          title?: string | null
+          description?: string | null
+          xp_reward?: number
+          is_daily?: boolean
+          verification_type?: 'MANUAL' | 'API_MESSAGES' | 'API_POSTS' | 'API_REVENUE' | 'API_SUBSCRIBERS' | null
+          target_count?: number | null
+          current_progress?: number | null
+          completed_at?: string | null
+          assigned_to?: string | null
+          last_synced_at?: string | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          agency_id?: string | null
+          model_id?: string | null
+          role_target?: string | null
+          title?: string | null
+          description?: string | null
+          xp_reward?: number
+          is_daily?: boolean
+          verification_type?: 'MANUAL' | 'API_MESSAGES' | 'API_POSTS' | 'API_REVENUE' | 'API_SUBSCRIBERS' | null
+          target_count?: number | null
+          current_progress?: number | null
+          completed_at?: string | null
+          assigned_to?: string | null
+          last_synced_at?: string | null
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quests_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quests_model_id_fkey"
+            columns: ["model_id"]
+            isOneToOne: false
+            referencedRelation: "models"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quests_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       social_connections: {
         Row: {
           access_token: string | null
