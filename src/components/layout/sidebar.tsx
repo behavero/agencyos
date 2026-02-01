@@ -30,6 +30,7 @@ const navigation = [
       { name: 'CRM', href: '/dashboard/crm', icon: Briefcase },
       { name: 'Quests', href: '/dashboard/quests', icon: Target },
       { name: 'Content Intel', href: '/dashboard/content', icon: Sparkles },
+      { name: 'Expenses', href: '/dashboard/expenses', icon: CreditCard },
     ],
   },
   {
@@ -37,8 +38,7 @@ const navigation = [
     items: [
       { name: 'Team', href: '/dashboard/team', icon: Users },
       { name: 'Creator', href: '/dashboard/creator', icon: Crown },
-      { name: 'Billing', href: '/dashboard/billing', icon: CreditCard },
-      { name: 'Notifications', href: '/dashboard/notifications', icon: Bell },
+      { name: 'Billing', href: '/dashboard/billing', icon: Bell },
     ],
   },
 ];
