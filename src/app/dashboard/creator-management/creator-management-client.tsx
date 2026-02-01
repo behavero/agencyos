@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -11,27 +11,13 @@ import {
   Plus, 
   Search,
   Users, 
-  TrendingUp, 
   DollarSign, 
   Eye, 
   MoreVertical,
-  Filter,
-  Upload,
-  UserPlus,
-  Trash2
+  ExternalLink
 } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-
-import { cn } from '@/lib/utils'
 
 type Model = Database['public']['Tables']['models']['Row']
 
@@ -45,21 +31,8 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
   const searchParams = useSearchParams()
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [showImportDialog, setShowImportDialog] = useState(false)
-  const [importMode, setImportMode] = useState<'single' | 'bulk'>('single')
-  
-  // Bulk import state
-  const [bulkCreators, setBulkCreators] = useState<Array<{ email: string; password: string }>>([
-    { email: '', password: '' }
-  ])
 
-  // Simple OAuth redirect (full page - most reliable)
-  const handleOAuthRedirect = () => {
-    // Just navigate to the OAuth route - it will handle the redirect
-    window.location.href = '/api/auth/fanvue'
-  }
-
-  // Handle OAuth success/error from URL params (fallback for direct navigation)
+  // Handle OAuth success/error from URL params
   useEffect(() => {
     const success = searchParams.get('success')
     const error = searchParams.get('error')
@@ -94,28 +67,6 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
     }
   }, [searchParams, router])
 
-  // Handle bulk import
-  const handleBulkImport = async () => {
-    // TODO: Implement bulk import API
-    toast.info('Bulk import coming soon! For now, please use Single mode.')
-  }
-  
-  const addBulkRow = () => {
-    if (bulkCreators.length < 20) {
-      setBulkCreators([...bulkCreators, { email: '', password: '' }])
-    }
-  }
-  
-  const removeBulkRow = (index: number) => {
-    setBulkCreators(bulkCreators.filter((_, i) => i !== index))
-  }
-  
-  const updateBulkCreator = (index: number, field: 'email' | 'password', value: string) => {
-    const updated = [...bulkCreators]
-    updated[index][field] = value
-    setBulkCreators(updated)
-  }
-
   const filteredModels = models.filter((model) => {
     const matchesSearch = model.name?.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesStatus = statusFilter === 'all' || model.status === statusFilter
@@ -133,173 +84,16 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
           </p>
         </div>
         
-        {/* Add Creator Button (with mode toggle) */}
-        <Button
-          onClick={() => setShowImportDialog(true)}
-          className="gap-2 shadow-lg bg-violet-600 hover:bg-violet-700"
+        {/* SIMPLE DIRECT LINK - No JavaScript, no onClick, just href */}
+        <a 
+          href="/api/auth/fanvue"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-md font-medium text-white bg-violet-600 hover:bg-violet-700 transition-colors shadow-lg"
         >
           <Plus className="w-4 h-4" />
           Add Creator
-        </Button>
+          <ExternalLink className="w-3 h-3 ml-1 opacity-60" />
+        </a>
       </div>
-
-      {/* Import Dialog */}
-      <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <UserPlus className="w-5 h-5 text-violet-600" />
-              Connect Fanvue Account
-            </DialogTitle>
-            <DialogDescription>
-              Choose how you want to add creators to your agency
-            </DialogDescription>
-          </DialogHeader>
-
-          {/* Mode Toggle */}
-          <div className="flex gap-2 p-1 bg-muted rounded-lg">
-            <button
-              onClick={() => setImportMode('single')}
-              className={cn(
-                "flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-all font-medium",
-                importMode === 'single'
-                  ? "bg-violet-600 text-white shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <UserPlus className="w-4 h-4" />
-              Single
-            </button>
-            <button
-              onClick={() => setImportMode('bulk')}
-              className={cn(
-                "flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-all font-medium",
-                importMode === 'bulk'
-                  ? "bg-violet-600 text-white shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <Upload className="w-4 h-4" />
-              Bulk Import
-            </button>
-          </div>
-
-          {/* Single Mode: OAuth */}
-          {importMode === 'single' && (
-            <div className="space-y-4">
-              <div className="flex items-start gap-3 p-4 bg-muted/50 rounded-lg">
-                <div className="w-10 h-10 rounded-full bg-violet-600/10 flex items-center justify-center flex-shrink-0">
-                  <svg className="w-5 h-5 text-violet-600" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z"/>
-                  </svg>
-                </div>
-                <div className="flex-1">
-                  <h4 className="font-semibold mb-1">Secure OAuth Connection</h4>
-                  <p className="text-sm text-muted-foreground">
-                    Connect safely through Fanvue's official authorization. Your credentials are encrypted and never stored on our servers.
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <h4 className="font-medium text-sm">How it works:</h4>
-                <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
-                  <li>Click "Connect Account" below</li>
-                  <li>A popup will open to Fanvue's login page</li>
-                  <li>Log in with your Fanvue creator account</li>
-                  <li>Authorize OnyxOS to access your account</li>
-                  <li>The popup will close and your creator will be added</li>
-                </ol>
-              </div>
-
-              <Button
-                onClick={() => {
-                  setShowImportDialog(false)
-                  handleOAuthRedirect()
-                }}
-                className="w-full gap-2 bg-violet-600 hover:bg-violet-700 h-12"
-              >
-                <UserPlus className="w-4 h-4" />
-                Connect Account
-              </Button>
-            </div>
-          )}
-
-          {/* Bulk Mode: Email/Password (Coming Soon) */}
-          {importMode === 'bulk' && (
-            <div className="space-y-4">
-              <div className="flex items-start gap-3 p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-                <div className="text-2xl">⚠️</div>
-                <div className="flex-1">
-                  <h4 className="font-semibold mb-1 text-amber-600 dark:text-amber-500">
-                    Bulk Import Coming Soon
-                  </h4>
-                  <p className="text-sm text-muted-foreground">
-                    We're working on adding bulk import functionality. For now, please use the Single mode to add creators one at a time via OAuth.
-                  </p>
-                </div>
-              </div>
-
-              <div className="opacity-50 pointer-events-none">
-                <div className="space-y-2 mb-3">
-                  <label className="text-sm font-medium">Fanvue Accounts</label>
-                  <p className="text-xs text-muted-foreground">
-                    Add up to 20 accounts at once
-                  </p>
-                </div>
-
-                <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                  {bulkCreators.map((creator, index) => (
-                    <div key={index} className="flex gap-2">
-                      <Input
-                        placeholder="email@example.com"
-                        value={creator.email}
-                        onChange={(e) => updateBulkCreator(index, 'email', e.target.value)}
-                        className="flex-1"
-                      />
-                      <Input
-                        type="password"
-                        placeholder="Password"
-                        value={creator.password}
-                        onChange={(e) => updateBulkCreator(index, 'password', e.target.value)}
-                        className="flex-1"
-                      />
-                      {bulkCreators.length > 1 && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removeBulkRow(index)}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                <Button
-                  variant="outline"
-                  onClick={addBulkRow}
-                  disabled={bulkCreators.length >= 20}
-                  className="w-full mt-2"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Row ({bulkCreators.length}/20)
-                </Button>
-
-                <Button
-                  onClick={handleBulkImport}
-                  className="w-full mt-4 bg-violet-600 hover:bg-violet-700"
-                  disabled
-                >
-                  <Upload className="w-4 h-4 mr-2" />
-                  Import {bulkCreators.length} Account{bulkCreators.length !== 1 ? 's' : ''}
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
 
       {/* Search and Filters */}
       <div className="flex gap-4">
@@ -334,20 +128,27 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
             <p className="text-muted-foreground mb-6 text-center max-w-md">
               Connect your first Fanvue creator account to start managing their content and performance
             </p>
-            <Button
-              onClick={() => setShowImportDialog(true)}
-              className="gap-2 bg-violet-600 hover:bg-violet-700"
+            
+            {/* SIMPLE DIRECT LINK - No JavaScript */}
+            <a 
+              href="/api/auth/fanvue"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-md font-medium text-white bg-violet-600 hover:bg-violet-700 transition-colors shadow-lg"
             >
               <Plus className="w-4 h-4" />
               Add Your First Creator
-            </Button>
+              <ExternalLink className="w-3 h-3 ml-1 opacity-60" />
+            </a>
+            
+            <p className="text-xs text-muted-foreground mt-4">
+              You'll be redirected to Fanvue to authorize your account
+            </p>
           </CardContent>
         </Card>
       ) : (
         <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
           {filteredModels.map((model) => (
             <Card key={model.id} className="glass hover:shadow-lg transition-shadow">
-              <CardHeader>
+              <CardContent className="pt-6">
                 <div className="flex items-start gap-4">
                   <Avatar className="w-16 h-16">
                     <AvatarImage src={model.avatar_url || undefined} alt={model.name || ''} />
@@ -369,9 +170,8 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
                     </div>
                   </div>
                 </div>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-3 gap-4 text-center">
+                
+                <div className="grid grid-cols-3 gap-4 text-center mt-6">
                   <div>
                     <div className="flex items-center justify-center gap-1 text-muted-foreground mb-1">
                       <Eye className="w-3 h-3" />
@@ -394,6 +194,7 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
                     <p className="font-semibold">$0</p>
                   </div>
                 </div>
+                
                 <Button className="w-full mt-4" variant="outline">
                   View Details
                 </Button>
