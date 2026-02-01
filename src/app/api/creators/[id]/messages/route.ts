@@ -55,11 +55,18 @@ export async function POST(
 ) {
   const { id } = await params
   const body = await request.json()
-  const { fanUuid, content, mediaIds, price } = body
+  const { userUuid, text, mediaUuids, price, templateUuid } = body
 
-  if (!fanUuid || !content) {
+  if (!userUuid) {
     return NextResponse.json(
-      { error: 'fanUuid and content are required' },
+      { error: 'userUuid is required' },
+      { status: 400 }
+    )
+  }
+
+  if (!text && !mediaUuids?.length) {
+    return NextResponse.json(
+      { error: 'Either text or mediaUuids is required' },
       { status: 400 }
     )
   }
@@ -87,34 +94,27 @@ export async function POST(
 
     const fanvue = createFanvueClient(model.fanvue_access_token)
 
-    // Create or get existing chat
-    let chat
+    // Try to ensure chat exists (this is optional, sendMessage may auto-create)
     try {
-      chat = await fanvue.createChat(fanUuid)
+      await fanvue.createChat(userUuid)
     } catch (e) {
-      // Chat might already exist, try to get it
-      console.log('[Messages API] Chat creation failed, might exist already')
+      // Chat might already exist, which is fine
+      console.log('[Messages API] Chat may already exist for user:', userUuid)
     }
 
-    // If we have a chat UUID, send the message
-    if (chat?.uuid) {
-      const result = await fanvue.sendMessage(chat.uuid, {
-        content,
-        mediaIds,
-        price,
-      })
+    // Send message directly to the user (Fanvue API uses userUuid, not chatUuid)
+    const result = await fanvue.sendMessage(userUuid, {
+      text: text || null,
+      mediaUuids,
+      price: price || null,
+      templateUuid: templateUuid || null,
+    })
 
-      return NextResponse.json({
-        success: true,
-        message: 'Message sent successfully',
-        ...result,
-      })
-    }
-
-    return NextResponse.json(
-      { error: 'Could not create or find chat' },
-      { status: 400 }
-    )
+    return NextResponse.json({
+      success: true,
+      message: 'Message sent successfully',
+      messageUuid: result.messageUuid,
+    })
 
   } catch (error: any) {
     console.error('[Messages API] POST Error:', error)
