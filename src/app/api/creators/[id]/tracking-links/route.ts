@@ -55,7 +55,7 @@ export async function POST(
 ) {
   const { id } = await params
   const body = await request.json()
-  const { name } = body
+  const { name, externalSocialPlatform = 'other' } = body
 
   if (!name) {
     return NextResponse.json({ error: 'name is required' }, { status: 400 })
@@ -82,7 +82,7 @@ export async function POST(
     }
 
     const fanvue = createFanvueClient(model.fanvue_access_token)
-    const result = await fanvue.createTrackingLink({ name })
+    const result = await fanvue.createTrackingLink({ name, externalSocialPlatform })
 
     // Update tracking links count
     await adminClient
