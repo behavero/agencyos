@@ -1,5 +1,6 @@
 import { FANVUE_CONFIG } from '@/lib/fanvue/config'
 import { createClient } from '@/lib/supabase/server'
+import { createFanvueClient } from '@/lib/fanvue/client'
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 
@@ -67,20 +68,16 @@ export async function GET(request: NextRequest) {
     const tokens = await tokenResponse.json()
     console.log('[Fanvue OAuth] Tokens received successfully')
 
-    // Get user info from Fanvue
-    const userResponse = await fetch(FANVUE_CONFIG.endpoints.user, {
-      headers: {
-        Authorization: `Bearer ${tokens.access_token}`,
-      },
+    // Get user info from Fanvue using our new client
+    const fanvueClient = createFanvueClient(tokens.access_token)
+    const fanvueUser = await fanvueClient.getCurrentUser()
+    
+    console.log('[Fanvue OAuth] User info retrieved:', {
+      uuid: fanvueUser.uuid,
+      handle: fanvueUser.handle,
+      displayName: fanvueUser.displayName,
+      isCreator: fanvueUser.isCreator
     })
-
-    if (!userResponse.ok) {
-      console.error('[Fanvue OAuth] Failed to fetch user info')
-      throw new Error('Failed to fetch user info')
-    }
-
-    const fanvueUser = await userResponse.json()
-    console.log('[Fanvue OAuth] User info retrieved:', fanvueUser.username || fanvueUser.name)
 
     // Store in Supabase
     const supabase = await createClient()
@@ -97,21 +94,42 @@ export async function GET(request: NextRequest) {
       .eq('id', user.id)
       .single()
 
-    // Create model entry
-    const { error: insertError } = await supabase.from('models').insert({
-      agency_id: profile?.agency_id,
-      name: fanvueUser.username || fanvueUser.name,
-      avatar_url: fanvueUser.avatar,
-      fanvue_api_key: tokens.access_token,
-      status: 'active',
-    })
+    // Check if model already exists
+    const { data: existingModel } = await supabase
+      .from('models')
+      .select('id')
+      .eq('agency_id', profile?.agency_id)
+      .eq('name', fanvueUser.handle)
+      .single()
 
-    if (insertError) {
-      console.error('[Fanvue OAuth] Failed to insert model:', insertError)
-      throw insertError
+    if (existingModel) {
+      console.log('[Fanvue OAuth] Model already exists, updating token')
+      // Update existing model with new token
+      await supabase
+        .from('models')
+        .update({
+          fanvue_api_key: tokens.access_token,
+          avatar_url: fanvueUser.avatarUrl,
+          status: 'active',
+        })
+        .eq('id', existingModel.id)
+    } else {
+      // Create new model entry
+      const { error: insertError } = await supabase.from('models').insert({
+        agency_id: profile?.agency_id,
+        name: fanvueUser.handle,
+        avatar_url: fanvueUser.avatarUrl,
+        fanvue_api_key: tokens.access_token,
+        status: 'active',
+      })
+
+      if (insertError) {
+        console.error('[Fanvue OAuth] Failed to insert model:', insertError)
+        throw insertError
+      }
     }
 
-    console.log('[Fanvue OAuth] Model added successfully')
+    console.log('[Fanvue OAuth] Model added/updated successfully')
     return NextResponse.redirect(new URL('/dashboard/crm?success=model_added', request.url))
   } catch (error: any) {
     console.error('[Fanvue OAuth] Error:', error)
