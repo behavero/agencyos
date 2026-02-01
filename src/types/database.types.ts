@@ -12,29 +12,101 @@ export type Database = {
       agencies: {
         Row: {
           created_at: string | null
+          currency: string | null
           current_level: number | null
           id: string
           name: string
           tax_jurisdiction: 'RO' | 'US' | 'EE' | 'FR' | null
+          tax_rate: number | null
           treasury_balance: number | null
         }
         Insert: {
           created_at?: string | null
+          currency?: string | null
           current_level?: number | null
           id?: string
           name: string
           tax_jurisdiction?: 'RO' | 'US' | 'EE' | 'FR' | null
+          tax_rate?: number | null
           treasury_balance?: number | null
         }
         Update: {
           created_at?: string | null
+          currency?: string | null
           current_level?: number | null
           id?: string
           name?: string
           tax_jurisdiction?: 'RO' | 'US' | 'EE' | 'FR' | null
+          tax_rate?: number | null
           treasury_balance?: number | null
         }
         Relationships: []
+      }
+      expenses: {
+        Row: {
+          id: string
+          agency_id: string | null
+          model_id: string | null
+          name: string
+          description: string | null
+          amount: number
+          category: 'salaries' | 'software' | 'marketing' | 'equipment' | 'office' | 'travel' | 'other' | null
+          frequency: 'monthly' | 'yearly' | 'one-time' | null
+          is_recurring: boolean | null
+          status: 'active' | 'paid' | 'cancelled' | null
+          next_due_date: string | null
+          paid_at: string | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          agency_id?: string | null
+          model_id?: string | null
+          name: string
+          description?: string | null
+          amount: number
+          category?: 'salaries' | 'software' | 'marketing' | 'equipment' | 'office' | 'travel' | 'other' | null
+          frequency?: 'monthly' | 'yearly' | 'one-time' | null
+          is_recurring?: boolean | null
+          status?: 'active' | 'paid' | 'cancelled' | null
+          next_due_date?: string | null
+          paid_at?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          agency_id?: string | null
+          model_id?: string | null
+          name?: string
+          description?: string | null
+          amount?: number
+          category?: 'salaries' | 'software' | 'marketing' | 'equipment' | 'office' | 'travel' | 'other' | null
+          frequency?: 'monthly' | 'yearly' | 'one-time' | null
+          is_recurring?: boolean | null
+          status?: 'active' | 'paid' | 'cancelled' | null
+          next_due_date?: string | null
+          paid_at?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expenses_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_model_id_fkey"
+            columns: ["model_id"]
+            isOneToOne: false
+            referencedRelation: "models"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       models: {
         Row: {

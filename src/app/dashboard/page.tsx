@@ -20,7 +20,7 @@ export default async function DashboardPage() {
     .eq('id', user.id)
     .single()
 
-  // Fetch agency data
+  // Fetch agency data (including tax_rate and currency)
   const { data: agency } = await supabase
     .from('agencies')
     .select('*')
@@ -33,6 +33,27 @@ export default async function DashboardPage() {
     .select('*')
     .eq('agency_id', profile?.agency_id)
 
+  // Fetch expenses for the agency (to calculate total monthly expenses)
+  const { data: expenses } = profile?.agency_id
+    ? await supabase
+        .from('expenses')
+        .select('*')
+        .eq('agency_id', profile.agency_id)
+        .eq('status', 'active')
+    : { data: [] }
+
+  // Calculate total monthly expenses
+  const totalMonthlyExpenses = (expenses || [])
+    .filter(e => e.is_recurring && e.frequency === 'monthly')
+    .reduce((sum, e) => sum + Number(e.amount), 0)
+
+  // Calculate yearly expenses prorated to monthly
+  const yearlyToMonthly = (expenses || [])
+    .filter(e => e.is_recurring && e.frequency === 'yearly')
+    .reduce((sum, e) => sum + Number(e.amount) / 12, 0)
+
+  const totalExpenses = totalMonthlyExpenses + yearlyToMonthly
+
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar />
@@ -44,6 +65,7 @@ export default async function DashboardPage() {
             profile={profile}
             agency={agency}
             models={models || []}
+            totalExpenses={totalExpenses}
           />
         </main>
       </div>

@@ -40,7 +40,7 @@ const navigation = [
     title: 'Settings',
     items: [
       { name: 'Team', href: '/dashboard/team', icon: Users },
-      { name: 'Creator Settings', href: '/dashboard/creator', icon: Crown },
+      { name: 'Agency HQ', href: '/dashboard/agency-settings', icon: Crown },
       { name: 'Billing', href: '/dashboard/billing', icon: Bell },
     ],
   },
