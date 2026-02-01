@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev",
+  "installCommand": "npm install",
+  "env": {
+    "NEXT_PUBLIC_SUPABASE_URL": "@supabase_url",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "@supabase_anon_key",
+    "NEXT_PUBLIC_FANVUE_CLIENT_ID": "@fanvue_client_id",
+    "FANVUE_CLIENT_SECRET": "@fanvue_client_secret",
+    "FANVUE_WEBHOOK_SECRET": "@fanvue_webhook_secret",
+    "NEXT_PUBLIC_APP_URL": "https://fanvueos.vercel.app"
+  }
+}
