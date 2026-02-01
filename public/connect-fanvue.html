@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Connecting to Fanvue...</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 100%);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: white;
+    }
+    .container {
+      text-align: center;
+      padding: 2rem;
+    }
+    .spinner {
+      width: 50px;
+      height: 50px;
+      border: 3px solid rgba(139, 92, 246, 0.3);
+      border-top-color: #8b5cf6;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 1.5rem;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 0.5rem;
+    }
+    p {
+      color: rgba(255,255,255,0.6);
+      font-size: 0.9rem;
+    }
+    .manual-link {
+      margin-top: 2rem;
+      padding: 1rem;
+      background: rgba(255,255,255,0.05);
+      border-radius: 8px;
+    }
+    .manual-link a {
+      color: #8b5cf6;
+      text-decoration: none;
+    }
+    .manual-link a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="spinner"></div>
+    <h1>Connecting to Fanvue</h1>
+    <p>Redirecting you to authorize your account...</p>
+    
+    <div class="manual-link">
+      <p>Not redirecting? <a href="/api/auth/fanvue" id="manual-link">Click here</a></p>
+    </div>
+  </div>
+
+  <script>
+    // Immediate redirect using multiple methods for maximum compatibility
+    (function() {
+      var targetUrl = '/api/auth/fanvue';
+      
+      // Method 1: window.location.replace (most reliable)
+      try {
+        window.location.replace(targetUrl);
+      } catch(e) {
+        console.error('Method 1 failed:', e);
+      }
+      
+      // Method 2: Fallback with window.location.href
+      setTimeout(function() {
+        try {
+          window.location.href = targetUrl;
+        } catch(e) {
+          console.error('Method 2 failed:', e);
+        }
+      }, 100);
+      
+      // Method 3: Final fallback with assign
+      setTimeout(function() {
+        try {
+          window.location.assign(targetUrl);
+        } catch(e) {
+          console.error('Method 3 failed:', e);
+        }
+      }, 500);
+    })();
+  </script>
+  
+  <!-- Method 4: Meta refresh as absolute last resort -->
+  <noscript>
+    <meta http-equiv="refresh" content="0;url=/api/auth/fanvue">
+  </noscript>
+</body>
+</html>
