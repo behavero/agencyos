@@ -127,8 +127,14 @@ export default function ModelsClient({ models, agencyId }: ModelsClientProps) {
                 onClick={(e) => {
                   e.preventDefault()
                   console.log('[CRM] Button clicked!')
-                  console.log('[CRM] Redirecting to:', '/api/auth/fanvue')
-                  window.location.assign('/api/auth/fanvue')
+                  console.log('[CRM] Closing dialog...')
+                  setAddModelOpen(false)
+                  
+                  // Small delay to ensure dialog closes before redirect
+                  setTimeout(() => {
+                    console.log('[CRM] Redirecting to Fanvue OAuth...')
+                    window.location.href = '/api/auth/fanvue'
+                  }, 100)
                 }}
                 className="w-full gap-2"
                 size="lg"
