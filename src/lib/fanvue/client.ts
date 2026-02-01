@@ -353,6 +353,14 @@ export class FanvueClient {
     })
   }
 
+  async getCustomListMembers(listUuid: string, params?: { page?: number; size?: number }) {
+    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    return this.request<{
+      data: Array<{ uuid: string; displayName: string }>
+      totalCount: number
+    }>(`/chat-custom-lists/${listUuid}/members${query}`)
+  }
+
   // ==================== VAULT ====================
   async getVaultFolders(params?: { page?: number; size?: number }) {
     const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
