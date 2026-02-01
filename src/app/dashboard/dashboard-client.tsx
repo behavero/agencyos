@@ -74,32 +74,10 @@ export default function DashboardClient({ user, profile, agency, models }: Dashb
     router.push('/api/auth/fanvue')
   }
 
-  // Calculate stats from REAL model data
+  // Calculate stats
+  const revenueGrowth = '+11% vs last month'
   const activeModels = models.filter(m => m.status === 'active').length
-  
-  // Aggregate revenue from all models
-  const totalRevenue = models.reduce((sum, m) => sum + (m.revenue_total || 0), 0)
-  const totalFollowers = models.reduce((sum, m) => sum + (m.followers_count || 0), 0)
-  const totalSubscribers = models.reduce((sum, m) => sum + (m.subscribers_count || 0), 0)
-  const totalPosts = models.reduce((sum, m) => sum + (m.posts_count || 0), 0)
-  const totalMessages = models.reduce((sum, m) => sum + (m.unread_messages || 0), 0)
-  const totalLikes = models.reduce((sum, m) => sum + (m.likes_count || 0), 0)
-  
-  // Platform fees (20% Fanvue)
-  const grossRevenue = totalRevenue
-  const platformFee = grossRevenue * 0.20
-  const netAfterPlatform = grossRevenue - platformFee
-  
-  // Tax calculation based on agency jurisdiction
-  const taxRate = agency?.tax_jurisdiction === 'RO' ? 0.03 : 
-                  agency?.tax_jurisdiction === 'FR' ? 0.25 : 
-                  agency?.tax_jurisdiction === 'EE' ? 0.00 : 0.00 // US LLC pass-through
-  const taxAmount = netAfterPlatform * taxRate
-  
-  // Operating expenses (estimate from treasury or default)
-  const opEx = 3500 // This should come from expenses table
-  const netProfit = netAfterPlatform - taxAmount - opEx
-  
+  const totalEarnings = agency?.treasury_balance || 0
   const currentLevel = agency?.current_level || 1
   const currentStreak = profile?.current_streak || 0
   const xpCount = profile?.xp_count || 0
@@ -125,19 +103,19 @@ export default function DashboardClient({ user, profile, agency, models }: Dashb
 
       {/* Top Metrics - Horizontal Scroll Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {/* Total Revenue */}
+        {/* Revenue (Monthly) */}
         <Card className="glass hover-lift bg-primary/5">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+            <CardTitle className="text-sm font-medium">Monthly Revenue</CardTitle>
             <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
               <TrendingUp className="w-4 h-4 text-primary" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">${totalRevenue.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {totalSubscribers} subscribers • {totalFollowers.toLocaleString()} followers
-            </p>
+            <div className="text-2xl font-bold">$1,980,130</div>
+            <Badge className="mt-2 bg-accent text-accent-foreground">
+              +11% Week
+            </Badge>
           </CardContent>
         </Card>
 
@@ -189,29 +167,29 @@ export default function DashboardClient({ user, profile, agency, models }: Dashb
         <Card className="glass">
           <CardHeader>
             <CardTitle>Revenue Breakdown</CardTitle>
-            <CardDescription>All-time financial overview</CardDescription>
+            <CardDescription>Monthly financial overview</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
               <div className="flex items-center justify-between p-3 rounded-lg bg-green-500/10">
                 <span className="text-sm font-medium">Gross Revenue</span>
-                <span className="text-lg font-bold text-green-500">${grossRevenue.toLocaleString()}</span>
+                <span className="text-lg font-bold text-green-500">$25,000</span>
               </div>
               <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                 <span className="text-sm">Platform Fee (20%)</span>
-                <span className="font-semibold text-muted-foreground">-${platformFee.toLocaleString()}</span>
+                <span className="font-semibold text-muted-foreground">-$5,000</span>
               </div>
               <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                <span className="text-sm">Taxes ({agency?.tax_jurisdiction || 'US'} {(taxRate * 100).toFixed(0)}%)</span>
-                <span className="font-semibold text-muted-foreground">-${taxAmount.toLocaleString()}</span>
+                <span className="text-sm">Taxes</span>
+                <span className="font-semibold text-muted-foreground">-$750</span>
               </div>
               <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                 <span className="text-sm">Operating Expenses</span>
-                <span className="font-semibold text-muted-foreground">-${opEx.toLocaleString()}</span>
+                <span className="font-semibold text-muted-foreground">-$3,500</span>
               </div>
               <div className="flex items-center justify-between p-3 rounded-lg bg-primary/10 border-t-2 border-primary">
                 <span className="text-sm font-medium">Net Profit</span>
-                <span className="text-xl font-bold text-primary">${netProfit.toLocaleString()}</span>
+                <span className="text-xl font-bold text-primary">$15,750</span>
               </div>
             </div>
           </CardContent>
