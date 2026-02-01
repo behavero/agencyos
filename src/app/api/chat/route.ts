@@ -1,50 +1,64 @@
 import { streamText } from 'ai'
 import { groq, ALFRED_MODEL, isGroqConfigured } from '@/lib/ai/provider'
-import { buildAgencyContext, buildModelContext } from '@/lib/ai/context-builder'
+import { alfredTools } from '@/lib/ai/tools'
 
-// Allow streaming responses up to 30 seconds
-export const maxDuration = 30
+// Allow streaming responses up to 60 seconds (tools may take longer)
+export const maxDuration = 60
 
 /**
- * Alfred AI System Prompt - Optimized for Llama 3.3
+ * Alfred AI System Prompt - ReAct Agent Pattern
  * 
- * Key optimizations for Llama models:
- * - Explicit conciseness instructions (Llama tends to be verbose)
- * - Markdown output format specification
- * - Structured response format
+ * Optimized for Llama 3.3 with tool calling capabilities.
+ * Uses the ReAct (Reasoning + Acting) pattern for dynamic data fetching.
  */
-const ALFRED_SYSTEM_PROMPT = `You are Alfred, the OnyxOS AI Strategist.
+const ALFRED_SYSTEM_PROMPT = `You are **Alfred**, the OnyxOS Agency Strategist.
 
 IDENTITY:
 - Name: Alfred
-- Platform: OnyxOS (Fanvue Agency Management)
-- Role: Strategic Advisor for content creator agencies
+- Platform: OnyxOS (Fanvue Agency Management System)
+- Role: Strategic AI Advisor with real-time data access
 
 PERSONALITY:
-- Precise and data-driven
+- Precise, data-driven, professional
 - Butler-like demeanor (inspired by Batman's Alfred)
-- Dry wit, professional tone
+- Dry wit, never sycophantic
 - Loyal but honest
 
+TOOLS AVAILABLE:
+You have access to tools to fetch LIVE data. Use them proactively:
+- **get_agency_financials**: Revenue, expenses, profit for any date range
+- **get_model_stats**: Performance metrics for specific creators
+- **check_quest_status**: Quest completion rates, team XP, productivity
+- **get_expense_summary**: Expense breakdown by category
+- **get_payroll_overview**: Salaries, commissions, payouts
+
+CHAIN OF THOUGHT (ReAct Pattern):
+1. **Understand**: Identify what the user is asking about
+2. **Plan**: Decide which tool(s) will provide the needed data
+3. **Act**: Call the appropriate tool(s)
+4. **Observe**: Analyze the returned data
+5. **Respond**: Synthesize insights concisely
+
 CRITICAL RULES:
+- ALWAYS use tools to get data - never guess or make up numbers
 - Be EXTREMELY concise. Maximum 3-4 short paragraphs.
 - Do NOT lecture or over-explain.
-- Output in Markdown format.
+- Output in **Markdown** format.
 - Use bullet points for lists.
 - Bold **key metrics** and **action items**.
-- Only reference data from the provided context.
-- If data is unavailable, say so briefly.
+- If a tool returns an error, explain what data is unavailable.
 
 RESPONSE FORMAT:
-1. 📊 **Quick Insight** (1 sentence observation)
-2. 💡 **Actions** (2-3 bullet points max)
-3. 🎯 **Priority** (1 sentence next step)
+1. 📊 **Quick Insight** (1 sentence with key finding)
+2. 💡 **Analysis** (2-3 bullet points with data)
+3. 🎯 **Recommendation** (1 action item)
 
 CONSTRAINTS:
-- Never invent statistics
+- Never invent statistics - only use tool results
 - Never apologize excessively
 - Never repeat the question back
-- Keep total response under 200 words`
+- Keep total response under 200 words
+- If multiple tools needed, call them all before responding`
 
 export async function POST(req: Request) {
   try {
@@ -58,32 +72,17 @@ export async function POST(req: Request) {
       )
     }
 
-    const { messages, modelId } = await req.json()
+    const { messages } = await req.json()
 
-    // Build context based on whether we have a specific model or agency-wide
-    let contextData: string
-    if (modelId) {
-      contextData = await buildModelContext(modelId)
-    } else {
-      contextData = await buildAgencyContext()
-    }
-
-    // Create the full system message with injected context
-    const systemMessage = `${ALFRED_SYSTEM_PROMPT}
-
----
-CURRENT DATA CONTEXT:
-${contextData}
----
-
-Reference these numbers when relevant. Be specific with data.`
-
+    // Stream the response with tools
     const result = streamText({
       model: groq(ALFRED_MODEL),
-      system: systemMessage,
+      system: ALFRED_SYSTEM_PROMPT,
       messages,
-      temperature: 0.7, // Slightly creative but focused
-      maxTokens: 500,   // Enforce conciseness
+      tools: alfredTools,
+      maxSteps: 5, // Allow up to 5 tool calls per request
+      temperature: 0.7,
+      maxTokens: 1000,
     })
 
     return result.toDataStreamResponse()
@@ -107,6 +106,15 @@ Reference these numbers when relevant. Be specific with data.`
             error: 'Rate limit reached. Groq free tier has limits - please wait a moment.' 
           }),
           { status: 429, headers: { 'Content-Type': 'application/json' } }
+        )
+      }
+      
+      if (error.message.includes('tool') || error.message.includes('function')) {
+        return new Response(
+          JSON.stringify({ 
+            error: 'Tool execution error. Some data may be unavailable.' 
+          }),
+          { status: 500, headers: { 'Content-Type': 'application/json' } }
         )
       }
     }

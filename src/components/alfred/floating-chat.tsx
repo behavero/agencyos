@@ -16,7 +16,14 @@ import {
   User,
   Sparkles,
   RefreshCw,
+  Wrench,
+  Database,
+  DollarSign,
+  Target,
+  Users,
+  Receipt,
 } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 
 const SUGGESTED_PROMPTS = [
@@ -27,6 +34,15 @@ const SUGGESTED_PROMPTS = [
   { icon: '💰', text: 'Audit our expenses and find savings' },
   { icon: '🌟', text: 'Analyze our top performer\'s growth potential' },
 ]
+
+// Tool name to display name and icon mapping
+const TOOL_INFO: Record<string, { name: string; icon: React.ReactNode }> = {
+  get_agency_financials: { name: 'Financials', icon: <DollarSign className="w-3 h-3" /> },
+  get_model_stats: { name: 'Model Stats', icon: <Database className="w-3 h-3" /> },
+  check_quest_status: { name: 'Quests', icon: <Target className="w-3 h-3" /> },
+  get_expense_summary: { name: 'Expenses', icon: <Receipt className="w-3 h-3" /> },
+  get_payroll_overview: { name: 'Payroll', icon: <Users className="w-3 h-3" /> },
+}
 
 interface AlfredFloatingChatProps {
   modelId?: string
@@ -45,9 +61,10 @@ export function AlfredFloatingChat({ modelId }: AlfredFloatingChatProps = {}) {
       {
         id: 'welcome',
         role: 'assistant',
-        content: "Hello! I'm Alfred, your OnyxOS AI strategist powered by Llama 3.3 70B. I have instant access to your Fanvue revenue, social stats, and team productivity. What would you like to analyze?",
+        content: "Hello! I'm Alfred, your OnyxOS AI strategist. I can fetch **live data** from your agency - financials, model stats, quests, expenses, and payroll. Ask me anything and I'll pull the real numbers.",
       },
     ],
+    maxSteps: 5, // Allow multi-step tool calls
   })
 
   // Scroll to bottom when messages change
@@ -128,7 +145,7 @@ export function AlfredFloatingChat({ modelId }: AlfredFloatingChatProps = {}) {
             <h3 className="font-semibold text-foreground">Alfred</h3>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-              <span>AI Strategist • Llama 3.3 70B</span>
+              <span>ReAct Agent • Llama 3.3 70B</span>
             </div>
           </div>
         </div>
@@ -156,36 +173,65 @@ export function AlfredFloatingChat({ modelId }: AlfredFloatingChatProps = {}) {
       <ScrollArea className="flex-1 p-4">
         <div className="space-y-4">
           {messages.map((message) => (
-            <div
-              key={message.id}
-              className={cn(
-                'flex gap-3',
-                message.role === 'user' && 'flex-row-reverse'
+            <div key={message.id} className="space-y-2">
+              {/* Show tool invocations for assistant messages */}
+              {message.role === 'assistant' && message.toolInvocations && message.toolInvocations.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 ml-11">
+                  {message.toolInvocations.map((tool, idx) => {
+                    const toolInfo = TOOL_INFO[tool.toolName] || { name: tool.toolName, icon: <Wrench className="w-3 h-3" /> }
+                    const isComplete = tool.state === 'result'
+                    return (
+                      <Badge 
+                        key={idx}
+                        variant="outline"
+                        className={cn(
+                          "text-xs gap-1 transition-all",
+                          isComplete 
+                            ? "border-primary/30 text-primary bg-primary/5" 
+                            : "border-yellow-500/30 text-yellow-500 bg-yellow-500/5 animate-pulse"
+                        )}
+                      >
+                        {toolInfo.icon}
+                        {isComplete ? toolInfo.name : `Fetching ${toolInfo.name}...`}
+                      </Badge>
+                    )
+                  })}
+                </div>
               )}
-            >
-              <Avatar className="w-8 h-8 flex-shrink-0">
-                <AvatarFallback className={cn(
-                  message.role === 'assistant'
-                    ? 'bg-gradient-to-br from-lime-400 to-green-500 text-green-900'
-                    : 'bg-secondary text-foreground'
-                )}>
-                  {message.role === 'assistant' ? (
-                    <Bot className="w-4 h-4" />
-                  ) : (
-                    <User className="w-4 h-4" />
+              
+              {/* Main message content */}
+              {message.content && (
+                <div
+                  className={cn(
+                    'flex gap-3',
+                    message.role === 'user' && 'flex-row-reverse'
                   )}
-                </AvatarFallback>
-              </Avatar>
-              <div
-                className={cn(
-                  'max-w-[80%] rounded-2xl px-4 py-2.5',
-                  message.role === 'assistant'
-                    ? 'bg-secondary text-foreground'
-                    : 'bg-primary text-primary-foreground'
-                )}
-              >
-                <p className="text-sm whitespace-pre-wrap leading-relaxed">{message.content}</p>
-              </div>
+                >
+                  <Avatar className="w-8 h-8 flex-shrink-0">
+                    <AvatarFallback className={cn(
+                      message.role === 'assistant'
+                        ? 'bg-gradient-to-br from-lime-400 to-green-500 text-green-900'
+                        : 'bg-secondary text-foreground'
+                    )}>
+                      {message.role === 'assistant' ? (
+                        <Bot className="w-4 h-4" />
+                      ) : (
+                        <User className="w-4 h-4" />
+                      )}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div
+                    className={cn(
+                      'max-w-[80%] rounded-2xl px-4 py-2.5',
+                      message.role === 'assistant'
+                        ? 'bg-secondary text-foreground'
+                        : 'bg-primary text-primary-foreground'
+                    )}
+                  >
+                    <p className="text-sm whitespace-pre-wrap leading-relaxed prose prose-sm prose-invert max-w-none">{message.content}</p>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
 
@@ -210,7 +256,7 @@ export function AlfredFloatingChat({ modelId }: AlfredFloatingChatProps = {}) {
             </div>
           )}
 
-          {/* Loading indicator */}
+          {/* Loading indicator with ReAct steps */}
           {isLoading && (
             <div className="flex gap-3">
               <Avatar className="w-8 h-8">
@@ -220,8 +266,13 @@ export function AlfredFloatingChat({ modelId }: AlfredFloatingChatProps = {}) {
               </Avatar>
               <div className="bg-secondary rounded-2xl px-4 py-3">
                 <div className="flex items-center gap-2">
-                  <RefreshCw className="w-4 h-4 animate-spin text-primary" />
-                  <span className="text-sm text-muted-foreground">Alfred is thinking...</span>
+                  <div className="flex items-center gap-1.5">
+                    <Wrench className="w-4 h-4 text-primary animate-pulse" />
+                    <RefreshCw className="w-3 h-3 animate-spin text-muted-foreground" />
+                  </div>
+                  <span className="text-sm text-muted-foreground">
+                    Alfred is analyzing with live data...
+                  </span>
                 </div>
               </div>
             </div>
