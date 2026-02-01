@@ -1,5 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { Sidebar } from '@/components/layout/sidebar'
+import { Header } from '@/components/layout/header'
 import AgencySettingsClient from './agency-settings-client'
 
 export default async function AgencySettingsPage() {
@@ -26,13 +28,15 @@ export default async function AgencySettingsPage() {
         .single()
     : { data: null }
 
-  // Get models for the agency
-  const { data: models } = profile?.agency_id
-    ? await supabase
-        .from('models')
-        .select('id, name, status')
-        .eq('agency_id', profile.agency_id)
-    : { data: [] }
-
-  return <AgencySettingsClient profile={profile} agency={agency} models={models || []} />
+  return (
+    <div className="flex min-h-screen bg-zinc-950">
+      <Sidebar />
+      <div className="flex-1 ml-[250px]">
+        <Header />
+        <main className="p-6">
+          <AgencySettingsClient agency={agency} />
+        </main>
+      </div>
+    </div>
+  )
 }

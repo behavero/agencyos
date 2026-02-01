@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -16,520 +16,521 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import {
-  DollarSign,
-  Plus,
-  Calendar,
-  Building2,
-  Users,
-  Repeat,
-  Edit2,
-  Trash2,
-  TrendingUp,
-  Loader2,
-  AlertCircle,
-} from 'lucide-react'
-import { toast } from 'sonner'
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { createClient } from '@/lib/supabase/client'
+import { toast } from 'sonner'
+import { useRouter } from 'next/navigation'
 import type { Database } from '@/types/database.types'
+import {
+  Plus,
+  Trash2,
+  Pencil,
+  DollarSign,
+  Building2,
+  User,
+  Calendar,
+  CreditCard,
+  TrendingUp,
+  TrendingDown,
+} from 'lucide-react'
 
 type Expense = Database['public']['Tables']['expenses']['Row']
-type Agency = Database['public']['Tables']['agencies']['Row']
+
+// Simplified model type for the dropdown
+interface SimpleModel {
+  id: string
+  name: string
+}
 
 interface ExpensesClientProps {
   agencyId: string
-  expenses: Expense[]
-  models: Array<{ id: string; name: string }>
-  agency: Agency | null
+  models: SimpleModel[]
 }
 
-const categoryIcons: Record<string, any> = {
-  salaries: Users,
-  software: DollarSign,
-  marketing: TrendingUp,
-  equipment: Building2,
-  office: Building2,
-  travel: Calendar,
-  other: DollarSign,
-}
+const CATEGORIES = [
+  { value: 'salaries', label: 'Salaries', icon: User },
+  { value: 'software', label: 'Software', icon: CreditCard },
+  { value: 'marketing', label: 'Marketing', icon: TrendingUp },
+  { value: 'equipment', label: 'Equipment', icon: Building2 },
+  { value: 'office', label: 'Office', icon: Building2 },
+  { value: 'travel', label: 'Travel', icon: Calendar },
+  { value: 'other', label: 'Other', icon: DollarSign },
+] as const
 
-const categoryLabels: Record<string, string> = {
-  salaries: 'Salaries',
-  software: 'Software & Tools',
-  marketing: 'Marketing',
-  equipment: 'Equipment',
-  office: 'Office',
-  travel: 'Travel',
-  other: 'Other',
-}
+const FREQUENCIES = [
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'yearly', label: 'Yearly' },
+  { value: 'one-time', label: 'One-time' },
+] as const
 
-export default function ExpensesClient({ agencyId, expenses: initialExpenses, models, agency }: ExpensesClientProps) {
-  const [expenses, setExpenses] = useState<Expense[]>(initialExpenses)
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
-  const [isDeleting, setIsDeleting] = useState<string | null>(null)
-  const [isSaving, setIsSaving] = useState(false)
+export default function ExpensesClient({ agencyId, models }: ExpensesClientProps) {
+  const router = useRouter()
+  const supabase = createClient()
+  
+  const [expenses, setExpenses] = useState<Expense[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
   
-  const [expenseForm, setExpenseForm] = useState({
+  type CategoryType = 'salaries' | 'software' | 'marketing' | 'equipment' | 'office' | 'travel' | 'other'
+  type FrequencyType = 'monthly' | 'yearly' | 'one-time'
+
+  // Form state
+  const [form, setForm] = useState({
     name: '',
     description: '',
     amount: '',
-    frequency: 'monthly' as 'monthly' | 'yearly' | 'one-time',
-    category: 'software' as Expense['category'],
+    category: 'software' as CategoryType,
+    frequency: 'monthly' as FrequencyType,
     model_id: '',
-    next_due_date: '',
+    is_recurring: true,
   })
 
-  const supabase = createClient()
+  // Fetch expenses
+  useEffect(() => {
+    fetchExpenses()
+  }, [agencyId])
+
+  const fetchExpenses = async () => {
+    setIsLoading(true)
+    const { data, error } = await supabase
+      .from('expenses')
+      .select('*')
+      .eq('agency_id', agencyId)
+      .order('created_at', { ascending: false })
+    
+    if (error) {
+      toast.error('Failed to load expenses')
+    } else {
+      setExpenses(data || [])
+    }
+    setIsLoading(false)
+  }
 
   const resetForm = () => {
-    setExpenseForm({
+    setForm({
       name: '',
       description: '',
       amount: '',
-      frequency: 'monthly',
       category: 'software',
+      frequency: 'monthly',
       model_id: '',
-      next_due_date: '',
+      is_recurring: true,
     })
+    setEditingExpense(null)
   }
 
-  const handleAddExpense = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsSaving(true)
-
-    try {
-      const { data, error } = await supabase
-        .from('expenses')
-        .insert({
-          agency_id: agencyId,
-          name: expenseForm.name,
-          description: expenseForm.description || null,
-          amount: parseFloat(expenseForm.amount),
-          frequency: expenseForm.frequency,
-          category: expenseForm.category,
-          model_id: expenseForm.model_id || null,
-          next_due_date: expenseForm.next_due_date || null,
-          is_recurring: expenseForm.frequency !== 'one-time',
-          status: 'active',
-        })
-        .select()
-        .single()
-
-      if (error) throw error
-
-      setExpenses([data, ...expenses])
-      toast.success('Expense added successfully!')
-      setIsAddDialogOpen(false)
+  const handleOpenDialog = (expense?: Expense) => {
+    if (expense) {
+      setEditingExpense(expense)
+      setForm({
+        name: expense.name || '',
+        description: expense.description || '',
+        amount: String(expense.amount) || '',
+        category: (expense.category || 'software') as CategoryType,
+        frequency: (expense.frequency || 'monthly') as FrequencyType,
+        model_id: expense.model_id || '',
+        is_recurring: expense.is_recurring ?? true,
+      })
+    } else {
       resetForm()
-    } catch (error: any) {
-      console.error('Add expense error:', error)
-      toast.error(error.message || 'Failed to add expense')
-    } finally {
-      setIsSaving(false)
     }
+    setIsDialogOpen(true)
   }
 
-  const handleEditExpense = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!editingExpense) return
-    setIsSaving(true)
+  const handleSaveExpense = async () => {
+    if (!form.name || !form.amount) {
+      toast.error('Name and amount are required')
+      return
+    }
 
-    try {
-      const { data, error } = await supabase
+    const expenseData = {
+      agency_id: agencyId,
+      name: form.name,
+      description: form.description || null,
+      amount: parseFloat(form.amount),
+      category: form.category,
+      frequency: form.frequency,
+      model_id: form.model_id || null,
+      is_recurring: form.is_recurring,
+      status: 'active' as const,
+    }
+
+    if (editingExpense) {
+      // Update
+      const { error } = await supabase
         .from('expenses')
-        .update({
-          name: expenseForm.name,
-          description: expenseForm.description || null,
-          amount: parseFloat(expenseForm.amount),
-          frequency: expenseForm.frequency,
-          category: expenseForm.category,
-          model_id: expenseForm.model_id || null,
-          next_due_date: expenseForm.next_due_date || null,
-          is_recurring: expenseForm.frequency !== 'one-time',
-          updated_at: new Date().toISOString(),
-        })
+        .update(expenseData)
         .eq('id', editingExpense.id)
-        .select()
-        .single()
 
-      if (error) throw error
+      if (error) {
+        toast.error('Failed to update expense')
+      } else {
+        toast.success('Expense updated')
+        fetchExpenses()
+      }
+    } else {
+      // Create
+      const { error } = await supabase
+        .from('expenses')
+        .insert(expenseData)
 
-      setExpenses(expenses.map(exp => exp.id === editingExpense.id ? data : exp))
-      toast.success('Expense updated!')
-      setIsEditDialogOpen(false)
-      setEditingExpense(null)
-      resetForm()
-    } catch (error: any) {
-      console.error('Update expense error:', error)
-      toast.error(error.message || 'Failed to update expense')
-    } finally {
-      setIsSaving(false)
+      if (error) {
+        toast.error('Failed to create expense')
+      } else {
+        toast.success('Expense created')
+        fetchExpenses()
+      }
     }
+
+    setIsDialogOpen(false)
+    resetForm()
   }
 
   const handleDeleteExpense = async (id: string) => {
-    setIsDeleting(id)
+    if (!confirm('Are you sure you want to delete this expense?')) return
 
-    try {
-      const { error } = await supabase
-        .from('expenses')
-        .delete()
-        .eq('id', id)
+    const { error } = await supabase
+      .from('expenses')
+      .delete()
+      .eq('id', id)
 
-      if (error) throw error
-
-      setExpenses(expenses.filter(exp => exp.id !== id))
+    if (error) {
+      toast.error('Failed to delete expense')
+    } else {
       toast.success('Expense deleted')
-    } catch (error: any) {
-      console.error('Delete expense error:', error)
-      toast.error(error.message || 'Failed to delete expense')
-    } finally {
-      setIsDeleting(null)
+      fetchExpenses()
     }
-  }
-
-  const openEditDialog = (expense: Expense) => {
-    setEditingExpense(expense)
-    setExpenseForm({
-      name: expense.name,
-      description: expense.description || '',
-      amount: expense.amount.toString(),
-      frequency: expense.frequency as 'monthly' | 'yearly' | 'one-time' || 'monthly',
-      category: expense.category,
-      model_id: expense.model_id || '',
-      next_due_date: expense.next_due_date || '',
-    })
-    setIsEditDialogOpen(true)
   }
 
   // Calculate totals
   const activeExpenses = expenses.filter(e => e.status === 'active')
   const totalMonthly = activeExpenses
-    .filter(e => e.is_recurring && e.frequency === 'monthly')
+    .filter(e => e.frequency === 'monthly')
+    .reduce((sum, e) => sum + Number(e.amount), 0)
+  const totalYearly = activeExpenses
+    .filter(e => e.frequency === 'yearly')
+    .reduce((sum, e) => sum + Number(e.amount), 0)
+  const totalOneTime = activeExpenses
+    .filter(e => e.frequency === 'one-time')
     .reduce((sum, e) => sum + Number(e.amount), 0)
   
-  const totalYearly = activeExpenses
-    .filter(e => e.is_recurring && e.frequency === 'yearly')
-    .reduce((sum, e) => sum + Number(e.amount), 0)
+  const agencyExpenses = activeExpenses.filter(e => !e.model_id).length
+  const modelExpenses = activeExpenses.filter(e => e.model_id).length
 
-  const agencyExpenses = activeExpenses
-    .filter(e => !e.model_id)
-    .reduce((sum, e) => sum + Number(e.amount), 0)
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+    }).format(amount)
+  }
 
-  const modelExpenses = activeExpenses
-    .filter(e => e.model_id)
-    .reduce((sum, e) => sum + Number(e.amount), 0)
+  const getCategoryBadge = (category: string | null) => {
+    const cat = CATEGORIES.find(c => c.value === category)
+    return cat?.label || 'Other'
+  }
 
-  const ExpenseFormFields = () => (
-    <>
-      <div>
-        <Label htmlFor="name">Expense Name *</Label>
-        <Input
-          id="name"
-          placeholder="e.g., Canva Pro Subscription"
-          value={expenseForm.name}
-          onChange={(e) => setExpenseForm({ ...expenseForm, name: e.target.value })}
-          required
-        />
-      </div>
-      <div>
-        <Label htmlFor="description">Description</Label>
-        <Input
-          id="description"
-          placeholder="Optional notes..."
-          value={expenseForm.description}
-          onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })}
-        />
-      </div>
-      <div>
-        <Label htmlFor="amount">Amount ($) *</Label>
-        <Input
-          id="amount"
-          type="number"
-          step="0.01"
-          min="0"
-          placeholder="0.00"
-          value={expenseForm.amount}
-          onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })}
-          required
-        />
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label htmlFor="frequency">Frequency</Label>
-          <select
-            id="frequency"
-            className="w-full px-3 py-2 rounded-md border border-border bg-background"
-            value={expenseForm.frequency}
-            onChange={(e) => setExpenseForm({ ...expenseForm, frequency: e.target.value as any })}
-          >
-            <option value="monthly">Monthly</option>
-            <option value="yearly">Yearly</option>
-            <option value="one-time">One-time</option>
-          </select>
-        </div>
-        <div>
-          <Label htmlFor="category">Category</Label>
-          <select
-            id="category"
-            className="w-full px-3 py-2 rounded-md border border-border bg-background"
-            value={expenseForm.category || 'other'}
-            onChange={(e) => setExpenseForm({ ...expenseForm, category: e.target.value as any })}
-          >
-            {Object.entries(categoryLabels).map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-      <div>
-        <Label htmlFor="model_id">Assign To</Label>
-        <select
-          id="model_id"
-          className="w-full px-3 py-2 rounded-md border border-border bg-background"
-          value={expenseForm.model_id}
-          onChange={(e) => setExpenseForm({ ...expenseForm, model_id: e.target.value })}
-        >
-          <option value="">Entire Agency</option>
-          {models.map((model) => (
-            <option key={model.id} value={model.id}>{model.name}</option>
-          ))}
-        </select>
-      </div>
-      <div>
-        <Label htmlFor="next_due_date">Next Due Date</Label>
-        <Input
-          id="next_due_date"
-          type="date"
-          value={expenseForm.next_due_date}
-          onChange={(e) => setExpenseForm({ ...expenseForm, next_due_date: e.target.value })}
-        />
-      </div>
-    </>
-  )
+  const getModelName = (modelId: string | null) => {
+    if (!modelId) return 'Agency'
+    const model = models.find(m => m.id === modelId)
+    return model?.name || 'Unknown'
+  }
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Expenses & Subscriptions</h1>
-          <p className="text-muted-foreground mt-1">
-            Track all agency and model expenses — affects Dashboard Net Profit
-          </p>
+          <h1 className="text-2xl font-bold text-white">Expenses</h1>
+          <p className="text-zinc-400">Track your agency and model expenses</p>
         </div>
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            <Button className="gap-2 shadow-lg hover-lift">
+            <Button onClick={() => handleOpenDialog()} className="gap-2">
               <Plus className="w-4 h-4" />
               Add Expense
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="bg-zinc-900 border-zinc-800">
             <DialogHeader>
-              <DialogTitle>Add New Expense</DialogTitle>
-              <DialogDescription>
-                Track a new payment or subscription
+              <DialogTitle className="text-white">
+                {editingExpense ? 'Edit Expense' : 'Add Expense'}
+              </DialogTitle>
+              <DialogDescription className="text-zinc-400">
+                {editingExpense ? 'Update expense details' : 'Add a new expense to track'}
               </DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleAddExpense} className="space-y-4">
-              <ExpenseFormFields />
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => { setIsAddDialogOpen(false); resetForm(); }}>
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={isSaving}>
-                  {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                  Add Expense
-                </Button>
-              </DialogFooter>
-            </form>
+            
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label className="text-zinc-300">Name</Label>
+                <Input
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  placeholder="e.g., ChatGPT Pro"
+                  className="bg-zinc-800 border-zinc-700"
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-zinc-300">Amount ($)</Label>
+                  <Input
+                    type="number"
+                    value={form.amount}
+                    onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                    placeholder="0.00"
+                    className="bg-zinc-800 border-zinc-700"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label className="text-zinc-300">Frequency</Label>
+                  <Select
+                    value={form.frequency}
+                    onValueChange={(v: 'monthly' | 'yearly' | 'one-time') => setForm({ ...form, frequency: v })}
+                  >
+                    <SelectTrigger className="bg-zinc-800 border-zinc-700">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-zinc-900 border-zinc-800">
+                      {FREQUENCIES.map((f) => (
+                        <SelectItem key={f.value} value={f.value}>
+                          {f.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-zinc-300">Category</Label>
+                  <Select
+                    value={form.category}
+                    onValueChange={(v: typeof form.category) => setForm({ ...form, category: v })}
+                  >
+                    <SelectTrigger className="bg-zinc-800 border-zinc-700">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-zinc-900 border-zinc-800">
+                      {CATEGORIES.map((c) => (
+                        <SelectItem key={c.value} value={c.value}>
+                          {c.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label className="text-zinc-300">Assign To</Label>
+                  <Select
+                    value={form.model_id || 'agency'}
+                    onValueChange={(v) => setForm({ ...form, model_id: v === 'agency' ? '' : v })}
+                  >
+                    <SelectTrigger className="bg-zinc-800 border-zinc-700">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-zinc-900 border-zinc-800">
+                      <SelectItem value="agency">Agency (Shared)</SelectItem>
+                      {models.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>
+                          {m.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-zinc-300">Description (Optional)</Label>
+                <Input
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  placeholder="Additional notes..."
+                  className="bg-zinc-800 border-zinc-700"
+                />
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSaveExpense}>
+                {editingExpense ? 'Update' : 'Add'} Expense
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="glass hover-lift border-primary/20">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Monthly</CardTitle>
-            <Repeat className="w-4 h-4 text-primary" />
+        <Card className="bg-zinc-900 border-zinc-800">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-zinc-400">Monthly</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">${totalMonthly.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">Recurring monthly</p>
+            <div className="text-2xl font-bold text-white">{formatCurrency(totalMonthly)}</div>
+            <p className="text-xs text-zinc-500">/month recurring</p>
+          </CardContent>
+        </Card>
+        
+        <Card className="bg-zinc-900 border-zinc-800">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-zinc-400">Yearly</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-white">{formatCurrency(totalYearly)}</div>
+            <p className="text-xs text-zinc-500">{formatCurrency(totalYearly / 12)}/mo prorated</p>
           </CardContent>
         </Card>
 
-        <Card className="glass hover-lift">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Yearly</CardTitle>
-            <Calendar className="w-4 h-4 text-muted-foreground" />
+        <Card className="bg-zinc-900 border-zinc-800">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-zinc-400">Agency</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">${totalYearly.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">Annual subscriptions</p>
+            <div className="text-2xl font-bold text-white">{agencyExpenses}</div>
+            <p className="text-xs text-zinc-500">shared expenses</p>
           </CardContent>
         </Card>
 
-        <Card className="glass hover-lift">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Agency Expenses</CardTitle>
-            <Building2 className="w-4 h-4 text-muted-foreground" />
+        <Card className="bg-zinc-900 border-zinc-800">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-zinc-400">Model-specific</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">${agencyExpenses.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">Company-wide costs</p>
-          </CardContent>
-        </Card>
-
-        <Card className="glass hover-lift">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Model Expenses</CardTitle>
-            <Users className="w-4 h-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">${modelExpenses.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">Per-model costs</p>
+            <div className="text-2xl font-bold text-white">{modelExpenses}</div>
+            <p className="text-xs text-zinc-500">assigned expenses</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Expenses List */}
-      <Card className="glass">
+      {/* Expenses Table */}
+      <Card className="bg-zinc-900 border-zinc-800">
         <CardHeader>
-          <CardTitle>All Expenses ({expenses.length})</CardTitle>
-          <CardDescription>Payments and subscriptions that affect your Net Profit</CardDescription>
+          <CardTitle className="text-white">All Expenses</CardTitle>
+          <CardDescription className="text-zinc-400">
+            {expenses.length} total expenses
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          {expenses.length === 0 ? (
-            <div className="text-center py-8">
-              <AlertCircle className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-              <p className="text-muted-foreground">No expenses yet. Add your first expense to start tracking.</p>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin w-8 h-8 border-2 border-zinc-700 border-t-white rounded-full" />
+            </div>
+          ) : expenses.length === 0 ? (
+            <div className="text-center py-12">
+              <DollarSign className="w-12 h-12 text-zinc-700 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-white mb-1">No expenses yet</h3>
+              <p className="text-zinc-400 mb-4">Start tracking your costs</p>
+              <Button onClick={() => handleOpenDialog()}>
+                <Plus className="w-4 h-4 mr-2" />
+                Add First Expense
+              </Button>
             </div>
           ) : (
-            <div className="space-y-3">
-              {expenses.map((expense) => {
-                const CategoryIcon = categoryIcons[expense.category || 'other'] || DollarSign
-                const modelName = models.find(m => m.id === expense.model_id)?.name
-                
-                return (
-                  <div
-                    key={expense.id}
-                    className="flex items-center gap-4 p-4 rounded-lg border border-border hover:border-primary/50 transition-all hover-lift"
-                  >
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                      expense.status === 'paid' ? 'bg-green-500/10' : 'bg-muted'
-                    }`}>
-                      <CategoryIcon className={`w-5 h-5 ${
-                        expense.status === 'paid' ? 'text-green-500' : 'text-muted-foreground'
-                      }`} />
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2 mb-1">
-                        <div>
-                          <h3 className="font-semibold">{expense.name}</h3>
-                          {expense.description && (
-                            <p className="text-sm text-muted-foreground">{expense.description}</p>
-                          )}
-                          <div className="flex items-center gap-2 mt-1 flex-wrap">
-                            <Badge variant="outline" className="text-xs capitalize">
-                              {categoryLabels[expense.category || 'other']}
-                            </Badge>
-                            {expense.is_recurring && (
-                              <Badge variant="outline" className="text-xs gap-1">
-                                <Repeat className="w-3 h-3" />
-                                {expense.frequency}
-                              </Badge>
-                            )}
-                            {modelName ? (
-                              <Badge className="text-xs bg-primary">
-                                {modelName}
-                              </Badge>
-                            ) : (
-                              <Badge variant="secondary" className="text-xs">
-                                Agency-wide
-                              </Badge>
-                            )}
-                            {expense.status === 'paid' && (
-                              <Badge className="text-xs bg-green-500">Paid</Badge>
-                            )}
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-lg font-bold">${Number(expense.amount).toLocaleString()}</p>
-                          {expense.next_due_date && (
-                            <p className="text-xs text-muted-foreground flex items-center gap-1 justify-end">
-                              <Calendar className="w-3 h-3" />
-                              Due {new Date(expense.next_due_date).toLocaleDateString()}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex gap-1">
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-8 w-8"
-                        onClick={() => openEditDialog(expense)}
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-8 w-8 text-destructive hover:text-destructive"
-                        onClick={() => handleDeleteExpense(expense.id)}
-                        disabled={isDeleting === expense.id}
-                      >
-                        {isDeleting === expense.id ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="w-4 h-4" />
+            <Table>
+              <TableHeader>
+                <TableRow className="border-zinc-800 hover:bg-transparent">
+                  <TableHead className="text-zinc-400">Date</TableHead>
+                  <TableHead className="text-zinc-400">Name</TableHead>
+                  <TableHead className="text-zinc-400">Category</TableHead>
+                  <TableHead className="text-zinc-400">Assigned To</TableHead>
+                  <TableHead className="text-zinc-400">Frequency</TableHead>
+                  <TableHead className="text-zinc-400 text-right">Amount</TableHead>
+                  <TableHead className="text-zinc-400 text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {expenses.map((expense) => (
+                  <TableRow key={expense.id} className="border-zinc-800 hover:bg-zinc-800/50">
+                    <TableCell className="text-zinc-500">
+                      {expense.created_at
+                        ? new Date(expense.created_at).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                          })
+                        : '-'}
+                    </TableCell>
+                    <TableCell>
+                      <div>
+                        <p className="font-medium text-white">{expense.name}</p>
+                        {expense.description && (
+                          <p className="text-xs text-zinc-500">{expense.description}</p>
                         )}
-                      </Button>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className="bg-zinc-800 text-zinc-300 border-0">
+                        {getCategoryBadge(expense.category)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge 
+                        variant="outline" 
+                        className={expense.model_id 
+                          ? 'border-purple-500/50 text-purple-400' 
+                          : 'border-zinc-700 text-zinc-400'
+                        }
+                      >
+                        {getModelName(expense.model_id)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-zinc-400 capitalize">
+                      {expense.frequency}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <span className="font-medium text-red-400">
+                        -{formatCurrency(Number(expense.amount))}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-zinc-400 hover:text-white"
+                          onClick={() => handleOpenDialog(expense)}
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-zinc-400 hover:text-red-400"
+                          onClick={() => handleDeleteExpense(expense.id)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           )}
         </CardContent>
       </Card>
-
-      {/* Edit Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={(open) => {
-        setIsEditDialogOpen(open)
-        if (!open) {
-          setEditingExpense(null)
-          resetForm()
-        }
-      }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Expense</DialogTitle>
-            <DialogDescription>
-              Update expense details
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleEditExpense} className="space-y-4">
-            <ExpenseFormFields />
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => { setIsEditDialogOpen(false); setEditingExpense(null); resetForm(); }}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isSaving}>
-                {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                Save Changes
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

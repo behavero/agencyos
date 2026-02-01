@@ -35,9 +35,9 @@ export default async function QuestsPage() {
     .order('completed_at', { ascending: true, nullsFirst: true })
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex min-h-screen bg-zinc-950">
       <Sidebar />
-      <div className="flex-1 ml-64">
+      <div className="flex-1 ml-[250px]">
         <Header />
         <main className="p-6">
           <QuestsClient 

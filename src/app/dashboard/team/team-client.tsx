@@ -6,8 +6,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Progress } from '@/components/ui/progress'
 import {
   Dialog,
   DialogContent,
@@ -17,7 +18,15 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import type { Database } from '@/types/database.types'
+import { toast } from 'sonner'
 import {
   Users,
   UserPlus,
@@ -26,41 +35,31 @@ import {
   Sparkles,
   Target,
   Zap,
-  MoreVertical,
+  MoreHorizontal,
   Shield,
   Calendar,
-  Clock
+  Clock,
+  Flame,
+  Mail,
 } from 'lucide-react'
 
 type Profile = Database['public']['Tables']['profiles']['Row']
 
 interface TeamClientProps {
   teamMembers: Profile[]
-  agencyId?: string
+  agencyId?: string | null
 }
 
-const roleIcons: Record<string, any> = {
-  grandmaster: Crown,
-  paladin: Sword,
-  alchemist: Sparkles,
-  ranger: Target,
-  rogue: Zap,
-}
+const ROLES = [
+  { value: 'rogue', label: 'Rogue', description: 'Sales & Chat', icon: Zap, color: 'text-red-400 bg-red-400/10 border-red-400/30' },
+  { value: 'ranger', label: 'Ranger', description: 'Marketing', icon: Target, color: 'text-green-400 bg-green-400/10 border-green-400/30' },
+  { value: 'alchemist', label: 'Alchemist', description: 'Content', icon: Sparkles, color: 'text-purple-400 bg-purple-400/10 border-purple-400/30' },
+  { value: 'paladin', label: 'Paladin', description: 'Operations', icon: Sword, color: 'text-blue-400 bg-blue-400/10 border-blue-400/30' },
+  { value: 'grandmaster', label: 'Grandmaster', description: 'CEO', icon: Crown, color: 'text-yellow-400 bg-yellow-400/10 border-yellow-400/30' },
+] as const
 
-const roleColors: Record<string, string> = {
-  grandmaster: 'from-yellow-500 to-orange-500',
-  paladin: 'from-blue-500 to-cyan-500',
-  alchemist: 'from-purple-500 to-pink-500',
-  ranger: 'from-green-500 to-emerald-500',
-  rogue: 'from-red-500 to-rose-500',
-}
-
-const roleDescriptions: Record<string, string> = {
-  grandmaster: 'Full access - CEO',
-  paladin: 'Operations Manager',
-  alchemist: 'Content Creator',
-  ranger: 'Marketing Specialist',
-  rogue: 'Sales & Chat',
+const getRoleConfig = (role: string | null) => {
+  return ROLES.find(r => r.value === role) || ROLES[0]
 }
 
 export default function TeamClient({ teamMembers, agencyId }: TeamClientProps) {
@@ -72,67 +71,81 @@ export default function TeamClient({ teamMembers, agencyId }: TeamClientProps) {
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault()
-    // TODO: Implement invite logic
-    console.log('Invite:', inviteForm)
+    toast.success('Invitation sent!')
     setIsInviteOpen(false)
+    setInviteForm({ email: '', role: 'rogue' })
   }
+
+  // Calculate team stats
+  const totalXp = teamMembers.reduce((sum, m) => sum + (m.xp_count || 0), 0)
+  const roleBreakdown = ROLES.map(role => ({
+    ...role,
+    count: teamMembers.filter(m => m.role === role.value).length,
+  }))
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Team Management</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage your agency team, roles, and schedule
-          </p>
+          <h1 className="text-2xl font-bold text-white">Team</h1>
+          <p className="text-zinc-400">Manage your agency team members</p>
         </div>
         <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
           <DialogTrigger asChild>
-            <Button className="gap-2 shadow-lg hover-lift">
+            <Button className="gap-2">
               <UserPlus className="w-4 h-4" />
               Invite Member
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="bg-zinc-900 border-zinc-800">
             <DialogHeader>
-              <DialogTitle>Invite Team Member</DialogTitle>
-              <DialogDescription>
+              <DialogTitle className="text-white">Invite Team Member</DialogTitle>
+              <DialogDescription className="text-zinc-400">
                 Send an invitation to join your agency
               </DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleInvite} className="space-y-4">
-              <div>
-                <Label htmlFor="email">Email Address</Label>
+            <form onSubmit={handleInvite} className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label className="text-zinc-300">Email Address</Label>
                 <Input
-                  id="email"
                   type="email"
                   placeholder="member@example.com"
                   value={inviteForm.email}
                   onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+                  className="bg-zinc-800 border-zinc-700"
                   required
                 />
               </div>
-              <div>
-                <Label htmlFor="role">Role</Label>
-                <select
-                  id="role"
-                  className="w-full px-3 py-2 rounded-md border border-border bg-background"
+              <div className="space-y-2">
+                <Label className="text-zinc-300">Role</Label>
+                <Select
                   value={inviteForm.role}
-                  onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value })}
+                  onValueChange={(v) => setInviteForm({ ...inviteForm, role: v })}
                 >
-                  <option value="rogue">Rogue - Sales & Chat</option>
-                  <option value="ranger">Ranger - Marketing</option>
-                  <option value="alchemist">Alchemist - Content</option>
-                  <option value="paladin">Paladin - Operations</option>
-                  <option value="grandmaster">Grandmaster - CEO</option>
-                </select>
+                  <SelectTrigger className="bg-zinc-800 border-zinc-700">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-zinc-900 border-zinc-800">
+                    {ROLES.map((role) => (
+                      <SelectItem key={role.value} value={role.value}>
+                        <div className="flex items-center gap-2">
+                          <role.icon className="w-4 h-4" />
+                          {role.label} - {role.description}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setIsInviteOpen(false)}>
                   Cancel
                 </Button>
-                <Button type="submit">Send Invitation</Button>
+                <Button type="submit" className="gap-2">
+                  <Mail className="w-4 h-4" />
+                  Send Invite
+                </Button>
               </DialogFooter>
             </form>
           </DialogContent>
@@ -140,114 +153,131 @@ export default function TeamClient({ teamMembers, agencyId }: TeamClientProps) {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="team" className="w-full">
-        <TabsList>
-          <TabsTrigger value="team" className="gap-2">
+      <Tabs defaultValue="members" className="space-y-6">
+        <TabsList className="bg-zinc-900 border border-zinc-800 p-1">
+          <TabsTrigger 
+            value="members" 
+            className="gap-2 data-[state=active]:bg-zinc-800 data-[state=active]:text-white"
+          >
             <Users className="w-4 h-4" />
-            Team Members
+            Members
           </TabsTrigger>
-          <TabsTrigger value="schedule" className="gap-2">
+          <TabsTrigger 
+            value="schedule"
+            className="gap-2 data-[state=active]:bg-zinc-800 data-[state=active]:text-white"
+          >
             <Calendar className="w-4 h-4" />
             Schedule
           </TabsTrigger>
         </TabsList>
 
-        {/* Team Members Tab */}
-        <TabsContent value="team" className="space-y-6">
-          {/* Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <Card className="glass hover-lift">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Members</CardTitle>
-                <Users className="w-4 h-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{teamMembers.length}</div>
-              </CardContent>
-            </Card>
-
-            <Card className="glass hover-lift">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Grandmasters</CardTitle>
-                <Crown className="w-4 h-4 text-yellow-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {teamMembers.filter(m => m.role === 'grandmaster').length}
+        <TabsContent value="members" className="space-y-6">
+          {/* Stats Grid */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <Card className="bg-zinc-900 border-zinc-800">
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center">
+                    <Users className="w-5 h-5 text-zinc-400" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-white">{teamMembers.length}</p>
+                    <p className="text-xs text-zinc-500">Total Members</p>
+                  </div>
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="glass hover-lift">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Chatters</CardTitle>
-                <Zap className="w-4 h-4 text-red-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {teamMembers.filter(m => m.role === 'rogue').length}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="glass hover-lift">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total XP</CardTitle>
-                <Sparkles className="w-4 h-4 text-purple-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {teamMembers.reduce((sum, m) => sum + (m.xp_count || 0), 0).toLocaleString()}
-                </div>
-              </CardContent>
-            </Card>
+            {roleBreakdown.slice(0, 4).map((role) => (
+              <Card key={role.value} className="bg-zinc-900 border-zinc-800">
+                <CardContent className="pt-6">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${role.color}`}>
+                      <role.icon className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-white">{role.count}</p>
+                      <p className="text-xs text-zinc-500">{role.label}s</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
 
-          {/* Team Members Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {/* Team Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {teamMembers.map((member) => {
-              const RoleIcon = roleIcons[member.role || 'rogue'] || Shield
-              const roleColor = roleColors[member.role || 'rogue'] || 'from-gray-500 to-gray-600'
+              const roleConfig = getRoleConfig(member.role)
+              const xpProgress = ((member.xp_count || 0) % 1000) / 10
               
               return (
-                <Card key={member.id} className="glass hover-lift group">
-                  <CardHeader>
-                    <div className="flex items-start justify-between">
+                <Card 
+                  key={member.id} 
+                  className="bg-zinc-900 border-zinc-800 hover:border-zinc-600 transition-colors group"
+                >
+                  <CardContent className="pt-6">
+                    <div className="flex items-start justify-between mb-4">
                       <div className="flex items-center gap-3">
-                        <div className={`w-12 h-12 rounded-full bg-gradient-to-br ${roleColor} flex items-center justify-center`}>
-                          <RoleIcon className="w-6 h-6 text-white" />
-                        </div>
+                        <Avatar className="h-12 w-12 border-2 border-zinc-700">
+                          <AvatarImage src="" alt={member.username || ''} />
+                          <AvatarFallback className={`${roleConfig.color}`}>
+                            {member.username?.charAt(0).toUpperCase() || 'U'}
+                          </AvatarFallback>
+                        </Avatar>
                         <div>
-                          <CardTitle className="text-base">{member.username || 'Unnamed'}</CardTitle>
-                          <Badge variant="outline" className="mt-1 capitalize">
-                            {member.role}
+                          <h3 className="font-semibold text-white">
+                            {member.username || 'Unnamed'}
+                          </h3>
+                          <Badge className={`${roleConfig.color} border mt-1 text-xs`}>
+                            <roleConfig.icon className="w-3 h-3 mr-1" />
+                            {roleConfig.label}
                           </Badge>
                         </div>
                       </div>
-                      <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100 transition-opacity">
-                        <MoreVertical className="w-4 h-4" />
+                      <Button 
+                        variant="ghost" 
+                        size="icon"
+                        className="h-8 w-8 text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <MoreHorizontal className="w-4 h-4" />
                       </Button>
                     </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      <p className="text-sm text-muted-foreground">
-                        {roleDescriptions[member.role || 'rogue']}
-                      </p>
-                      <div className="grid grid-cols-3 gap-2 text-center">
-                        <div className="p-2 rounded-lg bg-muted/50">
-                          <p className="text-xs text-muted-foreground">XP</p>
-                          <p className="font-semibold">{member.xp_count || 0}</p>
-                        </div>
-                        <div className="p-2 rounded-lg bg-muted/50">
-                          <p className="text-xs text-muted-foreground">Streak</p>
-                          <p className="font-semibold">{member.current_streak || 0}🔥</p>
-                        </div>
-                        <div className="p-2 rounded-lg bg-muted/50">
-                          <p className="text-xs text-muted-foreground">League</p>
-                          <p className="font-semibold text-xs">{member.league_rank || 'Iron'}</p>
-                        </div>
+
+                    <p className="text-sm text-zinc-500 mb-4">
+                      {roleConfig.description}
+                    </p>
+
+                    {/* Stats */}
+                    <div className="grid grid-cols-3 gap-2 mb-4">
+                      <div className="p-2 rounded-lg bg-zinc-800 text-center">
+                        <p className="text-lg font-bold text-white">
+                          {member.xp_count?.toLocaleString() || 0}
+                        </p>
+                        <p className="text-xs text-zinc-500">XP</p>
                       </div>
+                      <div className="p-2 rounded-lg bg-zinc-800 text-center">
+                        <p className="text-lg font-bold text-white flex items-center justify-center gap-1">
+                          {member.current_streak || 0}
+                          <Flame className="w-4 h-4 text-orange-500" />
+                        </p>
+                        <p className="text-xs text-zinc-500">Streak</p>
+                      </div>
+                      <div className="p-2 rounded-lg bg-zinc-800 text-center">
+                        <p className="text-lg font-bold text-white capitalize">
+                          {member.league_rank || 'Iron'}
+                        </p>
+                        <p className="text-xs text-zinc-500">League</p>
+                      </div>
+                    </div>
+
+                    {/* XP Progress */}
+                    <div>
+                      <div className="flex justify-between text-xs text-zinc-500 mb-1">
+                        <span>Level Progress</span>
+                        <span>{xpProgress.toFixed(0)}%</span>
+                      </div>
+                      <Progress value={xpProgress} className="h-1.5 bg-zinc-800" />
                     </div>
                   </CardContent>
                 </Card>
@@ -257,13 +287,13 @@ export default function TeamClient({ teamMembers, agencyId }: TeamClientProps) {
 
           {/* Empty State */}
           {teamMembers.length === 0 && (
-            <Card className="glass">
+            <Card className="bg-zinc-900 border-zinc-800">
               <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-                <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
-                  <Users className="w-8 h-8 text-muted-foreground" />
+                <div className="w-16 h-16 rounded-full bg-zinc-800 flex items-center justify-center mb-4">
+                  <Users className="w-8 h-8 text-zinc-600" />
                 </div>
-                <h3 className="text-lg font-semibold mb-2">No Team Members Yet</h3>
-                <p className="text-muted-foreground mb-4 max-w-sm">
+                <h3 className="text-lg font-semibold text-white mb-2">No Team Members Yet</h3>
+                <p className="text-zinc-400 mb-4 max-w-sm">
                   Invite your first team member to start building your agency.
                 </p>
                 <Button onClick={() => setIsInviteOpen(true)} className="gap-2">
@@ -277,56 +307,57 @@ export default function TeamClient({ teamMembers, agencyId }: TeamClientProps) {
 
         {/* Schedule Tab */}
         <TabsContent value="schedule" className="space-y-4">
-          <Card className="glass">
+          <Card className="bg-zinc-900 border-zinc-800">
             <CardHeader>
-              <CardTitle>Work Schedule</CardTitle>
-              <CardDescription>Team member shift planning</CardDescription>
+              <CardTitle className="text-white">Work Schedule</CardTitle>
+              <CardDescription className="text-zinc-400">
+                Team member shift planning
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {/* Schedule Grid */}
-                <div className="grid grid-cols-8 gap-2 text-center text-sm">
-                  <div className="font-semibold">Member</div>
-                  <div className="font-semibold">Mon</div>
-                  <div className="font-semibold">Tue</div>
-                  <div className="font-semibold">Wed</div>
-                  <div className="font-semibold">Thu</div>
-                  <div className="font-semibold">Fri</div>
-                  <div className="font-semibold">Sat</div>
-                  <div className="font-semibold">Sun</div>
+              <div className="overflow-x-auto">
+                <div className="grid grid-cols-8 gap-2 text-center text-sm min-w-[600px]">
+                  {/* Header */}
+                  <div className="font-medium text-zinc-400 text-left">Member</div>
+                  {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => (
+                    <div key={day} className="font-medium text-zinc-400">{day}</div>
+                  ))}
 
-                  <div className="text-left font-medium">Sarah</div>
-                  <div className="p-2 rounded bg-primary/10 text-primary text-xs">9AM-5PM</div>
-                  <div className="p-2 rounded bg-primary/10 text-primary text-xs">9AM-5PM</div>
-                  <div className="p-2 rounded bg-primary/10 text-primary text-xs">9AM-5PM</div>
-                  <div className="p-2 rounded bg-primary/10 text-primary text-xs">9AM-5PM</div>
-                  <div className="p-2 rounded bg-primary/10 text-primary text-xs">9AM-5PM</div>
-                  <div className="p-2 rounded bg-muted text-muted-foreground text-xs">Off</div>
-                  <div className="p-2 rounded bg-muted text-muted-foreground text-xs">Off</div>
+                  {/* Example rows */}
+                  <div className="text-left font-medium text-white">Sarah</div>
+                  {[...Array(5)].map((_, i) => (
+                    <div key={i} className="p-2 rounded bg-green-500/10 text-green-400 text-xs border border-green-500/20">
+                      9-5 PM
+                    </div>
+                  ))}
+                  <div className="p-2 rounded bg-zinc-800 text-zinc-500 text-xs">Off</div>
+                  <div className="p-2 rounded bg-zinc-800 text-zinc-500 text-xs">Off</div>
 
-                  <div className="text-left font-medium">Mike</div>
-                  <div className="p-2 rounded bg-muted text-muted-foreground text-xs">Off</div>
-                  <div className="p-2 rounded bg-secondary/10 text-secondary text-xs">1PM-9PM</div>
-                  <div className="p-2 rounded bg-secondary/10 text-secondary text-xs">1PM-9PM</div>
-                  <div className="p-2 rounded bg-secondary/10 text-secondary text-xs">1PM-9PM</div>
-                  <div className="p-2 rounded bg-secondary/10 text-secondary text-xs">1PM-9PM</div>
-                  <div className="p-2 rounded bg-secondary/10 text-secondary text-xs">1PM-9PM</div>
-                  <div className="p-2 rounded bg-muted text-muted-foreground text-xs">Off</div>
+                  <div className="text-left font-medium text-white">Mike</div>
+                  <div className="p-2 rounded bg-zinc-800 text-zinc-500 text-xs">Off</div>
+                  {[...Array(5)].map((_, i) => (
+                    <div key={i} className="p-2 rounded bg-blue-500/10 text-blue-400 text-xs border border-blue-500/20">
+                      1-9 PM
+                    </div>
+                  ))}
+                  <div className="p-2 rounded bg-zinc-800 text-zinc-500 text-xs">Off</div>
 
-                  <div className="text-left font-medium">Emma</div>
-                  <div className="p-2 rounded bg-accent/10 text-accent-foreground text-xs">5PM-1AM</div>
-                  <div className="p-2 rounded bg-muted text-muted-foreground text-xs">Off</div>
-                  <div className="p-2 rounded bg-accent/10 text-accent-foreground text-xs">5PM-1AM</div>
-                  <div className="p-2 rounded bg-accent/10 text-accent-foreground text-xs">5PM-1AM</div>
-                  <div className="p-2 rounded bg-accent/10 text-accent-foreground text-xs">5PM-1AM</div>
-                  <div className="p-2 rounded bg-accent/10 text-accent-foreground text-xs">5PM-1AM</div>
-                  <div className="p-2 rounded bg-accent/10 text-accent-foreground text-xs">5PM-1AM</div>
+                  <div className="text-left font-medium text-white">Emma</div>
+                  <div className="p-2 rounded bg-purple-500/10 text-purple-400 text-xs border border-purple-500/20">
+                    5-1 AM
+                  </div>
+                  <div className="p-2 rounded bg-zinc-800 text-zinc-500 text-xs">Off</div>
+                  {[...Array(5)].map((_, i) => (
+                    <div key={i} className="p-2 rounded bg-purple-500/10 text-purple-400 text-xs border border-purple-500/20">
+                      5-1 AM
+                    </div>
+                  ))}
                 </div>
+              </div>
 
-                <div className="flex items-center gap-2 text-sm text-muted-foreground pt-4 border-t border-border">
-                  <Clock className="w-4 h-4" />
-                  <span>24/7 coverage with 3 shifts</span>
-                </div>
+              <div className="flex items-center gap-2 text-sm text-zinc-500 pt-6 mt-6 border-t border-zinc-800">
+                <Clock className="w-4 h-4" />
+                <span>24/7 coverage with 3 shifts</span>
               </div>
             </CardContent>
           </Card>

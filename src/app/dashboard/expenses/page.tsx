@@ -1,5 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { Sidebar } from '@/components/layout/sidebar'
+import { Header } from '@/components/layout/header'
 import ExpensesClient from './expenses-client'
 
 export default async function ExpensesPage() {
@@ -21,32 +23,27 @@ export default async function ExpensesPage() {
     redirect('/dashboard')
   }
 
-  // Get agency
-  const { data: agency } = await supabase
-    .from('agencies')
-    .select('*')
-    .eq('id', profile.agency_id)
-    .single()
-
-  // Get expenses for the agency
-  const { data: expenses } = await supabase
-    .from('expenses')
-    .select('*')
-    .eq('agency_id', profile.agency_id)
-    .order('created_at', { ascending: false })
-
-  // Get models for the dropdown
-  const { data: models } = await supabase
+  // Get models for the dropdown (simplified type)
+  const { data: modelsData } = await supabase
     .from('models')
     .select('id, name')
     .eq('agency_id', profile.agency_id)
 
+  // Cast to the expected type
+  const models = (modelsData || []) as Array<{ id: string; name: string }>
+
   return (
-    <ExpensesClient 
-      agencyId={profile.agency_id} 
-      expenses={expenses || []} 
-      models={models || []}
-      agency={agency}
-    />
+    <div className="flex min-h-screen bg-zinc-950">
+      <Sidebar />
+      <div className="flex-1 ml-[250px]">
+        <Header />
+        <main className="p-6">
+          <ExpensesClient 
+            agencyId={profile.agency_id} 
+            models={models as any}
+          />
+        </main>
+      </div>
+    </div>
   )
 }
