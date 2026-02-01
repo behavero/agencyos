@@ -1,5 +1,5 @@
+import { redirect } from 'next/navigation'
 import { FANVUE_CONFIG } from '@/lib/fanvue/config'
-import { NextResponse } from 'next/server'
 
 export async function GET() {
   const params = new URLSearchParams({
@@ -11,5 +11,8 @@ export async function GET() {
 
   const authUrl = `${FANVUE_CONFIG.endpoints.authorize}?${params.toString()}`
   
-  return NextResponse.redirect(authUrl)
+  console.log('[Fanvue OAuth] Redirecting to:', authUrl)
+  console.log('[Fanvue OAuth] Redirect URI:', FANVUE_CONFIG.redirectUri)
+  
+  redirect(authUrl)
 }
