@@ -45,7 +45,9 @@ import {
   MessageSquare,
   Eye,
   Heart,
+  Globe,
 } from 'lucide-react'
+import { AggregatedSocialGrid } from '@/components/dashboard/social-grid'
 
 type Profile = Database['public']['Tables']['profiles']['Row']
 type Agency = Database['public']['Tables']['agencies']['Row']
@@ -454,6 +456,9 @@ export default function DashboardClient({ user, profile, agency, models, totalEx
           </CardContent>
         </Card>
       </div>
+
+      {/* Social Media Reach */}
+      <AggregatedSocialGrid models={models.map(m => ({ id: m.id, name: m.name || 'Unknown' }))} />
 
       {/* Financial Breakdown */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
