@@ -362,27 +362,60 @@ export class FanvueClient {
   }
 
   // ==================== VAULT ====================
-  async getVaultFolders(params?: { page?: number; size?: number }) {
-    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+  async getVaultFolders() {
     return this.request<{
-      data: Array<{ uuid: string; name: string; mediaCount: number }>
-      totalCount: number
-    }>(`/vault/folders${query}`)
+      data: Array<{ name: string; createdAt: string; mediaCount: number }>
+      pagination: { page: number; size: number; hasMore: boolean }
+    }>(`/vault/folders`)
+  }
+
+  async getVaultFolder(folderName: string) {
+    return this.request<{
+      name: string
+      createdAt: string
+      mediaCount: number
+    }>(`/vault/folders/${encodeURIComponent(folderName)}`)
   }
 
   async createVaultFolder(name: string) {
-    return this.request<{ uuid: string }>('/vault/folders', {
+    return this.request<{ name: string; createdAt: string; mediaCount: number }>('/vault/folders', {
       method: 'POST',
       body: JSON.stringify({ name }),
     })
   }
 
-  async getVaultFolderMedia(folderUuid: string, params?: { page?: number; size?: number }) {
+  async renameVaultFolder(folderName: string, newName: string) {
+    return this.request(`/vault/folders/${encodeURIComponent(folderName)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name: newName }),
+    })
+  }
+
+  async deleteVaultFolder(folderName: string) {
+    return this.request(`/vault/folders/${encodeURIComponent(folderName)}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async getVaultFolderMedia(folderName: string, params?: { page?: number; size?: number }) {
     const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
     return this.request<{
-      data: Array<{ uuid: string; type: string; url: string }>
-      totalCount: number
-    }>(`/vault/folders/${folderUuid}/media${query}`)
+      data: Array<{ uuid: string; name: string | null; createdAt: string; mediaType: string }>
+      pagination: { page: number; size: number; hasMore: boolean }
+    }>(`/vault/folders/${encodeURIComponent(folderName)}/media${query}`)
+  }
+
+  async addMediaToVaultFolder(folderName: string, mediaUuids: string[]) {
+    return this.request<{ addedCount: number }>(`/vault/folders/${encodeURIComponent(folderName)}/media`, {
+      method: 'POST',
+      body: JSON.stringify({ mediaUuids }),
+    })
+  }
+
+  async removeMediaFromVaultFolder(folderName: string, mediaUuid: string) {
+    return this.request(`/vault/folders/${encodeURIComponent(folderName)}/media/${mediaUuid}`, {
+      method: 'DELETE',
+    })
   }
 
   // ==================== TRACKING LINKS ====================
