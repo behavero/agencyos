@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { SocialStatsCreateSchema, badRequestResponse } from '@/lib/validation/schemas'
 
 // GET: Fetch social stats for a model or all agency models
 export async function GET(request: NextRequest) {
@@ -70,38 +71,33 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const body = await request.json()
-  const { model_id, platform, followers, views, likes, comments, shares, date } = body
-
-  if (!model_id || !platform) {
-    return NextResponse.json(
-      { error: 'model_id and platform are required' },
-      { status: 400 }
-    )
+  // Parse and validate request body
+  let body: unknown
+  try {
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  // Validate platform
-  const validPlatforms = ['instagram', 'tiktok', 'x', 'youtube']
-  if (!validPlatforms.includes(platform)) {
-    return NextResponse.json(
-      { error: 'Invalid platform. Must be one of: ' + validPlatforms.join(', ') },
-      { status: 400 }
-    )
+  const validation = SocialStatsCreateSchema.safeParse(body)
+  if (!validation.success) {
+    return badRequestResponse(validation.error)
   }
 
-  const statDate = date || new Date().toISOString().split('T')[0]
+  const statsData = validation.data
+  const statDate = statsData.date || new Date().toISOString().split('T')[0]
 
   const { data, error } = await supabase
     .from('social_stats')
     .upsert({
-      model_id,
-      platform,
+      model_id: statsData.model_id,
+      platform: statsData.platform,
       date: statDate,
-      followers: followers || 0,
-      views: views || 0,
-      likes: likes || 0,
-      comments: comments || 0,
-      shares: shares || 0,
+      followers: statsData.followers,
+      views: statsData.views,
+      likes: statsData.likes,
+      comments: statsData.comments,
+      shares: statsData.shares,
       updated_at: new Date().toISOString(),
     }, {
       onConflict: 'model_id,platform,date'
