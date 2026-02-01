@@ -24,7 +24,18 @@ import {
   Calendar
 } from 'lucide-react'
 
-type Quest = Database['public']['Tables']['quests']['Row']
+// Define local interface until quests table is added to Supabase
+interface Quest {
+  id: string
+  role_target: string | null
+  title: string | null
+  description: string | null
+  xp_reward: number
+  is_daily: boolean
+  completed_at: string | null
+  assigned_to: string | null
+}
+
 type Profile = Database['public']['Tables']['profiles']['Row']
 
 interface QuestsClientProps {
