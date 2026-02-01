@@ -112,11 +112,11 @@ export async function GET(request: NextRequest) {
     }
 
     console.log('[Fanvue OAuth] Model added successfully')
-    return NextResponse.redirect(new URL('/dashboard?success=model_added', request.url))
+    return NextResponse.redirect(new URL('/dashboard/crm?success=model_added', request.url))
   } catch (error: any) {
     console.error('[Fanvue OAuth] Error:', error)
     return NextResponse.redirect(
-      new URL(`/dashboard?error=fanvue_oauth_failed&details=${encodeURIComponent(error.message)}`, request.url)
+      new URL(`/dashboard/crm?error=fanvue_oauth_failed&details=${encodeURIComponent(error.message)}`, request.url)
     )
   }
 }

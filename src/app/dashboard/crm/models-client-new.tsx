@@ -1,11 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import type { Database } from '@/types/database.types'
 import { 
   Plus, 
@@ -22,7 +25,8 @@ import {
   Target,
   Award
 } from 'lucide-react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { toast } from 'sonner'
 
 type Model = Database['public']['Tables']['models']['Row']
 
@@ -33,6 +37,28 @@ interface ModelsClientProps {
 
 export default function ModelsClient({ models, agencyId }: ModelsClientProps) {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const [addModelOpen, setAddModelOpen] = useState(false)
+
+  // Handle OAuth success
+  useEffect(() => {
+    const success = searchParams.get('success')
+    if (success === 'model_added') {
+      toast.success('🎉 Model connected successfully!')
+      setAddModelOpen(false)
+      // Clear URL params
+      const url = new URL(window.location.href)
+      url.searchParams.delete('success')
+      window.history.replaceState({}, '', url.toString())
+      // Refresh
+      setTimeout(() => router.refresh(), 1000)
+    }
+  }, [searchParams, router])
+
+  const handleConnectFanvue = () => {
+    // Redirect to Fanvue OAuth
+    window.location.href = '/api/auth/fanvue'
+  }
 
   return (
     <div className="space-y-6">
@@ -44,10 +70,53 @@ export default function ModelsClient({ models, agencyId }: ModelsClientProps) {
             Manage models, employees, content, and automation
           </p>
         </div>
-        <Button onClick={() => router.push('/dashboard/crm')} className="gap-2 shadow-lg hover-lift">
-          <Plus className="w-4 h-4" />
-          Add Model
-        </Button>
+        
+        {/* Add Model Dialog */}
+        <Dialog open={addModelOpen} onOpenChange={setAddModelOpen}>
+          <DialogTrigger asChild>
+            <Button className="gap-2 shadow-lg hover-lift">
+              <Plus className="w-4 h-4" />
+              Add Model
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Add New Model</DialogTitle>
+              <DialogDescription>
+                Connect a Fanvue creator account to your agency
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  Click the button below to authorize a Fanvue account. The creator will need to:
+                </p>
+                <ol className="text-sm text-muted-foreground list-decimal list-inside space-y-1">
+                  <li>Log in to their Fanvue account</li>
+                  <li>Authorize your agency to access their data</li>
+                  <li>Their account will be added to your CRM</li>
+                </ol>
+              </div>
+              
+              <Button 
+                onClick={handleConnectFanvue} 
+                className="w-full gap-2"
+                size="lg"
+              >
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/>
+                </svg>
+                Connect with Fanvue
+              </Button>
+              
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground">
+                  Secure OAuth 2.0 authentication • Your data is safe
+                </p>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Tabs */}
