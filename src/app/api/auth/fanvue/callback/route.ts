@@ -12,12 +12,12 @@ export async function GET(request: NextRequest) {
 
   if (error) {
     console.error('[Fanvue OAuth] Error from Fanvue:', error)
-    return NextResponse.redirect(new URL('/dashboard?error=fanvue_oauth_failed', request.url))
+    return NextResponse.redirect(new URL('/dashboard/creator-management?error=fanvue_oauth_failed', request.url))
   }
 
   if (!code) {
     console.error('[Fanvue OAuth] No authorization code received')
-    return NextResponse.redirect(new URL('/dashboard?error=fanvue_oauth_failed', request.url))
+    return NextResponse.redirect(new URL('/dashboard/creator-management?error=fanvue_oauth_failed', request.url))
   }
 
   // Retrieve stored PKCE parameters
@@ -28,12 +28,12 @@ export async function GET(request: NextRequest) {
   // Validate state (CSRF protection)
   if (!state || !storedState || state !== storedState) {
     console.error('[Fanvue OAuth] State mismatch - possible CSRF attack')
-    return NextResponse.redirect(new URL('/dashboard?error=invalid_state', request.url))
+    return NextResponse.redirect(new URL('/dashboard/creator-management?error=invalid_state', request.url))
   }
 
   if (!codeVerifier) {
     console.error('[Fanvue OAuth] Code verifier not found in cookies')
-    return NextResponse.redirect(new URL('/dashboard?error=missing_verifier', request.url))
+    return NextResponse.redirect(new URL('/dashboard/creator-management?error=missing_verifier', request.url))
   }
 
   // Clear cookies
@@ -130,11 +130,11 @@ export async function GET(request: NextRequest) {
     }
 
     console.log('[Fanvue OAuth] Model added/updated successfully')
-    return NextResponse.redirect(new URL('/dashboard/crm?success=model_added', request.url))
+    return NextResponse.redirect(new URL('/dashboard/creator-management?success=model_added', request.url))
   } catch (error: any) {
     console.error('[Fanvue OAuth] Error:', error)
     return NextResponse.redirect(
-      new URL(`/dashboard/crm?error=fanvue_oauth_failed&details=${encodeURIComponent(error.message)}`, request.url)
+      new URL(`/dashboard/creator-management?error=fanvue_oauth_failed&details=${encodeURIComponent(error.message)}`, request.url)
     )
   }
 }

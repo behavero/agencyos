@@ -27,6 +27,7 @@ const navigation = [
   {
     title: 'Tools',
     items: [
+      { name: 'Creator Management', href: '/dashboard/creator-management', icon: Crown },
       { name: 'CRM', href: '/dashboard/crm', icon: Briefcase },
       { name: 'Quests', href: '/dashboard/quests', icon: Target },
       { name: 'Content Intel', href: '/dashboard/content', icon: Sparkles },
@@ -37,7 +38,7 @@ const navigation = [
     title: 'Settings',
     items: [
       { name: 'Team', href: '/dashboard/team', icon: Users },
-      { name: 'Creator', href: '/dashboard/creator', icon: Crown },
+      { name: 'Creator Settings', href: '/dashboard/creator', icon: Crown },
       { name: 'Billing', href: '/dashboard/billing', icon: Bell },
     ],
   },
