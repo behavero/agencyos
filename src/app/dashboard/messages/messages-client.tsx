@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
 import type { Database } from '@/types/database.types'
 import {
   Search,
@@ -21,14 +21,19 @@ import {
   MapPin,
   Calendar,
   Heart,
-  Eye,
   MessageCircle,
   Plus,
   RefreshCw,
   Image as ImageIcon,
+  AlertCircle,
+  Check,
+  CheckCheck,
+  Crown,
 } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { toast } from 'sonner'
+import { useChatRoster, ChatThread } from '@/hooks/use-chat-roster'
+import { useChatMessages, ChatMessage } from '@/hooks/use-chat-messages'
 
 type Model = Database['public']['Tables']['models']['Row']
 
@@ -36,59 +41,14 @@ interface MessagesClientProps {
   models: Model[]
 }
 
-interface Chat {
-  uuid: string
-  user: {
-    uuid: string
-    handle: string
-    displayName: string
-    avatarUrl?: string
-  }
-  lastMessage?: {
-    text: string
-    createdAt: string
-    isFromCreator: boolean
-  }
-  unreadCount: number
-  isPinned?: boolean
-}
-
-interface Message {
-  uuid: string
-  text: string
-  createdAt: string
-  isFromCreator: boolean
-  hasMedia?: boolean
-  price?: number
-  sentByAI?: boolean
-}
-
-interface FanProfile {
-  uuid: string
-  handle: string
-  displayName: string
-  avatarUrl?: string
-  location?: string
-  birthday?: string
-  preferences?: string[]
-  lastSeen?: string
-  lastResponse?: string
-  lastRead?: string
-  totalSpent?: number
-  totalTips?: number
-  totalPpv?: number
-  isSubscriber?: boolean
-  avgTips?: number
-  avgPpv?: number
-  customAttributes?: { key: string; value: string }[]
-}
-
-function formatTime(dateStr: string): string {
+function formatTime(dateStr: string | null): string {
+  if (!dateStr) return ''
   const date = new Date(dateStr)
   return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
 }
 
-function formatRelativeTime(dateStr: string): string {
+function formatRelativeTime(dateStr: string | null): string {
+  if (!dateStr) return ''
   const date = new Date(dateStr)
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()
@@ -97,143 +57,95 @@ function formatRelativeTime(dateStr: string): string {
   const diffDays = Math.floor(diffMs / 86400000)
 
   if (diffMins < 1) return 'Just now'
-  if (diffMins < 60) return `${diffMins} minutes ago`
-  if (diffHours < 24) return `about ${diffHours} hour${diffHours > 1 ? 's' : ''} ago`
+  if (diffMins < 60) return `${diffMins}m ago`
+  if (diffHours < 24) return `${diffHours}h ago`
   if (diffDays === 1) return 'yesterday'
-  if (diffDays < 7) return `${diffDays} days ago`
+  if (diffDays < 7) return `${diffDays}d ago`
   return date.toLocaleDateString()
 }
 
 export default function MessagesClient({ models }: MessagesClientProps) {
   const [selectedModel, setSelectedModel] = useState<Model | null>(models[0] || null)
-  const [chats, setChats] = useState<Chat[]>([])
-  const [selectedChat, setSelectedChat] = useState<Chat | null>(null)
-  const [messages, setMessages] = useState<Message[]>([])
-  const [fanProfile, setFanProfile] = useState<FanProfile | null>(null)
+  const [selectedChat, setSelectedChat] = useState<ChatThread | null>(null)
   const [messageInput, setMessageInput] = useState('')
-  const [loading, setLoading] = useState(false)
   const [sendingMessage, setSendingMessage] = useState(false)
   const [filter, setFilter] = useState<'all' | 'unread'>('all')
   const [searchQuery, setSearchQuery] = useState('')
+  const [notes, setNotes] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // Fetch chats when model changes
-  useEffect(() => {
-    if (selectedModel) {
-      fetchChats()
-    }
-  }, [selectedModel])
+  // Chat roster hook
+  const {
+    chats,
+    loading: chatsLoading,
+    error: chatsError,
+    refresh: refreshChats,
+  } = useChatRoster({
+    creatorId: selectedModel?.id || null,
+    filter,
+    search: searchQuery,
+  })
+
+  // Chat messages hook with 10-second polling
+  const {
+    messages,
+    loading: messagesLoading,
+    error: messagesError,
+    sendMessage: sendMessageApi,
+    refresh: refreshMessages,
+    creatorUuid,
+  } = useChatMessages({
+    creatorId: selectedModel?.id || null,
+    userUuid: selectedChat?.user.uuid || null,
+    pollingInterval: 10000, // 10 seconds
+  })
 
   // Scroll to bottom when messages change
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
   }, [messages])
 
-  const fetchChats = async () => {
-    if (!selectedModel) return
-    setLoading(true)
-    
-    try {
-      const response = await fetch(`/api/creators/${selectedModel.id}/messages?size=50`)
-      const data = await response.json()
-      
-      if (response.ok && data.data) {
-        setChats(data.data)
-        if (data.data.length > 0 && !selectedChat) {
-          setSelectedChat(data.data[0])
-          fetchMessages(data.data[0].user.uuid)
-        }
-      } else {
-        console.error('Failed to fetch chats:', data.error)
-      }
-    } catch (error) {
-      console.error('Error fetching chats:', error)
-    } finally {
-      setLoading(false)
+  // Auto-select first chat when chats load
+  useEffect(() => {
+    if (chats.length > 0 && !selectedChat) {
+      setSelectedChat(chats[0])
     }
-  }
+  }, [chats, selectedChat])
 
-  const fetchMessages = async (userUuid: string) => {
-    if (!selectedModel) return
-    
-    try {
-      // For now, we'll show the last message from the chat
-      // In production, you'd fetch the full message history
-      const chat = chats.find(c => c.user.uuid === userUuid)
-      if (chat?.lastMessage) {
-        setMessages([{
-          uuid: '1',
-          text: chat.lastMessage.text,
-          createdAt: chat.lastMessage.createdAt,
-          isFromCreator: chat.lastMessage.isFromCreator,
-        }])
-      }
-      
-      // Set basic fan profile from chat data
-      setFanProfile({
-        uuid: chat?.user.uuid || userUuid,
-        handle: chat?.user.handle || '',
-        displayName: chat?.user.displayName || '',
-        avatarUrl: chat?.user.avatarUrl,
-      })
-    } catch (error) {
-      console.error('Error fetching messages:', error)
-    }
-  }
+  // Reset selected chat when model changes
+  useEffect(() => {
+    setSelectedChat(null)
+  }, [selectedModel?.id])
 
-  const sendMessage = async () => {
-    if (!messageInput.trim() || !selectedChat || !selectedModel) return
+  const handleSendMessage = async () => {
+    if (!messageInput.trim() || sendingMessage) return
     
     setSendingMessage(true)
-    const messageText = messageInput
+    const text = messageInput
     setMessageInput('')
+
+    const success = await sendMessageApi(text)
     
-    // Optimistically add message to UI
-    const tempMessage: Message = {
-      uuid: `temp-${Date.now()}`,
-      text: messageText,
-      createdAt: new Date().toISOString(),
-      isFromCreator: true,
-    }
-    setMessages(prev => [...prev, tempMessage])
-    
-    try {
-      const response = await fetch(`/api/creators/${selectedModel.id}/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userUuid: selectedChat.user.uuid,
-          text: messageText,
-        }),
-      })
-      
-      const data = await response.json()
-      
-      if (response.ok) {
-        toast.success('Message sent!')
-      } else {
-        toast.error(data.error || 'Failed to send message')
-        // Remove optimistic message on error
-        setMessages(prev => prev.filter(m => m.uuid !== tempMessage.uuid))
-        setMessageInput(messageText) // Restore the message
-      }
-    } catch (error) {
+    if (success) {
+      toast.success('Message sent!')
+    } else {
       toast.error('Failed to send message')
-      setMessages(prev => prev.filter(m => m.uuid !== tempMessage.uuid))
-      setMessageInput(messageText)
-    } finally {
-      setSendingMessage(false)
+      setMessageInput(text) // Restore on failure
     }
+    
+    setSendingMessage(false)
   }
 
+  // Filter chats based on search
   const filteredChats = chats.filter(chat => {
-    if (filter === 'unread' && chat.unreadCount === 0) return false
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase()
-      return chat.user.displayName.toLowerCase().includes(query) ||
-             chat.user.handle.toLowerCase().includes(query)
-    }
-    return true
+    if (!searchQuery) return true
+    const query = searchQuery.toLowerCase()
+    return (
+      chat.user.displayName.toLowerCase().includes(query) ||
+      chat.user.handle.toLowerCase().includes(query)
+    )
   })
 
   if (models.length === 0) {
@@ -260,16 +172,15 @@ export default function MessagesClient({ models }: MessagesClientProps) {
       {/* Left Sidebar - Conversations */}
       <div className="w-80 border-r border-zinc-800 flex flex-col bg-[#0d1321]">
         {/* Model Tabs */}
-        <div className="flex items-center gap-2 p-3 border-b border-zinc-800 bg-[#0a0f1a]">
+        <div className="flex items-center gap-2 p-3 border-b border-zinc-800 bg-[#0a0f1a] overflow-x-auto">
           {models.map((model) => (
             <button
               key={model.id}
               onClick={() => {
                 setSelectedModel(model)
                 setSelectedChat(null)
-                setMessages([])
               }}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
                 selectedModel?.id === model.id
                   ? 'bg-zinc-800 text-white'
                   : 'text-zinc-400 hover:bg-zinc-800/50'
@@ -282,14 +193,11 @@ export default function MessagesClient({ models }: MessagesClientProps) {
                 </AvatarFallback>
               </Avatar>
               <span className="truncate max-w-[100px]">{model.name}</span>
-              {selectedModel?.id === model.id && (
-                <X className="w-3 h-3 text-zinc-500" />
+              {model.unread_messages && model.unread_messages > 0 && (
+                <Badge className="bg-green-500 text-xs">{model.unread_messages}</Badge>
               )}
             </button>
           ))}
-          <Button variant="ghost" size="icon" className="h-8 w-8 text-zinc-400">
-            <Plus className="w-4 h-4" />
-          </Button>
         </div>
 
         {/* Filter Tabs */}
@@ -314,11 +222,11 @@ export default function MessagesClient({ models }: MessagesClientProps) {
           <Button
             variant="ghost"
             size="icon"
-            onClick={fetchChats}
-            disabled={loading}
+            onClick={refreshChats}
+            disabled={chatsLoading}
             className="h-8 w-8 text-zinc-400"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${chatsLoading ? 'animate-spin' : ''}`} />
           </Button>
         </div>
 
@@ -327,7 +235,7 @@ export default function MessagesClient({ models }: MessagesClientProps) {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
             <Input
-              placeholder="Search"
+              placeholder="Search fans..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-9 bg-zinc-800/50 border-zinc-700 text-white placeholder:text-zinc-500"
@@ -337,9 +245,17 @@ export default function MessagesClient({ models }: MessagesClientProps) {
 
         {/* Conversations List */}
         <ScrollArea className="flex-1">
-          {loading && chats.length === 0 ? (
+          {chatsLoading && chats.length === 0 ? (
             <div className="flex items-center justify-center py-8">
               <RefreshCw className="w-6 h-6 animate-spin text-zinc-500" />
+            </div>
+          ) : chatsError ? (
+            <div className="p-4 text-center">
+              <AlertCircle className="w-8 h-8 mx-auto mb-2 text-red-500" />
+              <p className="text-red-400 text-sm">{chatsError}</p>
+              <Button variant="ghost" size="sm" onClick={refreshChats} className="mt-2">
+                Retry
+              </Button>
             </div>
           ) : filteredChats.length === 0 ? (
             <div className="p-4 text-center text-zinc-500">
@@ -349,47 +265,48 @@ export default function MessagesClient({ models }: MessagesClientProps) {
             <div className="p-2">
               {filteredChats.map((chat) => (
                 <button
-                  key={chat.uuid}
-                  onClick={() => {
-                    setSelectedChat(chat)
-                    fetchMessages(chat.user.uuid)
-                  }}
+                  key={chat.user.uuid}
+                  onClick={() => setSelectedChat(chat)}
                   className={`w-full flex items-start gap-3 p-3 rounded-lg transition-colors text-left ${
-                    selectedChat?.uuid === chat.uuid
+                    selectedChat?.user.uuid === chat.user.uuid
                       ? 'bg-zinc-800'
                       : 'hover:bg-zinc-800/50'
                   }`}
                 >
-                  <Avatar className="w-10 h-10 flex-shrink-0">
-                    <AvatarImage src={chat.user.avatarUrl} />
-                    <AvatarFallback className="bg-zinc-700 text-white">
-                      {chat.user.displayName?.[0]?.toUpperCase() || 'U'}
-                    </AvatarFallback>
-                  </Avatar>
+                  <div className="relative">
+                    <Avatar className="w-10 h-10 flex-shrink-0">
+                      <AvatarImage src={chat.user.avatarUrl || undefined} />
+                      <AvatarFallback className="bg-zinc-700 text-white">
+                        {chat.user.displayName?.[0]?.toUpperCase() || 'U'}
+                      </AvatarFallback>
+                    </Avatar>
+                    {chat.user.isTopSpender && (
+                      <Crown className="absolute -top-1 -right-1 w-4 h-4 text-yellow-500" />
+                    )}
+                  </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-medium text-white truncate">
-                        {chat.user.displayName}
+                        {chat.user.nickname || chat.user.displayName}
                       </span>
-                      <div className="flex items-center gap-1">
-                        <Sparkles className="w-3 h-3 text-violet-400" />
-                      </div>
+                      <span className="text-xs text-zinc-500 flex-shrink-0">
+                        {formatRelativeTime(chat.lastMessageAt)}
+                      </span>
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className="text-sm text-zinc-400 truncate">
                         @{chat.user.handle}
                       </span>
-                      <span className="text-xs text-zinc-500">
-                        {chat.lastMessage && formatRelativeTime(chat.lastMessage.createdAt)}
-                      </span>
                     </div>
                     {chat.lastMessage && (
                       <div className="flex items-center gap-2 mt-1">
-                        {chat.unreadCount > 0 && (
+                        {chat.unreadMessagesCount > 0 && (
                           <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
                         )}
                         <p className="text-sm text-zinc-400 truncate">
-                          {chat.lastMessage.text}
+                          {chat.lastMessage.hasMedia && !chat.lastMessage.text
+                            ? '📷 Media'
+                            : chat.lastMessage.text || 'No message'}
                         </p>
                       </div>
                     )}
@@ -409,7 +326,7 @@ export default function MessagesClient({ models }: MessagesClientProps) {
             <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-[#0d1321]">
               <div className="flex items-center gap-3">
                 <Avatar className="w-10 h-10">
-                  <AvatarImage src={selectedChat.user.avatarUrl} />
+                  <AvatarImage src={selectedChat.user.avatarUrl || undefined} />
                   <AvatarFallback className="bg-zinc-700 text-white">
                     {selectedChat.user.displayName?.[0]?.toUpperCase()}
                   </AvatarFallback>
@@ -417,25 +334,38 @@ export default function MessagesClient({ models }: MessagesClientProps) {
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-white">
-                      {selectedChat.user.displayName}
+                      {selectedChat.user.nickname || selectedChat.user.displayName}
                     </span>
                     <span className="text-zinc-400 text-sm">
                       @{selectedChat.user.handle}
                     </span>
+                    {selectedChat.user.isTopSpender && (
+                      <Badge className="bg-yellow-500/20 text-yellow-500 text-xs gap-1">
+                        <Crown className="w-3 h-3" />
+                        Top Spender
+                      </Badge>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-red-500" />
-                    <span className="text-xs text-zinc-500">is offline</span>
+                    <span className="text-xs text-zinc-500">
+                      Member since {new Date(selectedChat.user.registeredAt).toLocaleDateString()}
+                    </span>
                   </div>
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={refreshMessages}
+                  disabled={messagesLoading}
+                  className="text-zinc-400"
+                >
+                  <RefreshCw className={`w-4 h-4 ${messagesLoading ? 'animate-spin' : ''}`} />
+                </Button>
                 <Badge className="bg-violet-600 text-white gap-1">
                   <Sparkles className="w-3 h-3" />
                   AI enabled
-                </Badge>
-                <Badge variant="outline" className="border-zinc-700 text-zinc-400">
-                  9/10 Scripts available
                 </Badge>
               </div>
             </div>
@@ -443,45 +373,89 @@ export default function MessagesClient({ models }: MessagesClientProps) {
             {/* Messages Area */}
             <ScrollArea className="flex-1 p-4">
               <div className="space-y-4 max-w-3xl mx-auto">
-                {messages.map((message) => (
-                  <div
-                    key={message.uuid}
-                    className={`flex ${message.isFromCreator ? 'justify-start' : 'justify-end'}`}
-                  >
-                    {message.isFromCreator && (
-                      <Avatar className="w-8 h-8 mr-2 flex-shrink-0">
-                        <AvatarImage src={selectedModel?.avatar_url || undefined} />
-                        <AvatarFallback className="bg-violet-600 text-xs">
-                          {selectedModel?.name?.[0]}
-                        </AvatarFallback>
-                      </Avatar>
-                    )}
-                    <div className="max-w-[70%]">
-                      <div
-                        className={`rounded-2xl px-4 py-2.5 ${
-                          message.isFromCreator
-                            ? 'bg-zinc-700 text-white'
-                            : 'bg-blue-600 text-white'
-                        }`}
-                      >
-                        <p className="text-sm">{message.text}</p>
-                      </div>
-                      <div className="flex items-center gap-2 mt-1 px-1">
-                        <span className="text-xs text-zinc-500">
-                          {formatTime(message.createdAt)}
-                        </span>
-                        {message.isFromCreator && (
-                          <>
-                            <span className="text-blue-400">✓✓</span>
-                            {message.sentByAI && (
-                              <span className="text-xs text-zinc-500">• Sent by AI</span>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </div>
+                {messagesLoading && messages.length === 0 ? (
+                  <div className="flex items-center justify-center py-8">
+                    <RefreshCw className="w-6 h-6 animate-spin text-zinc-500" />
                   </div>
-                ))}
+                ) : messagesError ? (
+                  <div className="text-center py-8">
+                    <AlertCircle className="w-8 h-8 mx-auto mb-2 text-red-500" />
+                    <p className="text-red-400">{messagesError}</p>
+                  </div>
+                ) : messages.length === 0 ? (
+                  <div className="text-center py-8 text-zinc-500">
+                    <MessageCircle className="w-12 h-12 mx-auto mb-3" />
+                    <p>No messages yet. Start the conversation!</p>
+                  </div>
+                ) : (
+                  messages.map((message) => (
+                    <div
+                      key={message.uuid}
+                      className={`flex ${message.isFromCreator ? 'justify-end' : 'justify-start'}`}
+                    >
+                      {!message.isFromCreator && (
+                        <Avatar className="w-8 h-8 mr-2 flex-shrink-0">
+                          <AvatarImage src={selectedChat.user.avatarUrl || undefined} />
+                          <AvatarFallback className="bg-zinc-700 text-xs">
+                            {selectedChat.user.displayName?.[0]?.toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                      )}
+                      <div className="max-w-[70%]">
+                        <div
+                          className={`rounded-2xl px-4 py-2.5 ${
+                            message.isFromCreator
+                              ? message.isPending
+                                ? 'bg-violet-600/50 text-white/70'
+                                : message.isFailed
+                                ? 'bg-red-600/50 text-white'
+                                : 'bg-violet-600 text-white'
+                              : 'bg-zinc-700 text-white'
+                          }`}
+                        >
+                          {message.hasMedia && (
+                            <div className="flex items-center gap-1 text-sm opacity-75 mb-1">
+                              <ImageIcon className="w-4 h-4" />
+                              <span>{message.mediaType || 'Media'}</span>
+                            </div>
+                          )}
+                          {message.pricing && (
+                            <div className="flex items-center gap-1 text-sm text-yellow-300 mb-1">
+                              <DollarSign className="w-4 h-4" />
+                              <span>${message.pricing.USD.price} PPV</span>
+                              {message.purchasedAt && <Check className="w-4 h-4" />}
+                            </div>
+                          )}
+                          <p className="text-sm whitespace-pre-wrap">{message.text || ''}</p>
+                        </div>
+                        <div className="flex items-center gap-2 mt-1 px-1">
+                          <span className="text-xs text-zinc-500">
+                            {formatTime(message.sentAt)}
+                          </span>
+                          {message.isFromCreator && (
+                            <>
+                              {message.isPending ? (
+                                <Clock className="w-3 h-3 text-zinc-500" />
+                              ) : message.isFailed ? (
+                                <AlertCircle className="w-3 h-3 text-red-500" />
+                              ) : (
+                                <CheckCheck className="w-3 h-3 text-blue-400" />
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      {message.isFromCreator && (
+                        <Avatar className="w-8 h-8 ml-2 flex-shrink-0">
+                          <AvatarImage src={selectedModel?.avatar_url || undefined} />
+                          <AvatarFallback className="bg-violet-600 text-xs">
+                            {selectedModel?.name?.[0]}
+                          </AvatarFallback>
+                        </Avatar>
+                      )}
+                    </div>
+                  ))
+                )}
                 <div ref={messagesEndRef} />
               </div>
             </ScrollArea>
@@ -493,30 +467,37 @@ export default function MessagesClient({ models }: MessagesClientProps) {
                   <Smile className="w-5 h-5" />
                 </Button>
                 <Button variant="ghost" size="icon" className="text-zinc-400 hover:text-white">
-                  <Clock className="w-5 h-5" />
+                  <ImageIcon className="w-5 h-5" />
                 </Button>
                 <Button variant="ghost" size="icon" className="text-zinc-400 hover:text-white">
                   <DollarSign className="w-5 h-5" />
                 </Button>
                 <Input
-                  placeholder="Type something..."
+                  placeholder="Type a message..."
                   value={messageInput}
                   onChange={(e) => setMessageInput(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault()
-                      sendMessage()
+                      handleSendMessage()
                     }
                   }}
-                  className="flex-1 bg-transparent border-0 text-white placeholder:text-zinc-500 focus-visible:ring-0"
+                  className="flex-1 bg-zinc-800/50 border-zinc-700 text-white placeholder:text-zinc-500"
+                  disabled={sendingMessage}
                 />
                 <Button
-                  onClick={sendMessage}
+                  onClick={handleSendMessage}
                   disabled={!messageInput.trim() || sendingMessage}
                   className="bg-violet-600 hover:bg-violet-700 gap-2"
                 >
-                  Send
-                  <Send className="w-4 h-4" />
+                  {sendingMessage ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      Send
+                      <Send className="w-4 h-4" />
+                    </>
+                  )}
                 </Button>
               </div>
             </div>
@@ -533,148 +514,122 @@ export default function MessagesClient({ models }: MessagesClientProps) {
 
       {/* Right Sidebar - Fan Profile */}
       <div className="w-80 border-l border-zinc-800 bg-[#0d1321] flex flex-col">
-        {selectedChat && fanProfile ? (
+        {selectedChat ? (
           <>
-            {/* Profile Toggle */}
-            <div className="flex border-b border-zinc-800">
-              <button className="flex-1 py-3 text-sm font-medium text-white border-b-2 border-white flex items-center justify-center gap-2">
-                <Heart className="w-4 h-4" />
-                Fan
-              </button>
-              <button className="flex-1 py-3 text-sm font-medium text-zinc-500 flex items-center justify-center gap-2">
-                <Sparkles className="w-4 h-4" />
-                Creator
-              </button>
+            {/* Profile Header */}
+            <div className="p-4 border-b border-zinc-800">
+              <div className="flex items-center gap-3">
+                <Avatar className="w-16 h-16">
+                  <AvatarImage src={selectedChat.user.avatarUrl || undefined} />
+                  <AvatarFallback className="bg-zinc-700 text-xl">
+                    {selectedChat.user.displayName?.[0]?.toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <h2 className="text-lg font-semibold text-white">
+                    {selectedChat.user.nickname || selectedChat.user.displayName}
+                  </h2>
+                  <p className="text-zinc-400 text-sm">@{selectedChat.user.handle}</p>
+                  {selectedChat.user.isTopSpender && (
+                    <Badge className="mt-1 bg-yellow-500/20 text-yellow-500">
+                      <Crown className="w-3 h-3 mr-1" />
+                      Top Spender
+                    </Badge>
+                  )}
+                </div>
+              </div>
             </div>
 
             <ScrollArea className="flex-1">
               <div className="p-4 space-y-6">
-                {/* Fan Header */}
+                {/* Activity Stats */}
                 <div>
-                  <h2 className="text-xl font-semibold text-white">
-                    {fanProfile.displayName}
-                  </h2>
-                  <p className="text-zinc-400">@{fanProfile.handle}</p>
-                </div>
-
-                {/* Basic Info */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-zinc-400">
-                      <MapPin className="w-4 h-4" />
-                      <span className="text-sm">Location</span>
+                  <h3 className="font-medium text-white mb-3 flex items-center gap-2">
+                    <Clock className="w-4 h-4" />
+                    Activity
+                  </h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-zinc-800/50 rounded-lg p-3">
+                      <p className="text-xs text-zinc-500">First Message</p>
+                      <p className="text-sm text-white">
+                        {new Date(selectedChat.createdAt).toLocaleDateString()}
+                      </p>
                     </div>
-                    <button className="text-sm text-violet-400 hover:text-violet-300">
-                      Click to select country <ChevronDown className="w-3 h-3 inline" />
-                    </button>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-zinc-400">
-                      <Calendar className="w-4 h-4" />
-                      <span className="text-sm">Birthday</span>
+                    <div className="bg-zinc-800/50 rounded-lg p-3">
+                      <p className="text-xs text-zinc-500">Last Message</p>
+                      <p className="text-sm text-white">
+                        {selectedChat.lastMessageAt 
+                          ? formatRelativeTime(selectedChat.lastMessageAt)
+                          : 'Never'}
+                      </p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button className="text-sm text-violet-400 hover:text-violet-300">
-                        Set date <ChevronDown className="w-3 h-3 inline" />
-                      </button>
-                      <span className="text-zinc-500">-</span>
-                      <span className="text-violet-400">27y</span>
+                    <div className="bg-zinc-800/50 rounded-lg p-3">
+                      <p className="text-xs text-zinc-500">Unread</p>
+                      <p className="text-sm text-white">{selectedChat.unreadMessagesCount}</p>
                     </div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-zinc-400">
-                      <Heart className="w-4 h-4" />
-                      <span className="text-sm">Preferences</span>
-                    </div>
-                    <span className="text-violet-400 text-sm">rock music</span>
-                  </div>
-                </div>
-
-                {/* Activity */}
-                <div>
-                  <button className="flex items-center justify-between w-full py-2">
-                    <span className="font-medium text-white">Activity</span>
-                    <ChevronDown className="w-4 h-4 text-zinc-400" />
-                  </button>
-                  <div className="grid grid-cols-3 gap-4 mt-2">
-                    <div className="text-center">
-                      <p className="text-xs text-zinc-500">Seen</p>
-                      <p className="text-sm text-white">-</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-xs text-zinc-500">Response</p>
-                      <p className="text-sm text-white">2/1 7:26pm</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-xs text-zinc-500">Read</p>
-                      <p className="text-sm text-white">2/1 7:26pm</p>
+                    <div className="bg-zinc-800/50 rounded-lg p-3">
+                      <p className="text-xs text-zinc-500">Muted</p>
+                      <p className="text-sm text-white">{selectedChat.isMuted ? 'Yes' : 'No'}</p>
                     </div>
                   </div>
                 </div>
 
-                {/* Financial */}
+                {/* Quick Actions */}
                 <div>
-                  <button className="flex items-center justify-between w-full py-2">
-                    <span className="font-medium text-white">Financial</span>
-                    <ChevronDown className="w-4 h-4 text-zinc-400" />
-                  </button>
-                  <div className="grid grid-cols-3 gap-4 mt-2">
-                    <div className="text-center">
-                      <p className="text-xs text-zinc-500">Spent</p>
-                      <p className="text-sm text-white">$0</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-xs text-zinc-500">Tips</p>
-                      <p className="text-sm text-white">$0</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-xs text-zinc-500">PPV</p>
-                      <p className="text-sm text-white">$0</p>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-4 mt-3">
-                    <div className="text-center">
-                      <p className="text-xs text-zinc-500">Sub</p>
-                      <p className="text-sm text-white">No</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-xs text-zinc-500">Avg Tips</p>
-                      <p className="text-sm text-white">$0</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-xs text-zinc-500">Avg PPV</p>
-                      <p className="text-sm text-white">$0</p>
-                    </div>
+                  <h3 className="font-medium text-white mb-3">Quick Actions</h3>
+                  <div className="space-y-2">
+                    <Button variant="outline" className="w-full justify-start border-zinc-700 text-zinc-300">
+                      <DollarSign className="w-4 h-4 mr-2" />
+                      Send PPV Content
+                    </Button>
+                    <Button variant="outline" className="w-full justify-start border-zinc-700 text-zinc-300">
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      Use AI Script
+                    </Button>
+                    <Button variant="outline" className="w-full justify-start border-zinc-700 text-zinc-300">
+                      <ImageIcon className="w-4 h-4 mr-2" />
+                      Open Vault
+                    </Button>
                   </div>
                 </div>
 
-                {/* Custom Attributes */}
+                {/* Notes Section */}
                 <div>
-                  <button className="flex items-center justify-between w-full py-2">
-                    <span className="font-medium text-white">Custom Attributes (10)</span>
-                    <ChevronDown className="w-4 h-4 text-zinc-400" />
-                  </button>
+                  <h3 className="font-medium text-white mb-3 flex items-center gap-2">
+                    <MessageCircle className="w-4 h-4" />
+                    Notes
+                  </h3>
+                  <Textarea
+                    placeholder="Add notes about this fan..."
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    className="bg-zinc-800/50 border-zinc-700 text-white placeholder:text-zinc-500 min-h-[100px]"
+                  />
                   <Button
-                    variant="outline"
-                    className="w-full mt-2 border-zinc-700 text-zinc-400 hover:text-white"
+                    variant="ghost"
+                    size="sm"
+                    className="mt-2 text-zinc-400"
+                    onClick={() => toast.info('Notes saving coming soon!')}
                   >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add
+                    Save Notes
                   </Button>
-                  <div className="mt-3 space-y-2">
-                    <div className="flex items-center justify-between p-2 rounded bg-zinc-800/50">
-                      <span className="text-sm text-zinc-400">Payday</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm text-white">N/A</span>
-                        <MoreVertical className="w-4 h-4 text-zinc-500" />
-                      </div>
+                </div>
+
+                {/* Member Info */}
+                <div>
+                  <h3 className="font-medium text-white mb-3">Member Info</h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-zinc-400">User ID</span>
+                      <span className="text-white font-mono text-xs truncate max-w-[150px]">
+                        {selectedChat.user.uuid}
+                      </span>
                     </div>
-                    <div className="flex items-center justify-between p-2 rounded bg-zinc-800/50">
-                      <span className="text-sm text-zinc-400">Salary</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm text-white">-</span>
-                        <MoreVertical className="w-4 h-4 text-zinc-500" />
-                      </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-zinc-400">Registered</span>
+                      <span className="text-white">
+                        {new Date(selectedChat.user.registeredAt).toLocaleDateString()}
+                      </span>
                     </div>
                   </div>
                 </div>
