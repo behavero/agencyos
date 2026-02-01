@@ -35,57 +35,72 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
   const [isConnecting, setIsConnecting] = useState(false)
 
   // OAuth Popup Handler
-  const handleOAuthPopup = () => {
+  const handleOAuthPopup = async () => {
     setIsConnecting(true)
     
-    // Popup window dimensions
-    const width = 600
-    const height = 700
-    const left = window.screenX + (window.outerWidth - width) / 2
-    const top = window.screenY + (window.outerHeight - height) / 2
-    
-    // Open OAuth in popup
-    const popup = window.open(
-      '/api/auth/fanvue',
-      'fanvue-oauth',
-      `width=${width},height=${height},left=${left},top=${top},toolbar=no,location=no,status=no,menubar=no,scrollbars=yes,resizable=yes`
-    )
-    
-    if (!popup) {
-      toast.error('Please allow popups for this site')
-      setIsConnecting(false)
-      return
-    }
-    
-    // Listen for OAuth completion
-    const handleMessage = (event: MessageEvent) => {
-      // Verify origin
-      if (event.origin !== window.location.origin) return
+    try {
+      // Get the OAuth URL from our API (stores PKCE in cookies)
+      const response = await fetch('/api/auth/fanvue/url')
+      if (!response.ok) {
+        throw new Error('Failed to generate OAuth URL')
+      }
       
-      if (event.data.type === 'oauth-success') {
-        console.log('[OAuth] Success received from popup')
-        popup?.close()
-        toast.success('🎉 Creator connected successfully!')
+      const { url } = await response.json()
+      console.log('[OAuth] Opening popup with URL:', url)
+      
+      // Popup window dimensions
+      const width = 600
+      const height = 700
+      const left = window.screenX + (window.outerWidth - width) / 2
+      const top = window.screenY + (window.outerHeight - height) / 2
+      
+      // Open Fanvue OAuth directly in popup
+      const popup = window.open(
+        url, // Direct Fanvue URL, not our API route
+        'fanvue-oauth',
+        `width=${width},height=${height},left=${left},top=${top},toolbar=no,location=no,status=no,menubar=no,scrollbars=yes,resizable=yes`
+      )
+      
+      if (!popup) {
+        toast.error('Please allow popups for this site')
         setIsConnecting(false)
-        router.refresh()
-      } else if (event.data.type === 'oauth-error') {
-        console.error('[OAuth] Error:', event.data.error)
-        popup?.close()
-        toast.error(event.data.message || 'Failed to connect Fanvue account')
-        setIsConnecting(false)
+        return
       }
+      
+      // Listen for OAuth completion
+      const handleMessage = (event: MessageEvent) => {
+        // Verify origin
+        if (event.origin !== window.location.origin) return
+        
+        if (event.data.type === 'oauth-success') {
+          console.log('[OAuth] Success received from popup')
+          popup?.close()
+          toast.success('🎉 Creator connected successfully!')
+          setIsConnecting(false)
+          router.refresh()
+        } else if (event.data.type === 'oauth-error') {
+          console.error('[OAuth] Error:', event.data.error)
+          popup?.close()
+          toast.error(event.data.message || 'Failed to connect Fanvue account')
+          setIsConnecting(false)
+        }
+      }
+      
+      window.addEventListener('message', handleMessage)
+      
+      // Poll popup to detect manual close
+      const pollTimer = setInterval(() => {
+        if (popup?.closed) {
+          clearInterval(pollTimer)
+          window.removeEventListener('message', handleMessage)
+          setIsConnecting(false)
+        }
+      }, 500)
+    } catch (error) {
+      console.error('[OAuth] Error opening popup:', error)
+      toast.error('Failed to start OAuth flow')
+      setIsConnecting(false)
     }
-    
-    window.addEventListener('message', handleMessage)
-    
-    // Poll popup to detect manual close
-    const pollTimer = setInterval(() => {
-      if (popup?.closed) {
-        clearInterval(pollTimer)
-        window.removeEventListener('message', handleMessage)
-        setIsConnecting(false)
-      }
-    }, 500)
   }
 
   // Handle OAuth success/error from URL params (fallback for direct navigation)
