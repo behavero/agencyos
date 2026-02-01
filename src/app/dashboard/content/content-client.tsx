@@ -3,7 +3,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import type { Database } from '@/types/database.types'
 import {
   Target,
   TrendingUp,
@@ -17,7 +16,16 @@ import {
 } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
 
-type ContentAnalysis = Database['public']['Tables']['content_analysis']['Row']
+// Local type definition
+interface ContentAnalysis {
+  id: string
+  post_url?: string
+  platform?: string
+  views?: number
+  conversion_rate?: number
+  ai_tags?: any
+  performance_score?: number
+}
 
 interface ContentIntelClientProps {
   contentData: ContentAnalysis[]
