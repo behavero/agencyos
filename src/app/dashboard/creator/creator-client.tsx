@@ -73,7 +73,7 @@ export default function CreatorClient({ profile, agency }: CreatorClientProps) {
                 id="taxJurisdiction"
                 className="w-full px-3 py-2 rounded-md border border-border bg-background"
                 value={agencyForm.tax_jurisdiction || 'US'}
-                onChange={(e) => setAgencyForm({ ...agencyForm, tax_jurisdiction: e.target.value })}
+                onChange={(e) => setAgencyForm({ ...agencyForm, tax_jurisdiction: e.target.value as 'RO' | 'US' | 'EE' | 'FR' })}
               >
                 <option value="US">United States</option>
                 <option value="RO">Romania</option>
