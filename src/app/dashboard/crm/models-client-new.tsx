@@ -43,6 +43,9 @@ export default function ModelsClient({ models, agencyId }: ModelsClientProps) {
   // Handle OAuth success
   useEffect(() => {
     const success = searchParams.get('success')
+    const error = searchParams.get('error')
+    const details = searchParams.get('details')
+
     if (success === 'model_added') {
       toast.success('🎉 Model connected successfully!')
       setAddModelOpen(false)
@@ -52,12 +55,34 @@ export default function ModelsClient({ models, agencyId }: ModelsClientProps) {
       window.history.replaceState({}, '', url.toString())
       // Refresh
       setTimeout(() => router.refresh(), 1000)
+    } else if (error) {
+      const errorMessages: Record<string, string> = {
+        fanvue_oauth_failed: 'Failed to connect Fanvue account',
+        invalid_state: 'Security validation failed. Please try again.',
+        missing_verifier: 'Session expired. Please try again.',
+        not_logged_in: 'Please log in first',
+      }
+      const message = errorMessages[error] || 'An error occurred'
+      const fullMessage = details ? `${message}: ${decodeURIComponent(details)}` : message
+      toast.error(fullMessage)
+      
+      // Clear URL params
+      const url = new URL(window.location.href)
+      url.searchParams.delete('error')
+      url.searchParams.delete('details')
+      window.history.replaceState({}, '', url.toString())
     }
   }, [searchParams, router])
 
   const handleConnectFanvue = () => {
-    // Redirect to Fanvue OAuth
-    window.location.href = '/api/auth/fanvue'
+    console.log('[CRM] Starting Fanvue OAuth flow...')
+    try {
+      // Redirect to Fanvue OAuth
+      window.location.href = '/api/auth/fanvue'
+    } catch (error) {
+      console.error('[CRM] Error starting OAuth:', error)
+      toast.error('Failed to start connection process')
+    }
   }
 
   return (
@@ -260,7 +285,7 @@ export default function ModelsClient({ models, agencyId }: ModelsClientProps) {
                 <p className="text-muted-foreground mb-4 max-w-sm">
                   Connect your first Fanvue creator to start tracking performance.
                 </p>
-                <Button onClick={() => router.push('/dashboard/crm')} className="gap-2">
+                <Button onClick={() => setAddModelOpen(true)} className="gap-2">
                   <Plus className="w-4 h-4" />
                   Add Your First Model
                 </Button>
