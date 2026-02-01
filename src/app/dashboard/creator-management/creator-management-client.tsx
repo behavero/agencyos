@@ -23,8 +23,18 @@ import {
   Eye, 
   MoreVertical,
   Shield,
-  Loader2
+  Loader2,
+  Trash2,
+  Settings,
+  RefreshCw
 } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 
@@ -46,6 +56,33 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+
+  // Handle delete creator
+  const handleDeleteCreator = async (id: string, name: string) => {
+    if (!confirm(`Are you sure you want to delete ${name}?`)) return
+
+    try {
+      const response = await fetch(`/api/creators/${id}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Failed to delete')
+      }
+
+      toast.success(`${name} has been removed`)
+      router.refresh()
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to delete creator')
+    }
+  }
+
+  // Handle refresh stats
+  const handleRefreshStats = async (id: string) => {
+    toast.info('Refreshing stats... (coming soon)')
+    // TODO: Implement real Fanvue API call
+  }
 
   // Handle form submission
   const handleConnect = async (e: React.FormEvent) => {
@@ -251,9 +288,31 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
                           {model.status === 'active' ? '🟢 Active' : '⚫ Inactive'}
                         </Badge>
                       </div>
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <MoreVertical className="w-4 h-4" />
-                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreVertical className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleRefreshStats(model.id)}>
+                            <RefreshCw className="w-4 h-4 mr-2" />
+                            Refresh Stats
+                          </DropdownMenuItem>
+                          <DropdownMenuItem>
+                            <Settings className="w-4 h-4 mr-2" />
+                            Settings
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem 
+                            onClick={() => handleDeleteCreator(model.id, model.name || 'Creator')}
+                            className="text-red-600 focus:text-red-600"
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
                 </div>
