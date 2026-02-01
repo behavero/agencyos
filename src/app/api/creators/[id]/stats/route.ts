@@ -97,21 +97,21 @@ export async function POST(
     ])
 
     // Fetch ALL earnings with pagination (from account creation to now)
-    // Use a very old start date to capture all historical data
-    const earningsStartDate = '2020-01-01' // Fanvue launched ~2021, so this captures everything
-    const earningsEndDate = new Date().toISOString().split('T')[0] // Today
+    // Use ISO 8601 datetime format with timezone as required by Fanvue API
+    const earningsStartDate = '2020-01-01T00:00:00Z' // Fanvue launched ~2021, so this captures everything
+    const earningsEndDate = new Date().toISOString() // Now in ISO 8601 format
     
     let allEarnings: any[] = []
     let earningsCursor: string | null = null
     let earningsPageCount = 0
-    const MAX_EARNINGS_PAGES = 100 // Increased limit for accounts with many transactions
+    const MAX_EARNINGS_PAGES = 200 // Increased limit for accounts with many transactions
 
     try {
       do {
         const params: any = { 
           startDate: earningsStartDate,
           endDate: earningsEndDate,
-          size: 100, // Max per page
+          size: 50, // Max allowed by API (1-50)
         }
         if (earningsCursor) {
           params.cursor = earningsCursor
@@ -120,19 +120,23 @@ export async function POST(
         console.log(`[Stats API] Fetching earnings page ${earningsPageCount + 1} with params:`, params)
         const earningsPage = await fanvue.getEarnings(params)
         
+        console.log(`[Stats API] Earnings page ${earningsPageCount + 1} response:`, JSON.stringify(earningsPage).substring(0, 500))
+        
         if (earningsPage?.data && Array.isArray(earningsPage.data)) {
           allEarnings = [...allEarnings, ...earningsPage.data]
           earningsCursor = earningsPage.nextCursor || null
           earningsPageCount++
           console.log(`[Stats API] Earnings page ${earningsPageCount}: ${earningsPage.data.length} transactions, total so far: ${allEarnings.length}`)
         } else {
+          console.log('[Stats API] No data in earnings response or data is not array')
           break
         }
       } while (earningsCursor && earningsPageCount < MAX_EARNINGS_PAGES)
       
       console.log(`[Stats API] Fetched ${allEarnings.length} total earnings transactions across ${earningsPageCount} pages`)
     } catch (e: any) {
-      console.error('[Stats API] Earnings error:', e.message, e.statusCode)
+      console.error('[Stats API] Earnings error:', e.message)
+      console.error('[Stats API] Earnings error details:', e.statusCode, e.response)
     }
 
     // Extract values from user info (most reliable source)
