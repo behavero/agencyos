@@ -15,8 +15,8 @@ export async function GET(
 ) {
   const { id } = await params
   const { searchParams } = new URL(request.url)
-  const page = parseInt(searchParams.get('page') || '1')
-  const size = parseInt(searchParams.get('size') || '50')
+  const limit = parseInt(searchParams.get('limit') || '50')
+  const cursor = searchParams.get('cursor') || undefined
 
   try {
     const supabase = await createClient()
@@ -39,7 +39,7 @@ export async function GET(
     }
 
     const fanvue = createFanvueClient(model.fanvue_access_token)
-    const links = await fanvue.getTrackingLinks({ page, size })
+    const links = await fanvue.getTrackingLinks({ limit, cursor })
 
     return NextResponse.json(links)
 
