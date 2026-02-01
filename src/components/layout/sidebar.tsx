@@ -14,6 +14,7 @@ import {
   CreditCard,
   Bell,
   ChevronDown,
+  Bot,
 } from 'lucide-react';
 
 const navigation = [
@@ -22,6 +23,7 @@ const navigation = [
     items: [
       { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
       { name: 'Messages', href: '/dashboard/messages', icon: MessageSquare },
+      { name: 'Alfred (AI)', href: '/dashboard/alfred', icon: Bot, highlight: true },
     ],
   },
   {
@@ -72,6 +74,7 @@ export function Sidebar() {
             <ul className="space-y-1">
               {section.items.map((item) => {
                 const isActive = pathname === item.href;
+                const isHighlighted = 'highlight' in item && item.highlight;
                 return (
                   <li key={item.name}>
                     <Link
@@ -80,11 +83,18 @@ export function Sidebar() {
                         'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
                         isActive
                           ? 'bg-primary text-primary-foreground shadow-sm'
+                          : isHighlighted
+                          ? 'text-yellow-500 hover:bg-yellow-500/10 border border-yellow-500/30'
                           : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                       )}
                     >
                       <item.icon className="w-5 h-5" />
                       {item.name}
+                      {isHighlighted && (
+                        <span className="ml-auto text-xs px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-500 font-semibold">
+                          NEW
+                        </span>
+                      )}
                     </Link>
                   </li>
                 );
