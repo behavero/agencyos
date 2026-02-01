@@ -246,59 +246,145 @@ export class FanvueClient {
   }
 
   // ==================== CHATS ====================
-  async getChats(params?: { page?: number; size?: number; unread?: boolean }) {
+  async getChats(params?: { 
+    page?: number
+    size?: number
+    filter?: string[]
+    search?: string
+    sortBy?: 'most_recent_messages' | 'online_now' | 'most_unanswered_chats'
+    customListId?: string
+    smartListIds?: string[]
+  }) {
     const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
     return this.request<{
       data: Array<{
-        uuid: string
-        user: { uuid: string; displayName: string; avatarUrl?: string }
-        lastMessage?: { content: string; createdAt: string }
-        unreadCount: number
+        createdAt: string
+        lastMessageAt: string | null
+        isRead: boolean
+        isMuted: boolean
+        unreadMessagesCount: number
+        user: { 
+          uuid: string
+          handle: string
+          displayName: string
+          nickname: string | null
+          isTopSpender: boolean
+          avatarUrl: string | null
+          registeredAt: string
+        }
+        lastMessage: {
+          text: string | null
+          type: string
+          uuid: string
+          sentAt: string
+          hasMedia: boolean | null
+          mediaType: string | null
+          senderUuid: string
+        } | null
       }>
-      totalCount: number
+      pagination: { page: number; size: number; hasMore: boolean }
     }>(`/chats${query}`)
   }
 
   async getUnreadCount() {
-    return this.request<{ count: number }>('/chats/unread-count')
+    return this.request<{ 
+      unreadChatsCount: number
+      unreadMessagesCount: number
+      unreadNotifications: {
+        newFollower: number
+        newPostComment: number
+        newPostLike: number
+        newPurchase: number
+        newSubscriber: number
+        newTip: number
+        newPromotion: number
+      }
+    }>('/chats/unread')
   }
 
   async createChat(userUuid: string) {
-    return this.request<{ uuid: string }>('/chats', {
+    return this.request<{ message: string }>('/chats', {
       method: 'POST',
       body: JSON.stringify({ userUuid }),
     })
   }
 
-  // ==================== MESSAGES ====================
-  async getMessages(chatUuid: string, params?: { page?: number; size?: number }) {
+  async updateChat(userUuid: string, data: { isRead?: boolean; isMuted?: boolean; nickname?: string }) {
+    return this.request(`/chats/${userUuid}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async getChatMedia(userUuid: string, params?: { cursor?: string; mediaType?: string; limit?: number }) {
     const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
     return this.request<{
       data: Array<{
         uuid: string
-        content: string
-        createdAt: string
-        isFromCreator: boolean
-        price?: number
-        isPurchased?: boolean
+        messageUuid: string
+        mediaType: string
+        created_at: string
+        sentAt: string
+        ownerUuid: string
+        name: string | null
+        variants: Array<{ variantType: string; url?: string; width?: number; height?: number }>
       }>
-      totalCount: number
-    }>(`/chats/${chatUuid}/messages${query}`)
+      nextCursor: string | null
+    }>(`/chats/${userUuid}/media${query}`)
   }
 
-  async sendMessage(chatUuid: string, data: { content: string; mediaIds?: string[]; price?: number }) {
-    return this.request<{ uuid: string }>(`/chats/${chatUuid}/messages`, {
+  async getBatchStatuses(userUuids: string[]) {
+    return this.request<Record<string, { isOnline: boolean; lastSeenAt: string | null }>>('/chats/statuses', {
+      method: 'POST',
+      body: JSON.stringify({ userUuids }),
+    })
+  }
+
+  // ==================== MESSAGES ====================
+  async getMessages(userUuid: string, params?: { page?: number; size?: number }) {
+    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    return this.request<{
+      data: Array<{
+        uuid: string
+        text: string | null
+        sentAt: string | null
+        sender: { uuid: string; handle: string }
+        recipient: { uuid: string; handle: string }
+        hasMedia: boolean | null
+        mediaType: string | null
+        type: string
+        pricing: { USD: { price: number } } | null
+        purchasedAt: string | null
+      }>
+      pagination: { page: number; size: number; hasMore: boolean }
+    }>(`/chats/${userUuid}/messages${query}`)
+  }
+
+  async sendMessage(userUuid: string, data: { text?: string | null; mediaUuids?: string[]; price?: number | null; templateUuid?: string | null }) {
+    return this.request<{ messageUuid: string }>(`/chats/${userUuid}/message`, {
       method: 'POST',
       body: JSON.stringify(data),
     })
   }
 
-  async deleteMessage(chatUuid: string, messageUuid: string) {
-    return this.request(`/chats/${chatUuid}/messages/${messageUuid}`, { method: 'DELETE' })
+  async deleteMessage(userUuid: string, messageUuid: string) {
+    return this.request(`/chats/${userUuid}/messages/${messageUuid}`, { method: 'DELETE' })
   }
 
-  async sendMassMessage(data: { userUuids: string[]; content: string; mediaIds?: string[]; price?: number }) {
-    return this.request<{ messageCount: number }>('/chats/mass-message', {
+  async sendMassMessage(data: { 
+    text?: string
+    mediaUuids?: string[]
+    price?: number | null
+    includedLists: {
+      smartListUuids?: string[]
+      customListUuids?: string[]
+    }
+    excludedLists?: {
+      smartListUuids?: string[]
+      customListUuids?: string[]
+    }
+  }) {
+    return this.request<{ id: string; recipientCount: number; createdAt: string }>('/chats/mass-messages', {
       method: 'POST',
       body: JSON.stringify(data),
     })

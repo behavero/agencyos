@@ -126,9 +126,9 @@ export async function POST(
     }
     console.log('[Stats API] Total revenue calculated:', totalRevenue)
 
-    // Unread messages
-    const unreadMessages = unreadCount?.count || 0
-    console.log('[Stats API] Unread messages:', unreadMessages)
+    // Unread messages - API returns unreadMessagesCount
+    const unreadMessages = unreadCount?.unreadMessagesCount || 0
+    console.log('[Stats API] Unread messages:', unreadMessages, 'Unread chats:', unreadCount?.unreadChatsCount || 0)
 
     // Tracking links count
     let totalTrackingLinks = 0
