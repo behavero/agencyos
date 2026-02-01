@@ -45,113 +45,18 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
   const searchParams = useSearchParams()
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [isConnecting, setIsConnecting] = useState(false)
-  const [importMode, setImportMode] = useState<'single' | 'bulk'>('single')
   const [showImportDialog, setShowImportDialog] = useState(false)
+  const [importMode, setImportMode] = useState<'single' | 'bulk'>('single')
   
   // Bulk import state
   const [bulkCreators, setBulkCreators] = useState<Array<{ email: string; password: string }>>([
     { email: '', password: '' }
   ])
 
-  // OAuth Popup Handler
-  const handleOAuthPopup = async () => {
-    setIsConnecting(true)
-    
-    try {
-      console.log('[OAuth DEBUG] Step 1: Fetching OAuth URL from /api/auth/fanvue/url')
-      
-      // Get the OAuth URL from our API (stores PKCE in cookies)
-      const response = await fetch('/api/auth/fanvue/url')
-      
-      console.log('[OAuth DEBUG] Step 2: Response status:', response.status)
-      
-      if (!response.ok) {
-        throw new Error('Failed to generate OAuth URL')
-      }
-      
-      const data = await response.json()
-      console.log('[OAuth DEBUG] Step 3: Received data:', data)
-      console.log('[OAuth DEBUG] Step 4: URL value:', data.url)
-      console.log('[OAuth DEBUG] Step 5: URL starts with https://auth.fanvue.com?', data.url?.startsWith('https://auth.fanvue.com'))
-      
-      const { url } = data
-      
-      if (!url || !url.startsWith('https://auth.fanvue.com')) {
-        console.error('[OAuth DEBUG] ❌ CRITICAL: URL is not a Fanvue URL!', url)
-        toast.error('Invalid OAuth URL received')
-        setIsConnecting(false)
-        return
-      }
-      
-      console.log('[OAuth DEBUG] Step 6: ✅ URL is valid Fanvue OAuth URL')
-      console.log('[OAuth DEBUG] Step 7: Opening popup with window.open()')
-      
-      // Popup window dimensions
-      const width = 600
-      const height = 700
-      const left = window.screenX + (window.outerWidth - width) / 2
-      const top = window.screenY + (window.outerHeight - height) / 2
-      
-      // Open Fanvue OAuth directly in popup
-      const popup = window.open(
-        url, // Direct Fanvue URL, not our API route
-        'fanvue-oauth',
-        `width=${width},height=${height},left=${left},top=${top},toolbar=no,location=no,status=no,menubar=no,scrollbars=yes,resizable=yes`
-      )
-      
-      console.log('[OAuth DEBUG] Step 8: Popup opened?', !!popup)
-      
-      if (!popup) {
-        console.error('[OAuth DEBUG] ❌ Popup was blocked!')
-        toast.error('Please allow popups for this site')
-        setIsConnecting(false)
-        return
-      }
-      
-      console.log('[OAuth DEBUG] Step 9: ✅ Popup opened successfully')
-      console.log('[OAuth DEBUG] Step 10: Popup location:', popup.location?.href)
-      
-      // Listen for OAuth completion
-      const handleMessage = (event: MessageEvent) => {
-        console.log('[OAuth DEBUG] Message received:', event.data)
-        
-        // Verify origin
-        if (event.origin !== window.location.origin) {
-          console.log('[OAuth DEBUG] Ignoring message from:', event.origin)
-          return
-        }
-        
-        if (event.data.type === 'oauth-success') {
-          console.log('[OAuth] Success received from popup')
-          popup?.close()
-          toast.success('🎉 Creator connected successfully!')
-          setIsConnecting(false)
-          router.refresh()
-        } else if (event.data.type === 'oauth-error') {
-          console.error('[OAuth] Error:', event.data.error)
-          popup?.close()
-          toast.error(event.data.message || 'Failed to connect Fanvue account')
-          setIsConnecting(false)
-        }
-      }
-      
-      window.addEventListener('message', handleMessage)
-      
-      // Poll popup to detect manual close
-      const pollTimer = setInterval(() => {
-        if (popup?.closed) {
-          console.log('[OAuth DEBUG] Popup closed by user')
-          clearInterval(pollTimer)
-          window.removeEventListener('message', handleMessage)
-          setIsConnecting(false)
-        }
-      }, 500)
-    } catch (error) {
-      console.error('[OAuth DEBUG] ❌ Exception:', error)
-      toast.error('Failed to start OAuth flow')
-      setIsConnecting(false)
-    }
+  // Simple OAuth redirect (full page - most reliable)
+  const handleOAuthRedirect = () => {
+    // Just navigate to the OAuth route - it will handle the redirect
+    window.location.href = '/api/auth/fanvue'
   }
 
   // Handle OAuth success/error from URL params (fallback for direct navigation)
@@ -310,22 +215,12 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
               <Button
                 onClick={() => {
                   setShowImportDialog(false)
-                  handleOAuthPopup()
+                  handleOAuthRedirect()
                 }}
-                disabled={isConnecting}
                 className="w-full gap-2 bg-violet-600 hover:bg-violet-700 h-12"
               >
-                {isConnecting ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Connecting...
-                  </>
-                ) : (
-                  <>
-                    <UserPlus className="w-4 h-4" />
-                    Connect Account
-                  </>
-                )}
+                <UserPlus className="w-4 h-4" />
+                Connect Account
               </Button>
             </div>
           )}
