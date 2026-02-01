@@ -1,18 +1,48 @@
 import { FANVUE_CONFIG } from '@/lib/fanvue/config'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
   const code = searchParams.get('code')
+  const state = searchParams.get('state')
   const error = searchParams.get('error')
 
-  if (error || !code) {
+  if (error) {
+    console.error('[Fanvue OAuth] Error from Fanvue:', error)
     return NextResponse.redirect(new URL('/dashboard?error=fanvue_oauth_failed', request.url))
   }
 
+  if (!code) {
+    console.error('[Fanvue OAuth] No authorization code received')
+    return NextResponse.redirect(new URL('/dashboard?error=fanvue_oauth_failed', request.url))
+  }
+
+  // Retrieve stored PKCE parameters
+  const cookieStore = await cookies()
+  const codeVerifier = cookieStore.get('fanvue_code_verifier')?.value
+  const storedState = cookieStore.get('fanvue_oauth_state')?.value
+
+  // Validate state (CSRF protection)
+  if (!state || !storedState || state !== storedState) {
+    console.error('[Fanvue OAuth] State mismatch - possible CSRF attack')
+    return NextResponse.redirect(new URL('/dashboard?error=invalid_state', request.url))
+  }
+
+  if (!codeVerifier) {
+    console.error('[Fanvue OAuth] Code verifier not found in cookies')
+    return NextResponse.redirect(new URL('/dashboard?error=missing_verifier', request.url))
+  }
+
+  // Clear cookies
+  cookieStore.delete('fanvue_code_verifier')
+  cookieStore.delete('fanvue_oauth_state')
+
   try {
-    // Exchange code for token
+    console.log('[Fanvue OAuth] Exchanging code for tokens')
+    
+    // Exchange code for token with PKCE verifier
     const tokenResponse = await fetch(FANVUE_CONFIG.endpoints.token, {
       method: 'POST',
       headers: {
@@ -24,14 +54,18 @@ export async function GET(request: NextRequest) {
         redirect_uri: FANVUE_CONFIG.redirectUri,
         client_id: FANVUE_CONFIG.clientId,
         client_secret: FANVUE_CONFIG.clientSecret,
+        code_verifier: codeVerifier, // ✅ PKCE verifier (not challenge!)
       }),
     })
 
     if (!tokenResponse.ok) {
-      throw new Error('Token exchange failed')
+      const errorData = await tokenResponse.json()
+      console.error('[Fanvue OAuth] Token exchange failed:', errorData)
+      throw new Error(`Token exchange failed: ${errorData.error_description || errorData.error}`)
     }
 
     const tokens = await tokenResponse.json()
+    console.log('[Fanvue OAuth] Tokens received successfully')
 
     // Get user info from Fanvue
     const userResponse = await fetch(FANVUE_CONFIG.endpoints.user, {
@@ -41,16 +75,19 @@ export async function GET(request: NextRequest) {
     })
 
     if (!userResponse.ok) {
+      console.error('[Fanvue OAuth] Failed to fetch user info')
       throw new Error('Failed to fetch user info')
     }
 
     const fanvueUser = await userResponse.json()
+    console.log('[Fanvue OAuth] User info retrieved:', fanvueUser.username || fanvueUser.name)
 
     // Store in Supabase
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
     if (!user) {
+      console.error('[Fanvue OAuth] No authenticated user')
       return NextResponse.redirect(new URL('/?error=not_logged_in', request.url))
     }
 
@@ -61,7 +98,7 @@ export async function GET(request: NextRequest) {
       .single()
 
     // Create model entry
-    await supabase.from('models').insert({
+    const { error: insertError } = await supabase.from('models').insert({
       agency_id: profile?.agency_id,
       name: fanvueUser.username || fanvueUser.name,
       avatar_url: fanvueUser.avatar,
@@ -69,9 +106,17 @@ export async function GET(request: NextRequest) {
       status: 'active',
     })
 
+    if (insertError) {
+      console.error('[Fanvue OAuth] Failed to insert model:', insertError)
+      throw insertError
+    }
+
+    console.log('[Fanvue OAuth] Model added successfully')
     return NextResponse.redirect(new URL('/dashboard?success=model_added', request.url))
-  } catch (error) {
-    console.error('Fanvue OAuth error:', error)
-    return NextResponse.redirect(new URL('/dashboard?error=fanvue_oauth_failed', request.url))
+  } catch (error: any) {
+    console.error('[Fanvue OAuth] Error:', error)
+    return NextResponse.redirect(
+      new URL(`/dashboard?error=fanvue_oauth_failed&details=${encodeURIComponent(error.message)}`, request.url)
+    )
   }
 }

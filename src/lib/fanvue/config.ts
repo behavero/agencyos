@@ -4,7 +4,8 @@ export const FANVUE_CONFIG = {
   redirectUri: `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/fanvue/callback`,
   
   endpoints: {
-    authorize: 'https://api.fanvue.com/oauth/authorize',
+    // ✅ FIXED: Correct authorization endpoint per official docs
+    authorize: 'https://auth.fanvue.com/oauth2/auth',
     token: 'https://auth.fanvue.com/oauth2/token',
     user: 'https://api.fanvue.com/v1/users/me',
     earnings: 'https://api.fanvue.com/v1/creator/earnings',
