@@ -32,8 +32,63 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
   const searchParams = useSearchParams()
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [isConnecting, setIsConnecting] = useState(false)
 
-  // Handle OAuth success/error
+  // OAuth Popup Handler
+  const handleOAuthPopup = () => {
+    setIsConnecting(true)
+    
+    // Popup window dimensions
+    const width = 600
+    const height = 700
+    const left = window.screenX + (window.outerWidth - width) / 2
+    const top = window.screenY + (window.outerHeight - height) / 2
+    
+    // Open OAuth in popup
+    const popup = window.open(
+      '/api/auth/fanvue',
+      'fanvue-oauth',
+      `width=${width},height=${height},left=${left},top=${top},toolbar=no,location=no,status=no,menubar=no,scrollbars=yes,resizable=yes`
+    )
+    
+    if (!popup) {
+      toast.error('Please allow popups for this site')
+      setIsConnecting(false)
+      return
+    }
+    
+    // Listen for OAuth completion
+    const handleMessage = (event: MessageEvent) => {
+      // Verify origin
+      if (event.origin !== window.location.origin) return
+      
+      if (event.data.type === 'oauth-success') {
+        console.log('[OAuth] Success received from popup')
+        popup?.close()
+        toast.success('🎉 Creator connected successfully!')
+        setIsConnecting(false)
+        router.refresh()
+      } else if (event.data.type === 'oauth-error') {
+        console.error('[OAuth] Error:', event.data.error)
+        popup?.close()
+        toast.error(event.data.message || 'Failed to connect Fanvue account')
+        setIsConnecting(false)
+      }
+    }
+    
+    window.addEventListener('message', handleMessage)
+    
+    // Poll popup to detect manual close
+    const pollTimer = setInterval(() => {
+      if (popup?.closed) {
+        clearInterval(pollTimer)
+        window.removeEventListener('message', handleMessage)
+        setIsConnecting(false)
+      }
+    }, 500)
+  }
+
+  // Handle OAuth success/error from URL params (fallback for direct navigation)
   useEffect(() => {
     const success = searchParams.get('success')
     const error = searchParams.get('error')
@@ -85,20 +140,24 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
           </p>
         </div>
         
-        {/* NUCLEAR OPTION: Full page navigation with absolute URL + debugging */}
-        <a
-          href="https://onyxos.vercel.app/api/auth/fanvue"
-          onClick={(e) => {
-            console.log('[OAUTH] Link clicked!')
-            console.log('[OAUTH] href:', e.currentTarget.href)
-            console.log('[OAUTH] Will navigate to:', 'https://onyxos.vercel.app/api/auth/fanvue')
-            // Let the browser handle navigation naturally - DO NOT preventDefault
-          }}
-          className="inline-flex items-center justify-center h-11 px-6 font-medium text-zinc-50 bg-violet-600 rounded-md hover:bg-violet-700 transition-colors shadow-lg"
+        {/* OAuth Popup Button */}
+        <Button
+          onClick={handleOAuthPopup}
+          disabled={isConnecting}
+          className="gap-2 shadow-lg bg-violet-600 hover:bg-violet-700"
         >
-          <Plus className="w-4 h-4 mr-2" />
-          Connect Fanvue (Direct)
-        </a>
+          {isConnecting ? (
+            <>
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              Connecting...
+            </>
+          ) : (
+            <>
+              <Plus className="w-4 h-4" />
+              Add Creator
+            </>
+          )}
+        </Button>
       </div>
 
       {/* Search and Filters */}
@@ -134,17 +193,23 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
             <p className="text-muted-foreground mb-6 text-center max-w-md">
               Connect your first Fanvue creator account to start managing their content and performance
             </p>
-            {/* NUCLEAR OPTION: Absolute URL */}
-            <a
-              href="https://onyxos.vercel.app/api/auth/fanvue"
-              onClick={(e) => {
-                console.log('[OAUTH] Empty state link clicked!')
-              }}
-              className="inline-flex items-center justify-center h-11 px-6 font-medium text-zinc-50 bg-violet-600 rounded-md hover:bg-violet-700 transition-colors"
+            <Button
+              onClick={handleOAuthPopup}
+              disabled={isConnecting}
+              className="gap-2 bg-violet-600 hover:bg-violet-700"
             >
-              <Plus className="w-4 h-4 mr-2" />
-              Add Your First Creator
-            </a>
+              {isConnecting ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Connecting...
+                </>
+              ) : (
+                <>
+                  <Plus className="w-4 h-4" />
+                  Add Your First Creator
+                </>
+              )}
+            </Button>
           </CardContent>
         </Card>
       ) : (

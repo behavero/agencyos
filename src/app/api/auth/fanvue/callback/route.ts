@@ -130,11 +130,30 @@ export async function GET(request: NextRequest) {
     }
 
     console.log('[Fanvue OAuth] Model added/updated successfully')
-    return NextResponse.redirect(new URL('/dashboard/creator-management?success=model_added', request.url))
+    
+    // Check if this is a popup window (has window.opener)
+    const isPopup = request.headers.get('referer')?.includes('creator-management')
+    
+    if (isPopup) {
+      // For popup flow: redirect to a success page that will close the popup
+      return NextResponse.redirect(new URL('/oauth-success.html?success=model_added', request.url))
+    } else {
+      // For full-page flow: redirect back to creator management
+      return NextResponse.redirect(new URL('/dashboard/creator-management?success=model_added', request.url))
+    }
   } catch (error: any) {
     console.error('[Fanvue OAuth] Error:', error)
-    return NextResponse.redirect(
-      new URL(`/dashboard/creator-management?error=fanvue_oauth_failed&details=${encodeURIComponent(error.message)}`, request.url)
-    )
+    
+    const isPopup = request.headers.get('referer')?.includes('creator-management')
+    
+    if (isPopup) {
+      return NextResponse.redirect(
+        new URL(`/oauth-success.html?error=fanvue_oauth_failed&details=${encodeURIComponent(error.message)}`, request.url)
+      )
+    } else {
+      return NextResponse.redirect(
+        new URL(`/dashboard/creator-management?error=fanvue_oauth_failed&details=${encodeURIComponent(error.message)}`, request.url)
+      )
+    }
   }
 }
