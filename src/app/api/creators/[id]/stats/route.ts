@@ -75,21 +75,8 @@ export async function POST(
 
     console.log('[Stats API] User info:', JSON.stringify(userInfo, null, 2))
 
-    // Calculate date range for earnings (last 30 days)
-    const endDate = new Date().toISOString()
-    const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
-
-    // Fetch additional stats in parallel with detailed logging
-    const [earnings, unreadCount, trackingLinks] = await Promise.all([
-      // Earnings - fetch last 30 days of transactions
-      fanvue.getEarnings({ startDate, endDate, size: 50 }).then(data => {
-        console.log('[Stats API] Earnings raw:', JSON.stringify(data, null, 2))
-        return data
-      }).catch(e => {
-        console.error('[Stats API] Earnings error:', e.message, e.statusCode)
-        return null
-      }),
-
+    // Fetch stats in parallel with detailed logging
+    const [unreadCount, trackingLinks] = await Promise.all([
       // Unread messages count
       fanvue.getUnreadCount().then(data => {
         console.log('[Stats API] Unread count raw:', JSON.stringify(data, null, 2))
@@ -109,20 +96,48 @@ export async function POST(
       }),
     ])
 
+    // Fetch ALL earnings with pagination (no date filter = all time)
+    let allEarnings: any[] = []
+    let earningsCursor: string | null = null
+    let earningsPageCount = 0
+    const MAX_EARNINGS_PAGES = 50 // Safety limit
+
+    try {
+      do {
+        const earningsPage = await fanvue.getEarnings({ 
+          size: 100, // Max per page
+          cursor: earningsCursor || undefined 
+        })
+        
+        if (earningsPage?.data && Array.isArray(earningsPage.data)) {
+          allEarnings = [...allEarnings, ...earningsPage.data]
+          earningsCursor = earningsPage.nextCursor || null
+          earningsPageCount++
+          console.log(`[Stats API] Earnings page ${earningsPageCount}: ${earningsPage.data.length} transactions, total so far: ${allEarnings.length}`)
+        } else {
+          break
+        }
+      } while (earningsCursor && earningsPageCount < MAX_EARNINGS_PAGES)
+      
+      console.log(`[Stats API] Fetched ${allEarnings.length} total earnings transactions across ${earningsPageCount} pages`)
+    } catch (e: any) {
+      console.error('[Stats API] Earnings error:', e.message, e.statusCode)
+    }
+
     // Extract values from user info (most reliable source)
     const totalFollowers = userInfo?.fanCounts?.followersCount || 0
     const totalSubscribers = userInfo?.fanCounts?.subscribersCount || 0
     const totalPosts = userInfo?.contentCounts?.postCount || 0
     const totalLikes = userInfo?.likesCount || 0
 
-    // Extract earnings - Fanvue returns amounts in CENTS, sum gross from data array
+    // Extract earnings - Fanvue returns amounts in CENTS, sum gross from all pages
     let totalRevenue = 0
-    if (earnings && earnings.data && Array.isArray(earnings.data)) {
-      // Sum up gross earnings from data array (amounts are in cents)
-      const totalCents = earnings.data.reduce((sum: number, item: any) => sum + (item.gross || 0), 0)
+    if (allEarnings.length > 0) {
+      // Sum up gross earnings from all transactions (amounts are in cents)
+      const totalCents = allEarnings.reduce((sum: number, item: any) => sum + (item.gross || 0), 0)
       // Convert cents to dollars
       totalRevenue = totalCents / 100
-      console.log('[Stats API] Earnings: Found', earnings.data.length, 'transactions, total cents:', totalCents, 'dollars:', totalRevenue)
+      console.log('[Stats API] Earnings: Found', allEarnings.length, 'transactions, total cents:', totalCents, 'dollars:', totalRevenue)
     }
     console.log('[Stats API] Total revenue calculated:', totalRevenue)
 
@@ -182,7 +197,8 @@ export async function POST(
         name: model.name,
       },
       debug: {
-        earningsRaw: earnings,
+        earningsCount: allEarnings.length,
+        earningsPages: earningsPageCount,
         unreadRaw: unreadCount,
         trackingLinksRaw: trackingLinks,
       }
