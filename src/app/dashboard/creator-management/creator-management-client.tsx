@@ -39,14 +39,33 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
     setIsConnecting(true)
     
     try {
+      console.log('[OAuth DEBUG] Step 1: Fetching OAuth URL from /api/auth/fanvue/url')
+      
       // Get the OAuth URL from our API (stores PKCE in cookies)
       const response = await fetch('/api/auth/fanvue/url')
+      
+      console.log('[OAuth DEBUG] Step 2: Response status:', response.status)
+      
       if (!response.ok) {
         throw new Error('Failed to generate OAuth URL')
       }
       
-      const { url } = await response.json()
-      console.log('[OAuth] Opening popup with URL:', url)
+      const data = await response.json()
+      console.log('[OAuth DEBUG] Step 3: Received data:', data)
+      console.log('[OAuth DEBUG] Step 4: URL value:', data.url)
+      console.log('[OAuth DEBUG] Step 5: URL starts with https://auth.fanvue.com?', data.url?.startsWith('https://auth.fanvue.com'))
+      
+      const { url } = data
+      
+      if (!url || !url.startsWith('https://auth.fanvue.com')) {
+        console.error('[OAuth DEBUG] ❌ CRITICAL: URL is not a Fanvue URL!', url)
+        toast.error('Invalid OAuth URL received')
+        setIsConnecting(false)
+        return
+      }
+      
+      console.log('[OAuth DEBUG] Step 6: ✅ URL is valid Fanvue OAuth URL')
+      console.log('[OAuth DEBUG] Step 7: Opening popup with window.open()')
       
       // Popup window dimensions
       const width = 600
@@ -61,16 +80,27 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
         `width=${width},height=${height},left=${left},top=${top},toolbar=no,location=no,status=no,menubar=no,scrollbars=yes,resizable=yes`
       )
       
+      console.log('[OAuth DEBUG] Step 8: Popup opened?', !!popup)
+      
       if (!popup) {
+        console.error('[OAuth DEBUG] ❌ Popup was blocked!')
         toast.error('Please allow popups for this site')
         setIsConnecting(false)
         return
       }
       
+      console.log('[OAuth DEBUG] Step 9: ✅ Popup opened successfully')
+      console.log('[OAuth DEBUG] Step 10: Popup location:', popup.location?.href)
+      
       // Listen for OAuth completion
       const handleMessage = (event: MessageEvent) => {
+        console.log('[OAuth DEBUG] Message received:', event.data)
+        
         // Verify origin
-        if (event.origin !== window.location.origin) return
+        if (event.origin !== window.location.origin) {
+          console.log('[OAuth DEBUG] Ignoring message from:', event.origin)
+          return
+        }
         
         if (event.data.type === 'oauth-success') {
           console.log('[OAuth] Success received from popup')
@@ -91,13 +121,14 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
       // Poll popup to detect manual close
       const pollTimer = setInterval(() => {
         if (popup?.closed) {
+          console.log('[OAuth DEBUG] Popup closed by user')
           clearInterval(pollTimer)
           window.removeEventListener('message', handleMessage)
           setIsConnecting(false)
         }
       }, 500)
     } catch (error) {
-      console.error('[OAuth] Error opening popup:', error)
+      console.error('[OAuth DEBUG] ❌ Exception:', error)
       toast.error('Failed to start OAuth flow')
       setIsConnecting(false)
     }
