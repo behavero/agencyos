@@ -6,6 +6,14 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import type { Database } from '@/types/database.types'
 import { 
   Plus, 
@@ -14,9 +22,10 @@ import {
   DollarSign, 
   Eye, 
   MoreVertical,
-  ExternalLink
+  Shield,
+  Loader2
 } from 'lucide-react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 
 type Model = Database['public']['Tables']['models']['Row']
@@ -28,44 +37,51 @@ interface CreatorManagementClientProps {
 
 export default function CreatorManagementClient({ models, agencyId }: CreatorManagementClientProps) {
   const router = useRouter()
-  const searchParams = useSearchParams()
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  
+  // Connection dialog state
+  const [showConnectDialog, setShowConnectDialog] = useState(false)
+  const [isConnecting, setIsConnecting] = useState(false)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
 
-  // Handle OAuth success/error from URL params
-  useEffect(() => {
-    const success = searchParams.get('success')
-    const error = searchParams.get('error')
-    const details = searchParams.get('details')
-
-    if (success === 'model_added') {
-      toast.success('🎉 Creator connected successfully!')
-      
-      // Clear URL params
-      const url = new URL(window.location.href)
-      url.searchParams.delete('success')
-      window.history.replaceState({}, '', url.toString())
-      
-      // Refresh to show new model
-      setTimeout(() => router.refresh(), 1000)
-    } else if (error) {
-      const errorMessages: Record<string, string> = {
-        fanvue_oauth_failed: 'Failed to connect Fanvue account',
-        invalid_state: 'Security validation failed. Please try again.',
-        missing_verifier: 'Session expired. Please try again.',
-        not_logged_in: 'Please log in first',
-      }
-      const message = errorMessages[error] || 'An error occurred'
-      const fullMessage = details ? `${message}: ${decodeURIComponent(details)}` : message
-      toast.error(fullMessage)
-      
-      // Clear URL params
-      const url = new URL(window.location.href)
-      url.searchParams.delete('error')
-      url.searchParams.delete('details')
-      window.history.replaceState({}, '', url.toString())
+  // Handle form submission
+  const handleConnect = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!email || !password) {
+      toast.error('Please enter email and password')
+      return
     }
-  }, [searchParams, router])
+
+    setIsConnecting(true)
+
+    try {
+      const response = await fetch('/api/auth/fanvue/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to connect')
+      }
+
+      toast.success(`🎉 ${data.creator.name} connected successfully!`)
+      setShowConnectDialog(false)
+      setEmail('')
+      setPassword('')
+      router.refresh()
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to connect account')
+    } finally {
+      setIsConnecting(false)
+    }
+  }
 
   const filteredModels = models.filter((model) => {
     const matchesSearch = model.name?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -84,18 +100,93 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
           </p>
         </div>
         
-        {/* Static HTML redirect page - bypasses Next.js completely */}
-        <a 
-          href="/connect-fanvue.html"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-md font-medium text-white bg-violet-600 hover:bg-violet-700 transition-colors shadow-lg"
+        <Button
+          onClick={() => setShowConnectDialog(true)}
+          className="gap-2 shadow-lg bg-violet-600 hover:bg-violet-700"
         >
           <Plus className="w-4 h-4" />
           Add Creator
-          <ExternalLink className="w-3 h-3 ml-1 opacity-60" />
-        </a>
+        </Button>
       </div>
+
+      {/* Connect Dialog - Email/Password Form */}
+      <Dialog open={showConnectDialog} onOpenChange={setShowConnectDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 rounded-lg bg-[#00D632] flex items-center justify-center">
+                <svg viewBox="0 0 24 24" className="w-6 h-6 text-black" fill="currentColor">
+                  <path d="M13.5 2L3 7.5v9L13.5 22 24 16.5v-9L13.5 2zM12 17.5l-6-3.5v-4l6 3.5 6-3.5v4l-6 3.5z"/>
+                </svg>
+              </div>
+              <DialogTitle className="text-xl">Connect to Fanvue</DialogTitle>
+            </div>
+            <DialogDescription>
+              Enter your Fanvue creator account credentials
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleConnect} className="space-y-4 mt-4">
+            <div className="space-y-2">
+              <Label htmlFor="email">Email Address</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="Enter your email address"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={isConnecting}
+                className="h-12"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={isConnecting}
+                  className="h-12 pr-12"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <Eye className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Security Notice */}
+            <div className="flex items-start gap-3 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+              <Shield className="w-5 h-5 text-blue-500 mt-0.5 flex-shrink-0" />
+              <p className="text-sm text-muted-foreground">
+                Secure connection. Your credentials are encrypted and never stored on our servers.
+              </p>
+            </div>
+
+            <Button
+              type="submit"
+              disabled={isConnecting || !email || !password}
+              className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white font-medium"
+            >
+              {isConnecting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Connecting...
+                </>
+              ) : (
+                'Connect Account'
+              )}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Search and Filters */}
       <div className="flex gap-4">
@@ -119,9 +210,9 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
         </select>
       </div>
 
-      {/* Creators Grid/Table */}
+      {/* Creators Grid */}
       {filteredModels.length === 0 ? (
-        <Card className="glass border-dashed">
+        <Card className="border-dashed">
           <CardContent className="flex flex-col items-center justify-center py-16">
             <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
               <Users className="w-8 h-8 text-primary" />
@@ -131,27 +222,19 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
               Connect your first Fanvue creator account to start managing their content and performance
             </p>
             
-            {/* Static HTML redirect page - bypasses Next.js completely */}
-            <a 
-              href="/connect-fanvue.html"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-md font-medium text-white bg-violet-600 hover:bg-violet-700 transition-colors shadow-lg"
+            <Button
+              onClick={() => setShowConnectDialog(true)}
+              className="gap-2 bg-violet-600 hover:bg-violet-700"
             >
               <Plus className="w-4 h-4" />
               Add Your First Creator
-              <ExternalLink className="w-3 h-3 ml-1 opacity-60" />
-            </a>
-            
-            <p className="text-xs text-muted-foreground mt-4">
-              You'll be redirected to Fanvue to authorize your account
-            </p>
+            </Button>
           </CardContent>
         </Card>
       ) : (
         <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
           {filteredModels.map((model) => (
-            <Card key={model.id} className="glass hover:shadow-lg transition-shadow">
+            <Card key={model.id} className="hover:shadow-lg transition-shadow">
               <CardContent className="pt-6">
                 <div className="flex items-start gap-4">
                   <Avatar className="w-16 h-16">

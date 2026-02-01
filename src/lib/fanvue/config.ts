@@ -1,31 +1,19 @@
+/**
+ * Fanvue API Configuration
+ * Simple configuration for the Fanvue API integration
+ */
 export const FANVUE_CONFIG = {
-  clientId: process.env.NEXT_PUBLIC_FANVUE_CLIENT_ID!,
-  clientSecret: process.env.FANVUE_CLIENT_SECRET!,
-  redirectUri: `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/fanvue/callback`,
+  // API endpoints
+  apiBaseUrl: 'https://api.fanvue.com',
   
+  // API version header
+  apiVersion: '2025-06-26',
+  
+  // Endpoints
   endpoints: {
-    // ✅ FIXED: Correct authorization endpoint per official docs
-    authorize: 'https://auth.fanvue.com/oauth2/auth',
-    token: 'https://auth.fanvue.com/oauth2/token',
+    login: 'https://api.fanvue.com/v1/auth/login',
     user: 'https://api.fanvue.com/v1/users/me',
     earnings: 'https://api.fanvue.com/v1/creator/earnings',
     stats: 'https://api.fanvue.com/v1/creator/stats',
-    transactions: 'https://api.fanvue.com/v1/transactions',
   },
-  
-  scopes: [
-    'openid',
-    'offline_access',
-    'offline',
-    'read:self',
-    'read:creator',
-    'read:insights',
-    'read:chat',
-    'write:chat',
-    'read:fan',
-    'read:media',
-    'read:post',
-    'write:post',
-    'read:agency',
-  ],
 } as const
