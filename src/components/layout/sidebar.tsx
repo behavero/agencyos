@@ -17,6 +17,7 @@ import {
   Leaf,
   Image,
   Megaphone,
+  Banknote,
 } from 'lucide-react'
 
 const navigation = [
@@ -43,6 +44,7 @@ const navigation = [
     title: 'Finance',
     items: [
       { name: 'Expenses', href: '/dashboard/expenses', icon: CreditCard },
+      { name: 'Payroll', href: '/dashboard/finance/payroll', icon: Banknote },
     ],
   },
   {

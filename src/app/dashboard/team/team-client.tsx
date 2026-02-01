@@ -41,7 +41,12 @@ import {
   Clock,
   Flame,
   Mail,
+  DollarSign,
+  Percent,
+  Wallet,
+  Edit,
 } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
 
 type Profile = Database['public']['Tables']['profiles']['Row']
 
@@ -62,11 +67,28 @@ const getRoleConfig = (role: string | null) => {
   return ROLES.find(r => r.value === role) || ROLES[0]
 }
 
-export default function TeamClient({ teamMembers, agencyId }: TeamClientProps) {
+const PAYMENT_METHODS = [
+  { value: 'bank_transfer', label: 'Bank Transfer' },
+  { value: 'wise', label: 'Wise' },
+  { value: 'crypto', label: 'Crypto' },
+  { value: 'paypal', label: 'PayPal' },
+]
+
+export default function TeamClient({ teamMembers: initialMembers, agencyId }: TeamClientProps) {
+  const supabase = createClient()
+  const [teamMembers, setTeamMembers] = useState(initialMembers)
   const [isInviteOpen, setIsInviteOpen] = useState(false)
+  const [isEditSalaryOpen, setIsEditSalaryOpen] = useState(false)
+  const [selectedMember, setSelectedMember] = useState<Profile | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
   const [inviteForm, setInviteForm] = useState({
     email: '',
     role: 'rogue',
+  })
+  const [salaryForm, setSalaryForm] = useState({
+    base_salary: 0,
+    commission_rate: 0,
+    payment_method: 'bank_transfer',
   })
 
   const handleInvite = async (e: React.FormEvent) => {
@@ -74,6 +96,56 @@ export default function TeamClient({ teamMembers, agencyId }: TeamClientProps) {
     toast.success('Invitation sent!')
     setIsInviteOpen(false)
     setInviteForm({ email: '', role: 'rogue' })
+  }
+
+  const openSalaryEditor = (member: Profile) => {
+    setSelectedMember(member)
+    setSalaryForm({
+      base_salary: member.base_salary || 0,
+      commission_rate: (member.commission_rate || 0) * 100, // Convert to percentage for display
+      payment_method: member.payment_method || 'bank_transfer',
+    })
+    setIsEditSalaryOpen(true)
+  }
+
+  const handleSaveSalary = async () => {
+    if (!selectedMember) return
+
+    setIsSaving(true)
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          base_salary: salaryForm.base_salary,
+          commission_rate: salaryForm.commission_rate / 100, // Convert back to decimal
+          payment_method: salaryForm.payment_method,
+        })
+        .eq('id', selectedMember.id)
+
+      if (error) throw error
+
+      // Update local state
+      setTeamMembers(prev =>
+        prev.map(m =>
+          m.id === selectedMember.id
+            ? {
+                ...m,
+                base_salary: salaryForm.base_salary,
+                commission_rate: salaryForm.commission_rate / 100,
+                payment_method: salaryForm.payment_method,
+              }
+            : m
+        )
+      )
+
+      toast.success('Salary updated!')
+      setIsEditSalaryOpen(false)
+    } catch (error) {
+      console.error('Save error:', error)
+      toast.error('Failed to update salary')
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   // Calculate team stats
@@ -239,8 +311,10 @@ export default function TeamClient({ teamMembers, agencyId }: TeamClientProps) {
                         variant="ghost" 
                         size="icon"
                         className="h-8 w-8 text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={() => openSalaryEditor(member)}
+                        title="Edit Salary"
                       >
-                        <MoreHorizontal className="w-4 h-4" />
+                        <Edit className="w-4 h-4" />
                       </Button>
                     </div>
 
@@ -363,6 +437,111 @@ export default function TeamClient({ teamMembers, agencyId }: TeamClientProps) {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Edit Salary Dialog */}
+      <Dialog open={isEditSalaryOpen} onOpenChange={setIsEditSalaryOpen}>
+        <DialogContent className="bg-zinc-900 border-zinc-800">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <DollarSign className="w-5 h-5 text-green-400" />
+              Edit Compensation
+            </DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              Update salary and commission for {selectedMember?.username || 'team member'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label className="text-zinc-300 flex items-center gap-2">
+                <Wallet className="w-4 h-4" />
+                Base Salary (Monthly USD)
+              </Label>
+              <div className="relative">
+                <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                <Input
+                  type="number"
+                  min="0"
+                  step="100"
+                  value={salaryForm.base_salary}
+                  onChange={(e) => setSalaryForm({ ...salaryForm, base_salary: parseFloat(e.target.value) || 0 })}
+                  className="bg-zinc-800 border-zinc-700 pl-9"
+                  placeholder="0"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-zinc-300 flex items-center gap-2">
+                <Percent className="w-4 h-4" />
+                Commission Rate (%)
+              </Label>
+              <div className="relative">
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.5"
+                  value={salaryForm.commission_rate}
+                  onChange={(e) => setSalaryForm({ ...salaryForm, commission_rate: parseFloat(e.target.value) || 0 })}
+                  className="bg-zinc-800 border-zinc-700"
+                  placeholder="0"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500">%</span>
+              </div>
+              <p className="text-xs text-zinc-500">
+                Commission is calculated on revenue generated by assigned models
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-zinc-300">Payment Method</Label>
+              <Select
+                value={salaryForm.payment_method}
+                onValueChange={(v) => setSalaryForm({ ...salaryForm, payment_method: v })}
+              >
+                <SelectTrigger className="bg-zinc-800 border-zinc-700">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-zinc-900 border-zinc-800">
+                  {PAYMENT_METHODS.map((method) => (
+                    <SelectItem key={method.value} value={method.value}>
+                      {method.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Preview */}
+            <div className="p-4 rounded-lg bg-zinc-800 border border-zinc-700">
+              <p className="text-sm text-zinc-400 mb-2">Monthly Estimate (no commission)</p>
+              <p className="text-2xl font-bold text-white">
+                ${salaryForm.base_salary.toLocaleString()}
+              </p>
+              <p className="text-xs text-zinc-500 mt-1">
+                + {salaryForm.commission_rate}% of generated revenue
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditSalaryOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveSalary} disabled={isSaving} className="gap-2">
+              {isSaving ? (
+                <>Saving...</>
+              ) : (
+                <>
+                  <DollarSign className="w-4 h-4" />
+                  Save Compensation
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
