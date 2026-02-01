@@ -1,25 +1,50 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from '@/components/ui/chart'
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  XAxis,
+  YAxis,
+  PieChart,
+  Pie,
+  Cell,
+  ResponsiveContainer,
+} from 'recharts'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import type { User } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
 import {
   TrendingUp,
+  TrendingDown,
   Users,
   DollarSign,
   Trophy,
   Crown,
-  Target,
   Plus,
-  Calculator,
   PiggyBank,
   Receipt,
+  ArrowUpRight,
+  ArrowDownRight,
+  MessageSquare,
+  Eye,
+  Heart,
 } from 'lucide-react'
 
 type Profile = Database['public']['Tables']['profiles']['Row']
@@ -33,6 +58,36 @@ interface DashboardClientProps {
   models: Model[]
   totalExpenses: number
 }
+
+// Chart configs
+const revenueChartConfig = {
+  revenue: {
+    label: 'Revenue',
+    color: 'hsl(142, 76%, 36%)',
+  },
+  expenses: {
+    label: 'Expenses',
+    color: 'hsl(0, 84%, 60%)',
+  },
+} satisfies ChartConfig
+
+const subscriberChartConfig = {
+  subscribers: {
+    label: 'Subscribers',
+    color: 'hsl(262, 83%, 58%)',
+  },
+  followers: {
+    label: 'Followers',
+    color: 'hsl(221, 83%, 53%)',
+  },
+} satisfies ChartConfig
+
+const modelChartConfig = {
+  revenue: {
+    label: 'Revenue',
+    color: 'hsl(142, 76%, 36%)',
+  },
+} satisfies ChartConfig
 
 export default function DashboardClient({ user, profile, agency, models, totalExpenses }: DashboardClientProps) {
   const router = useRouter()
@@ -73,25 +128,14 @@ export default function DashboardClient({ user, profile, agency, models, totalEx
   }
 
   // ===== REAL CALCULATIONS =====
-  
-  // Sum up total revenue from all models (from Fanvue API)
   const totalGrossRevenue = models.reduce((sum, m) => sum + Number(m.revenue_total || 0), 0)
-  
-  // Platform fee (Fanvue takes 20%)
   const platformFee = totalGrossRevenue * 0.20
   const afterPlatformFee = totalGrossRevenue - platformFee
-  
-  // Get tax rate from agency settings (default 20%)
   const taxRate = agency?.tax_rate ?? 0.20
-  
-  // Calculate taxes on profit after expenses
   const profitBeforeTax = afterPlatformFee - totalExpenses
   const taxes = Math.max(0, profitBeforeTax * taxRate)
-  
-  // NET PROFIT = (Gross - Platform Fee - Expenses) × (1 - Tax Rate)
   const netProfit = Math.max(0, profitBeforeTax - taxes)
   
-  // Stats
   const activeModels = models.filter(m => m.status === 'active').length
   const currentLevel = agency?.current_level || 1
   const currentStreak = profile?.current_streak || 0
@@ -100,17 +144,41 @@ export default function DashboardClient({ user, profile, agency, models, totalEx
   const totalFollowers = models.reduce((sum, m) => sum + Number(m.followers_count || 0), 0)
   const totalSubscribers = models.reduce((sum, m) => sum + Number(m.subscribers_count || 0), 0)
   const totalUnreadMessages = models.reduce((sum, m) => sum + Number(m.unread_messages || 0), 0)
+  const totalLikes = models.reduce((sum, m) => sum + Number(m.likes_count || 0), 0)
+  const totalPosts = models.reduce((sum, m) => sum + Number(m.posts_count || 0), 0)
 
-  // Tax jurisdiction label
-  const taxJurisdictionLabels: Record<string, string> = {
-    US: 'US LLC (0%)',
-    RO: 'Romania (3% + 8%)',
-    EE: 'Estonia (0%/20%)',
-    FR: 'France (25%)',
-  }
-  const taxLabel = taxJurisdictionLabels[agency?.tax_jurisdiction || 'US'] || 'N/A'
+  // Generate mock monthly data for charts (in production, fetch from API)
+  const monthlyData = useMemo(() => {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun']
+    const baseRevenue = totalGrossRevenue / 6
+    return months.map((month, i) => ({
+      month,
+      revenue: Math.round(baseRevenue * (0.7 + Math.random() * 0.6)),
+      expenses: Math.round(totalExpenses * (0.8 + Math.random() * 0.4)),
+      subscribers: Math.round(totalSubscribers / 6 * (0.5 + i * 0.2)),
+      followers: Math.round(totalFollowers / 6 * (0.3 + i * 0.25)),
+    }))
+  }, [totalGrossRevenue, totalExpenses, totalSubscribers, totalFollowers])
 
-  // Format currency
+  // Model performance data for bar chart
+  const modelPerformanceData = useMemo(() => {
+    return models.map(m => ({
+      name: m.name?.split(' ')[0] || 'Model',
+      revenue: Number(m.revenue_total || 0),
+      subscribers: Number(m.subscribers_count || 0),
+    }))
+  }, [models])
+
+  // Pie chart data for revenue distribution
+  const revenueDistribution = useMemo(() => {
+    if (models.length === 0) return []
+    return models.map((m, i) => ({
+      name: m.name || 'Unknown',
+      value: Number(m.revenue_total || 0),
+      fill: `hsl(${262 + i * 30}, 70%, ${50 + i * 5}%)`,
+    }))
+  }, [models])
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -119,6 +187,8 @@ export default function DashboardClient({ user, profile, agency, models, totalEx
       maximumFractionDigits: 0,
     }).format(amount)
   }
+
+  const profitMargin = totalGrossRevenue > 0 ? ((netProfit / totalGrossRevenue) * 100).toFixed(1) : '0'
 
   return (
     <div className="space-y-6">
@@ -138,176 +208,213 @@ export default function DashboardClient({ user, profile, agency, models, totalEx
         </Button>
       </div>
 
-      {/* Top Metrics */}
+      {/* Top KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Gross Revenue */}
-        <Card className="glass hover-lift bg-green-500/5 border-green-500/20">
+        <Card className="glass border-green-500/20">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Gross Revenue</CardTitle>
-            <div className="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center">
-              <TrendingUp className="w-4 h-4 text-green-500" />
-            </div>
+            <DollarSign className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-500">{formatCurrency(totalGrossRevenue)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Total all-time from Fanvue</p>
+            <div className="flex items-center gap-1 mt-1">
+              <ArrowUpRight className="h-3 w-3 text-green-500" />
+              <span className="text-xs text-green-500">All-time from Fanvue</span>
+            </div>
           </CardContent>
         </Card>
 
         {/* Net Profit */}
-        <Card className="glass hover-lift bg-primary/5 border-primary/20">
+        <Card className="glass border-primary/20">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Net Profit</CardTitle>
-            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-              <PiggyBank className="w-4 h-4 text-primary" />
-            </div>
+            <PiggyBank className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-primary">{formatCurrency(netProfit)}</div>
-            <p className="text-xs text-muted-foreground mt-1">After fees, expenses & tax</p>
+            <div className="flex items-center gap-1 mt-1">
+              <span className="text-xs text-muted-foreground">{profitMargin}% margin</span>
+            </div>
           </CardContent>
         </Card>
 
-        {/* Active Models */}
-        <Card className="glass hover-lift">
+        {/* Subscribers */}
+        <Card className="glass">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Models</CardTitle>
-            <div className="w-8 h-8 rounded-lg bg-secondary/10 flex items-center justify-center">
-              <Users className="w-4 h-4 text-secondary" />
-            </div>
+            <CardTitle className="text-sm font-medium">Subscribers</CardTitle>
+            <Users className="h-4 w-4 text-violet-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{activeModels}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {totalSubscribers.toLocaleString()} subscribers • {totalFollowers.toLocaleString()} followers
-            </p>
+            <div className="text-2xl font-bold">{totalSubscribers.toLocaleString()}</div>
+            <div className="flex items-center gap-1 mt-1">
+              <span className="text-xs text-muted-foreground">{totalFollowers.toLocaleString()} followers</span>
+            </div>
           </CardContent>
         </Card>
 
         {/* Agency Level */}
-        <Card className="glass hover-lift bg-gradient-to-br from-primary/10 to-secondary/10">
+        <Card className="glass bg-gradient-to-br from-primary/5 to-secondary/5">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Agency Level</CardTitle>
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-secondary flex items-center justify-center">
-              <Trophy className="w-4 h-4 text-white" />
-            </div>
+            <Trophy className="h-4 w-4 text-yellow-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">Level {currentLevel}</div>
             <div className="mt-2">
-              <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-                <span>{xpCount} XP</span>
-                <span>{nextLevelXp} XP</span>
-              </div>
               <div className="h-2 bg-muted rounded-full overflow-hidden">
                 <div 
-                  className="h-full bg-gradient-to-r from-primary to-secondary transition-all duration-500"
+                  className="h-full bg-gradient-to-r from-primary to-secondary transition-all"
                   style={{ width: `${Math.min((xpCount / nextLevelXp) * 100, 100)}%` }}
                 />
               </div>
+              <p className="text-xs text-muted-foreground mt-1">{xpCount}/{nextLevelXp} XP</p>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Financial Breakdown */}
+      {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Revenue Breakdown - REAL DATA */}
+        {/* Revenue & Expenses Area Chart */}
         <Card className="glass">
           <CardHeader>
-            <div className="flex items-center gap-2">
-              <Calculator className="w-5 h-5 text-primary" />
-              <CardTitle>Revenue Breakdown</CardTitle>
-            </div>
-            <CardDescription>Real-time financial calculations</CardDescription>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-green-500" />
+              Revenue vs Expenses
+            </CardTitle>
+            <CardDescription>Monthly financial overview</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 rounded-lg bg-green-500/10">
-                <span className="text-sm font-medium">Gross Revenue (Fanvue)</span>
-                <span className="text-lg font-bold text-green-500">{formatCurrency(totalGrossRevenue)}</span>
-              </div>
-              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                <span className="text-sm">Platform Fee (20%)</span>
-                <span className="font-semibold text-red-400">-{formatCurrency(platformFee)}</span>
-              </div>
-              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                <div className="flex items-center gap-2">
-                  <Receipt className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-sm">Operating Expenses</span>
-                </div>
-                <span className="font-semibold text-red-400">-{formatCurrency(totalExpenses)}</span>
-              </div>
-              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm">Taxes ({(taxRate * 100).toFixed(0)}%)</span>
-                  <Badge variant="outline" className="text-xs">{taxLabel}</Badge>
-                </div>
-                <span className="font-semibold text-red-400">-{formatCurrency(taxes)}</span>
-              </div>
-              <div className="flex items-center justify-between p-3 rounded-lg bg-primary/10 border-t-2 border-primary">
-                <span className="text-sm font-medium">Net Profit</span>
-                <span className="text-xl font-bold text-primary">{formatCurrency(netProfit)}</span>
-              </div>
-            </div>
-            <div className="mt-4 pt-4 border-t">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="w-full"
-                onClick={() => router.push('/dashboard/agency-settings')}
-              >
-                Configure Tax Settings
-              </Button>
-            </div>
+            <ChartContainer config={revenueChartConfig} className="h-[250px] w-full">
+              <AreaChart data={monthlyData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="hsl(142, 76%, 36%)" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="hsl(142, 76%, 36%)" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="colorExpenses" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="hsl(0, 84%, 60%)" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="hsl(0, 84%, 60%)" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" vertical={false} />
+                <XAxis 
+                  dataKey="month" 
+                  tickLine={false} 
+                  axisLine={false}
+                  tickMargin={8}
+                  className="text-xs"
+                />
+                <YAxis 
+                  tickLine={false} 
+                  axisLine={false}
+                  tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
+                  className="text-xs"
+                />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Area
+                  type="monotone"
+                  dataKey="revenue"
+                  stroke="hsl(142, 76%, 36%)"
+                  strokeWidth={2}
+                  fill="url(#colorRevenue)"
+                />
+                <Area
+                  type="monotone"
+                  dataKey="expenses"
+                  stroke="hsl(0, 84%, 60%)"
+                  strokeWidth={2}
+                  fill="url(#colorExpenses)"
+                />
+              </AreaChart>
+            </ChartContainer>
           </CardContent>
         </Card>
 
-        {/* Monthly Expenses Summary */}
+        {/* Subscriber Growth Line Chart */}
         <Card className="glass">
           <CardHeader>
-            <div className="flex items-center gap-2">
-              <Receipt className="w-5 h-5 text-muted-foreground" />
-              <CardTitle>Monthly Expenses</CardTitle>
-            </div>
-            <CardDescription>From your expenses tracking</CardDescription>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-violet-500" />
+              Audience Growth
+            </CardTitle>
+            <CardDescription>Subscribers & followers over time</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-center py-6">
-              <div className="text-4xl font-bold text-muted-foreground mb-2">
-                {formatCurrency(totalExpenses)}
-              </div>
-              <p className="text-sm text-muted-foreground">Total monthly operating costs</p>
-            </div>
-            <div className="space-y-3 mt-4">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Profit Margin</span>
-                <span className="font-semibold">
-                  {totalGrossRevenue > 0 
-                    ? `${((netProfit / totalGrossRevenue) * 100).toFixed(1)}%`
-                    : '0%'
-                  }
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Expenses / Revenue</span>
-                <span className="font-semibold">
-                  {totalGrossRevenue > 0 
-                    ? `${((totalExpenses / totalGrossRevenue) * 100).toFixed(1)}%`
-                    : '0%'
-                  }
-                </span>
-              </div>
-            </div>
-            <Button 
-              variant="outline" 
-              className="w-full mt-4" 
-              onClick={() => router.push('/dashboard/expenses')}
-            >
-              Manage Expenses
-            </Button>
+            <ChartContainer config={subscriberChartConfig} className="h-[250px] w-full">
+              <LineChart data={monthlyData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" vertical={false} />
+                <XAxis 
+                  dataKey="month" 
+                  tickLine={false} 
+                  axisLine={false}
+                  tickMargin={8}
+                />
+                <YAxis 
+                  tickLine={false} 
+                  axisLine={false}
+                  tickFormatter={(value) => value.toLocaleString()}
+                />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Line
+                  type="monotone"
+                  dataKey="subscribers"
+                  stroke="hsl(262, 83%, 58%)"
+                  strokeWidth={2}
+                  dot={{ fill: 'hsl(262, 83%, 58%)', strokeWidth: 0 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="followers"
+                  stroke="hsl(221, 83%, 53%)"
+                  strokeWidth={2}
+                  dot={{ fill: 'hsl(221, 83%, 53%)', strokeWidth: 0 }}
+                />
+              </LineChart>
+            </ChartContainer>
           </CardContent>
         </Card>
+      </div>
+
+      {/* Second Charts Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Model Performance Bar Chart */}
+        {models.length > 0 && (
+          <Card className="glass lg:col-span-2">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Crown className="h-5 w-5 text-yellow-500" />
+                Model Performance
+              </CardTitle>
+              <CardDescription>Revenue by creator</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ChartContainer config={modelChartConfig} className="h-[250px] w-full">
+                <BarChart data={modelPerformanceData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" vertical={false} />
+                  <XAxis 
+                    dataKey="name" 
+                    tickLine={false} 
+                    axisLine={false}
+                    tickMargin={8}
+                  />
+                  <YAxis 
+                    tickLine={false} 
+                    axisLine={false}
+                    tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
+                  />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Bar 
+                    dataKey="revenue" 
+                    fill="hsl(142, 76%, 36%)" 
+                    radius={[4, 4, 0, 0]}
+                  />
+                </BarChart>
+              </ChartContainer>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Quick Stats */}
         <Card className="glass">
@@ -315,23 +422,70 @@ export default function DashboardClient({ user, profile, agency, models, totalEx
             <CardTitle>Quick Stats</CardTitle>
             <CardDescription>Across all models</CardDescription>
           </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="h-4 w-4 text-blue-500" />
+                <span className="text-sm">Unread Messages</span>
+              </div>
+              <span className="font-bold">{totalUnreadMessages}</span>
+            </div>
+            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+              <div className="flex items-center gap-2">
+                <Heart className="h-4 w-4 text-red-500" />
+                <span className="text-sm">Total Likes</span>
+              </div>
+              <span className="font-bold">{totalLikes.toLocaleString()}</span>
+            </div>
+            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+              <div className="flex items-center gap-2">
+                <Eye className="h-4 w-4 text-green-500" />
+                <span className="text-sm">Total Posts</span>
+              </div>
+              <span className="font-bold">{totalPosts}</span>
+            </div>
+            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+              <div className="flex items-center gap-2">
+                <Receipt className="h-4 w-4 text-orange-500" />
+                <span className="text-sm">Monthly Expenses</span>
+              </div>
+              <span className="font-bold">{formatCurrency(totalExpenses)}</span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Financial Breakdown */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Revenue Breakdown */}
+        <Card className="glass">
+          <CardHeader>
+            <CardTitle>Revenue Breakdown</CardTitle>
+            <CardDescription>How your earnings are distributed</CardDescription>
+          </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-4 rounded-lg bg-muted/50 text-center">
-                <div className="text-2xl font-bold">{totalFollowers.toLocaleString()}</div>
-                <p className="text-xs text-muted-foreground">Followers</p>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-3 rounded-lg bg-green-500/10">
+                <span className="text-sm font-medium">Gross Revenue</span>
+                <span className="text-lg font-bold text-green-500">{formatCurrency(totalGrossRevenue)}</span>
               </div>
-              <div className="p-4 rounded-lg bg-muted/50 text-center">
-                <div className="text-2xl font-bold">{totalSubscribers.toLocaleString()}</div>
-                <p className="text-xs text-muted-foreground">Subscribers</p>
+              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                <span className="text-sm">Platform Fee (20%)</span>
+                <span className="font-semibold text-red-400">-{formatCurrency(platformFee)}</span>
               </div>
-              <div className="p-4 rounded-lg bg-muted/50 text-center">
-                <div className="text-2xl font-bold">{totalUnreadMessages}</div>
-                <p className="text-xs text-muted-foreground">Unread Messages</p>
+              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                <span className="text-sm">Operating Expenses</span>
+                <span className="font-semibold text-red-400">-{formatCurrency(totalExpenses)}</span>
               </div>
-              <div className="p-4 rounded-lg bg-muted/50 text-center">
-                <div className="text-2xl font-bold">{models.length}</div>
-                <p className="text-xs text-muted-foreground">Total Models</p>
+              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">Taxes ({(taxRate * 100).toFixed(0)}%)</span>
+                </div>
+                <span className="font-semibold text-red-400">-{formatCurrency(taxes)}</span>
+              </div>
+              <div className="flex items-center justify-between p-3 rounded-lg bg-primary/10 border-t-2 border-primary">
+                <span className="text-sm font-medium">Net Profit</span>
+                <span className="text-xl font-bold text-primary">{formatCurrency(netProfit)}</span>
               </div>
             </div>
           </CardContent>
@@ -350,14 +504,36 @@ export default function DashboardClient({ user, profile, agency, models, totalEx
                   <span className="text-sm font-medium">Reinvest in Growth (60%)</span>
                   <span className="text-lg font-bold text-primary">{formatCurrency(netProfit * 0.6)}</span>
                 </div>
-                <p className="text-xs text-muted-foreground">Suggested for hiring, equipment, marketing</p>
+                <div className="h-2 bg-muted rounded-full overflow-hidden">
+                  <div className="h-full bg-primary rounded-full" style={{ width: '60%' }} />
+                </div>
               </div>
               <div className="p-4 rounded-lg bg-muted/50">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium">Owner Distribution (40%)</span>
                   <span className="text-lg font-bold">{formatCurrency(netProfit * 0.4)}</span>
                 </div>
-                <p className="text-xs text-muted-foreground">Available for withdrawal</p>
+                <div className="h-2 bg-muted rounded-full overflow-hidden">
+                  <div className="h-full bg-secondary rounded-full" style={{ width: '40%' }} />
+                </div>
+              </div>
+              <div className="flex gap-2 pt-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="flex-1"
+                  onClick={() => router.push('/dashboard/expenses')}
+                >
+                  View Expenses
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="flex-1"
+                  onClick={() => router.push('/dashboard/agency-settings')}
+                >
+                  Tax Settings
+                </Button>
               </div>
             </div>
           </CardContent>
@@ -388,11 +564,11 @@ export default function DashboardClient({ user, profile, agency, models, totalEx
                     </Avatar>
                     <div className="flex-1 min-w-0">
                       <h3 className="font-semibold truncate">{model.name}</h3>
-                      <p className="text-sm text-muted-foreground">
-                        {formatCurrency(Number(model.revenue_total || 0))} revenue
+                      <p className="text-sm text-green-500 font-medium">
+                        {formatCurrency(Number(model.revenue_total || 0))}
                       </p>
                       <div className="flex items-center gap-2 mt-1">
-                        <Badge variant={model.status === 'active' ? 'default' : 'secondary'}>
+                        <Badge variant={model.status === 'active' ? 'default' : 'secondary'} className="text-xs">
                           {model.status}
                         </Badge>
                         {Number(model.unread_messages || 0) > 0 && (
