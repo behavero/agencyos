@@ -85,16 +85,14 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
           </p>
         </div>
         
-        {/* Form submission - absolutely cannot be blocked by JavaScript */}
-        <form action="/api/auth/fanvue" method="GET">
-          <button
-            type="submit"
-            className="gap-2 shadow-lg inline-flex items-center justify-center h-11 px-6 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 font-medium transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Add Creator
-          </button>
-        </form>
+        {/* Fail-safe Direct Link - HTML anchors cannot be blocked */}
+        <a
+          href="/api/auth/fanvue"
+          className="inline-flex items-center justify-center h-11 px-6 font-medium text-zinc-50 bg-violet-600 rounded-md hover:bg-violet-700 transition-colors shadow-lg"
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          Connect Fanvue (Direct)
+        </a>
       </div>
 
       {/* Search and Filters */}
@@ -130,15 +128,14 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
             <p className="text-muted-foreground mb-6 text-center max-w-md">
               Connect your first Fanvue creator account to start managing their content and performance
             </p>
-            <form action="/api/auth/fanvue" method="GET">
-              <button
-                type="submit"
-                className="gap-2 inline-flex items-center justify-center h-11 px-6 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 font-medium transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                Add Your First Creator
-              </button>
-            </form>
+            {/* Fail-safe Direct Link */}
+            <a
+              href="/api/auth/fanvue"
+              className="inline-flex items-center justify-center h-11 px-6 font-medium text-zinc-50 bg-violet-600 rounded-md hover:bg-violet-700 transition-colors"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Add Your First Creator
+            </a>
           </CardContent>
         </Card>
       ) : (
