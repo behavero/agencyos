@@ -1,27 +1,34 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { Database } from '@/types/database.types'
 import {
   Search,
   Send,
-  Paperclip,
   Smile,
-  MoreVertical,
-  Phone,
-  Video,
+  Clock,
   DollarSign,
+  MoreVertical,
+  Sparkles,
+  X,
+  ChevronDown,
+  MapPin,
+  Calendar,
+  Heart,
+  Eye,
+  MessageCircle,
+  Plus,
+  RefreshCw,
   Image as ImageIcon,
-  Lock,
-  Zap,
-  MessageCircle
 } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { toast } from 'sonner'
 
 type Model = Database['public']['Tables']['models']['Row']
 
@@ -29,349 +36,656 @@ interface MessagesClientProps {
   models: Model[]
 }
 
-// Mock conversations
-const mockConversations = [
-  {
-    id: '1',
-    fanName: 'Alex Thompson',
-    avatar: '👤',
-    lastMessage: 'Hey beautiful! 💕',
-    timestamp: '2m ago',
-    unread: 3,
-    modelId: '1',
-    isWhale: false,
-  },
-  {
-    id: '2',
-    fanName: 'Michael Johnson',
-    avatar: '💎',
-    lastMessage: 'Can I get a custom video?',
-    timestamp: '15m ago',
-    unread: 1,
-    modelId: '1',
-    isWhale: true,
-  },
-  {
-    id: '3',
-    fanName: 'Sarah Williams',
-    avatar: '🌟',
-    lastMessage: 'Thanks for the pic!',
-    timestamp: '1h ago',
-    unread: 0,
-    modelId: '1',
-    isWhale: false,
-  },
-  {
-    id: '4',
-    fanName: 'David Martinez',
-    avatar: '🔥',
-    lastMessage: 'When are you posting next?',
-    timestamp: '2h ago',
-    unread: 2,
-    modelId: '1',
-    isWhale: false,
-  },
-]
+interface Chat {
+  uuid: string
+  user: {
+    uuid: string
+    handle: string
+    displayName: string
+    avatarUrl?: string
+  }
+  lastMessage?: {
+    text: string
+    createdAt: string
+    isFromCreator: boolean
+  }
+  unreadCount: number
+  isPinned?: boolean
+}
 
-// Mock messages
-const mockMessages = [
-  {
-    id: '1',
-    content: 'Hey beautiful! 💕',
-    sender: 'fan',
-    timestamp: '10:30 AM',
-    isPPV: false,
-  },
-  {
-    id: '2',
-    content: 'Hi! Thanks for subscribing! 😊',
-    sender: 'model',
-    timestamp: '10:32 AM',
-    isPPV: false,
-  },
-  {
-    id: '3',
-    content: 'Do you have any exclusive content?',
-    sender: 'fan',
-    timestamp: '10:35 AM',
-    isPPV: false,
-  },
-  {
-    id: '4',
-    content: 'Yes! Check this out 🔥',
-    sender: 'model',
-    timestamp: '10:36 AM',
-    isPPV: true,
-    ppvPrice: 25,
-  },
-]
+interface Message {
+  uuid: string
+  text: string
+  createdAt: string
+  isFromCreator: boolean
+  hasMedia?: boolean
+  price?: number
+  sentByAI?: boolean
+}
+
+interface FanProfile {
+  uuid: string
+  handle: string
+  displayName: string
+  avatarUrl?: string
+  location?: string
+  birthday?: string
+  preferences?: string[]
+  lastSeen?: string
+  lastResponse?: string
+  lastRead?: string
+  totalSpent?: number
+  totalTips?: number
+  totalPpv?: number
+  isSubscriber?: boolean
+  avgTips?: number
+  avgPpv?: number
+  customAttributes?: { key: string; value: string }[]
+}
+
+function formatTime(dateStr: string): string {
+  const date = new Date(dateStr)
+  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+}
+
+function formatRelativeTime(dateStr: string): string {
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+  const diffDays = Math.floor(diffMs / 86400000)
+
+  if (diffMins < 1) return 'Just now'
+  if (diffMins < 60) return `${diffMins} minutes ago`
+  if (diffHours < 24) return `about ${diffHours} hour${diffHours > 1 ? 's' : ''} ago`
+  if (diffDays === 1) return 'yesterday'
+  if (diffDays < 7) return `${diffDays} days ago`
+  return date.toLocaleDateString()
+}
 
 export default function MessagesClient({ models }: MessagesClientProps) {
-  const [selectedConversation, setSelectedConversation] = useState(mockConversations[0])
+  const [selectedModel, setSelectedModel] = useState<Model | null>(models[0] || null)
+  const [chats, setChats] = useState<Chat[]>([])
+  const [selectedChat, setSelectedChat] = useState<Chat | null>(null)
+  const [messages, setMessages] = useState<Message[]>([])
+  const [fanProfile, setFanProfile] = useState<FanProfile | null>(null)
   const [messageInput, setMessageInput] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [sendingMessage, setSendingMessage] = useState(false)
+  const [filter, setFilter] = useState<'all' | 'unread'>('all')
+  const [searchQuery, setSearchQuery] = useState('')
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  // Fetch chats when model changes
+  useEffect(() => {
+    if (selectedModel) {
+      fetchChats()
+    }
+  }, [selectedModel])
+
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  const fetchChats = async () => {
+    if (!selectedModel) return
+    setLoading(true)
+    
+    try {
+      const response = await fetch(`/api/creators/${selectedModel.id}/messages?size=50`)
+      const data = await response.json()
+      
+      if (response.ok && data.data) {
+        setChats(data.data)
+        if (data.data.length > 0 && !selectedChat) {
+          setSelectedChat(data.data[0])
+          fetchMessages(data.data[0].user.uuid)
+        }
+      } else {
+        console.error('Failed to fetch chats:', data.error)
+      }
+    } catch (error) {
+      console.error('Error fetching chats:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const fetchMessages = async (userUuid: string) => {
+    if (!selectedModel) return
+    
+    try {
+      // For now, we'll show the last message from the chat
+      // In production, you'd fetch the full message history
+      const chat = chats.find(c => c.user.uuid === userUuid)
+      if (chat?.lastMessage) {
+        setMessages([{
+          uuid: '1',
+          text: chat.lastMessage.text,
+          createdAt: chat.lastMessage.createdAt,
+          isFromCreator: chat.lastMessage.isFromCreator,
+        }])
+      }
+      
+      // Set basic fan profile from chat data
+      setFanProfile({
+        uuid: chat?.user.uuid || userUuid,
+        handle: chat?.user.handle || '',
+        displayName: chat?.user.displayName || '',
+        avatarUrl: chat?.user.avatarUrl,
+      })
+    } catch (error) {
+      console.error('Error fetching messages:', error)
+    }
+  }
+
+  const sendMessage = async () => {
+    if (!messageInput.trim() || !selectedChat || !selectedModel) return
+    
+    setSendingMessage(true)
+    const messageText = messageInput
+    setMessageInput('')
+    
+    // Optimistically add message to UI
+    const tempMessage: Message = {
+      uuid: `temp-${Date.now()}`,
+      text: messageText,
+      createdAt: new Date().toISOString(),
+      isFromCreator: true,
+    }
+    setMessages(prev => [...prev, tempMessage])
+    
+    try {
+      const response = await fetch(`/api/creators/${selectedModel.id}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userUuid: selectedChat.user.uuid,
+          text: messageText,
+        }),
+      })
+      
+      const data = await response.json()
+      
+      if (response.ok) {
+        toast.success('Message sent!')
+      } else {
+        toast.error(data.error || 'Failed to send message')
+        // Remove optimistic message on error
+        setMessages(prev => prev.filter(m => m.uuid !== tempMessage.uuid))
+        setMessageInput(messageText) // Restore the message
+      }
+    } catch (error) {
+      toast.error('Failed to send message')
+      setMessages(prev => prev.filter(m => m.uuid !== tempMessage.uuid))
+      setMessageInput(messageText)
+    } finally {
+      setSendingMessage(false)
+    }
+  }
+
+  const filteredChats = chats.filter(chat => {
+    if (filter === 'unread' && chat.unreadCount === 0) return false
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase()
+      return chat.user.displayName.toLowerCase().includes(query) ||
+             chat.user.handle.toLowerCase().includes(query)
+    }
+    return true
+  })
+
+  if (models.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-[calc(100vh-4rem)] bg-background">
+        <Card className="max-w-md mx-auto">
+          <CardContent className="p-8 text-center">
+            <MessageCircle className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
+            <h2 className="text-xl font-semibold mb-2">No Creators Connected</h2>
+            <p className="text-muted-foreground mb-4">
+              Connect a Fanvue creator to start managing messages.
+            </p>
+            <Button onClick={() => window.location.href = '/dashboard/creator-management'}>
+              Go to Creator Management
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   return (
-    <div className="flex h-[calc(100vh-4rem)]">
-      {/* Conversations List */}
-      <div className="w-80 border-r border-border flex flex-col bg-card">
-        {/* Search Header */}
-        <div className="p-4 border-b border-border">
+    <div className="flex h-[calc(100vh-4rem)] bg-[#0a0f1a]">
+      {/* Left Sidebar - Conversations */}
+      <div className="w-80 border-r border-zinc-800 flex flex-col bg-[#0d1321]">
+        {/* Model Tabs */}
+        <div className="flex items-center gap-2 p-3 border-b border-zinc-800 bg-[#0a0f1a]">
+          {models.map((model) => (
+            <button
+              key={model.id}
+              onClick={() => {
+                setSelectedModel(model)
+                setSelectedChat(null)
+                setMessages([])
+              }}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                selectedModel?.id === model.id
+                  ? 'bg-zinc-800 text-white'
+                  : 'text-zinc-400 hover:bg-zinc-800/50'
+              }`}
+            >
+              <Avatar className="w-6 h-6">
+                <AvatarImage src={model.avatar_url || undefined} />
+                <AvatarFallback className="bg-violet-600 text-xs">
+                  {model.name?.[0]}
+                </AvatarFallback>
+              </Avatar>
+              <span className="truncate max-w-[100px]">{model.name}</span>
+              {selectedModel?.id === model.id && (
+                <X className="w-3 h-3 text-zinc-500" />
+              )}
+            </button>
+          ))}
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-zinc-400">
+            <Plus className="w-4 h-4" />
+          </Button>
+        </div>
+
+        {/* Filter Tabs */}
+        <div className="flex items-center gap-2 p-3 border-b border-zinc-800">
+          <Button
+            variant={filter === 'all' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setFilter('all')}
+            className={filter === 'all' ? 'bg-zinc-700' : 'text-zinc-400'}
+          >
+            All
+          </Button>
+          <Button
+            variant={filter === 'unread' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setFilter('unread')}
+            className={filter === 'unread' ? 'bg-zinc-700' : 'text-zinc-400'}
+          >
+            Unread
+          </Button>
+          <div className="flex-1" />
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={fetchChats}
+            disabled={loading}
+            className="h-8 w-8 text-zinc-400"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </Button>
+        </div>
+
+        {/* Search */}
+        <div className="p-3 border-b border-zinc-800">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
             <Input
-              placeholder="Search conversations..."
-              className="pl-9 bg-muted/50 border-0"
+              placeholder="Search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 bg-zinc-800/50 border-zinc-700 text-white placeholder:text-zinc-500"
             />
           </div>
         </div>
 
-        {/* Model Filter */}
-        <div className="p-3 border-b border-border">
-          <div className="flex gap-2 overflow-x-auto scrollbar-thin pb-2">
-            <Badge variant="default" className="cursor-pointer whitespace-nowrap">
-              All ({mockConversations.length})
-            </Badge>
-            <Badge variant="outline" className="cursor-pointer whitespace-nowrap">
-              🔥 Hot (2)
-            </Badge>
-            <Badge variant="outline" className="cursor-pointer whitespace-nowrap">
-              💎 Whales (1)
-            </Badge>
-            <Badge variant="outline" className="cursor-pointer whitespace-nowrap">
-              ⏰ Pending (4)
-            </Badge>
-          </div>
-        </div>
-
-        {/* Conversations */}
+        {/* Conversations List */}
         <ScrollArea className="flex-1">
-          <div className="p-2 space-y-1">
-            {mockConversations.map((conversation) => (
-              <div
-                key={conversation.id}
-                onClick={() => setSelectedConversation(conversation)}
-                className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all hover:bg-muted/50 ${
-                  selectedConversation.id === conversation.id ? 'bg-muted' : ''
-                }`}
-              >
-                <div className="relative">
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center text-2xl">
-                    {conversation.avatar}
-                  </div>
-                  {conversation.isWhale && (
-                    <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-accent rounded-full flex items-center justify-center">
-                      💎
-                    </div>
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-2 mb-1">
-                    <p className="font-semibold truncate">{conversation.fanName}</p>
-                    <span className="text-xs text-muted-foreground flex-shrink-0">
-                      {conversation.timestamp}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm text-muted-foreground truncate">
-                      {conversation.lastMessage}
-                    </p>
-                    {conversation.unread > 0 && (
-                      <Badge className="h-5 px-2 bg-primary text-xs">
-                        {conversation.unread}
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </ScrollArea>
-      </div>
-
-      {/* Chat Area */}
-      <div className="flex-1 flex flex-col bg-background">
-        {/* Chat Header */}
-        <div className="flex items-center justify-between p-4 border-b border-border bg-card">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center text-xl">
-              {selectedConversation.avatar}
+          {loading && chats.length === 0 ? (
+            <div className="flex items-center justify-center py-8">
+              <RefreshCw className="w-6 h-6 animate-spin text-zinc-500" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="font-semibold">{selectedConversation.fanName}</h2>
-                {selectedConversation.isWhale && (
-                  <Badge className="bg-accent text-accent-foreground gap-1">
-                    <DollarSign className="w-3 h-3" />
-                    Whale
-                  </Badge>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground">Active now</p>
+          ) : filteredChats.length === 0 ? (
+            <div className="p-4 text-center text-zinc-500">
+              {filter === 'unread' ? 'No unread messages' : 'No conversations yet'}
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon">
-              <Phone className="w-5 h-5" />
-            </Button>
-            <Button variant="ghost" size="icon">
-              <Video className="w-5 h-5" />
-            </Button>
-            <Button variant="ghost" size="icon">
-              <MoreVertical className="w-5 h-5" />
-            </Button>
-          </div>
-        </div>
-
-        {/* Messages */}
-        <ScrollArea className="flex-1 p-4">
-          <div className="space-y-4 max-w-4xl mx-auto">
-            {mockMessages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex ${message.sender === 'model' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div
-                  className={`max-w-[70%] ${
-                    message.sender === 'model'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted'
-                  } rounded-2xl p-3 ${message.isPPV ? 'border-2 border-accent' : ''}`}
+          ) : (
+            <div className="p-2">
+              {filteredChats.map((chat) => (
+                <button
+                  key={chat.uuid}
+                  onClick={() => {
+                    setSelectedChat(chat)
+                    fetchMessages(chat.user.uuid)
+                  }}
+                  className={`w-full flex items-start gap-3 p-3 rounded-lg transition-colors text-left ${
+                    selectedChat?.uuid === chat.uuid
+                      ? 'bg-zinc-800'
+                      : 'hover:bg-zinc-800/50'
+                  }`}
                 >
-                  {message.isPPV && (
-                    <div className="flex items-center gap-2 mb-2 pb-2 border-b border-primary-foreground/20">
-                      <Lock className="w-4 h-4" />
-                      <span className="text-sm font-semibold">
-                        PPV Content - ${message.ppvPrice}
+                  <Avatar className="w-10 h-10 flex-shrink-0">
+                    <AvatarImage src={chat.user.avatarUrl} />
+                    <AvatarFallback className="bg-zinc-700 text-white">
+                      {chat.user.displayName?.[0]?.toUpperCase() || 'U'}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-white truncate">
+                        {chat.user.displayName}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <Sparkles className="w-3 h-3 text-violet-400" />
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-sm text-zinc-400 truncate">
+                        @{chat.user.handle}
+                      </span>
+                      <span className="text-xs text-zinc-500">
+                        {chat.lastMessage && formatRelativeTime(chat.lastMessage.createdAt)}
                       </span>
                     </div>
-                  )}
-                  <p className="text-sm">{message.content}</p>
-                  <p
-                    className={`text-xs mt-1 ${
-                      message.sender === 'model'
-                        ? 'text-primary-foreground/70'
-                        : 'text-muted-foreground'
-                    }`}
-                  >
-                    {message.timestamp}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </ScrollArea>
-
-        {/* Quick Actions Bar */}
-        <div className="px-4 py-2 border-t border-border bg-card">
-          <div className="flex gap-2 overflow-x-auto scrollbar-thin pb-2">
-            <Button variant="outline" size="sm" className="gap-1 flex-shrink-0">
-              ⚡ Script
-            </Button>
-            <Button variant="outline" size="sm" className="gap-1 flex-shrink-0">
-              🔒 Vault
-            </Button>
-            <Button variant="outline" size="sm" className="gap-1 flex-shrink-0">
-              💸 Send PPV
-            </Button>
-            <Button variant="outline" size="sm" className="gap-1 flex-shrink-0">
-              🎁 Offer
-            </Button>
-          </div>
-        </div>
-
-        {/* Message Input */}
-        <div className="p-4 border-t border-border bg-card">
-          <div className="flex items-end gap-2">
-            <div className="flex gap-1">
-              <Button variant="ghost" size="icon">
-                <Paperclip className="w-5 h-5" />
-              </Button>
-              <Button variant="ghost" size="icon">
-                <ImageIcon className="w-5 h-5" />
-              </Button>
-              <Button variant="ghost" size="icon">
-                <Smile className="w-5 h-5" />
-              </Button>
+                    {chat.lastMessage && (
+                      <div className="flex items-center gap-2 mt-1">
+                        {chat.unreadCount > 0 && (
+                          <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
+                        )}
+                        <p className="text-sm text-zinc-400 truncate">
+                          {chat.lastMessage.text}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </button>
+              ))}
             </div>
-            <Input
-              placeholder="Type a message..."
-              value={messageInput}
-              onChange={(e) => setMessageInput(e.target.value)}
-              className="flex-1"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault()
-                  // Send message logic here
-                  setMessageInput('')
-                }
-              }}
-            />
-            <Button className="gap-2">
-              <Send className="w-4 h-4" />
-              Send
-            </Button>
-          </div>
-        </div>
+          )}
+        </ScrollArea>
       </div>
 
-      {/* Right Sidebar - Fan Info */}
-      <div className="w-80 border-l border-border bg-card p-4 overflow-y-auto scrollbar-thin">
-        <div className="text-center mb-6">
-          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center text-4xl mx-auto mb-3">
-            {selectedConversation.avatar}
+      {/* Center - Chat Area */}
+      <div className="flex-1 flex flex-col bg-[#0a0f1a]">
+        {selectedChat ? (
+          <>
+            {/* Chat Header */}
+            <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-[#0d1321]">
+              <div className="flex items-center gap-3">
+                <Avatar className="w-10 h-10">
+                  <AvatarImage src={selectedChat.user.avatarUrl} />
+                  <AvatarFallback className="bg-zinc-700 text-white">
+                    {selectedChat.user.displayName?.[0]?.toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-white">
+                      {selectedChat.user.displayName}
+                    </span>
+                    <span className="text-zinc-400 text-sm">
+                      @{selectedChat.user.handle}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-red-500" />
+                    <span className="text-xs text-zinc-500">is offline</span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge className="bg-violet-600 text-white gap-1">
+                  <Sparkles className="w-3 h-3" />
+                  AI enabled
+                </Badge>
+                <Badge variant="outline" className="border-zinc-700 text-zinc-400">
+                  9/10 Scripts available
+                </Badge>
+              </div>
+            </div>
+
+            {/* Messages Area */}
+            <ScrollArea className="flex-1 p-4">
+              <div className="space-y-4 max-w-3xl mx-auto">
+                {messages.map((message) => (
+                  <div
+                    key={message.uuid}
+                    className={`flex ${message.isFromCreator ? 'justify-start' : 'justify-end'}`}
+                  >
+                    {message.isFromCreator && (
+                      <Avatar className="w-8 h-8 mr-2 flex-shrink-0">
+                        <AvatarImage src={selectedModel?.avatar_url || undefined} />
+                        <AvatarFallback className="bg-violet-600 text-xs">
+                          {selectedModel?.name?.[0]}
+                        </AvatarFallback>
+                      </Avatar>
+                    )}
+                    <div className="max-w-[70%]">
+                      <div
+                        className={`rounded-2xl px-4 py-2.5 ${
+                          message.isFromCreator
+                            ? 'bg-zinc-700 text-white'
+                            : 'bg-blue-600 text-white'
+                        }`}
+                      >
+                        <p className="text-sm">{message.text}</p>
+                      </div>
+                      <div className="flex items-center gap-2 mt-1 px-1">
+                        <span className="text-xs text-zinc-500">
+                          {formatTime(message.createdAt)}
+                        </span>
+                        {message.isFromCreator && (
+                          <>
+                            <span className="text-blue-400">✓✓</span>
+                            {message.sentByAI && (
+                              <span className="text-xs text-zinc-500">• Sent by AI</span>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <div ref={messagesEndRef} />
+              </div>
+            </ScrollArea>
+
+            {/* Message Input */}
+            <div className="p-4 border-t border-zinc-800 bg-[#0d1321]">
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="icon" className="text-zinc-400 hover:text-white">
+                  <Smile className="w-5 h-5" />
+                </Button>
+                <Button variant="ghost" size="icon" className="text-zinc-400 hover:text-white">
+                  <Clock className="w-5 h-5" />
+                </Button>
+                <Button variant="ghost" size="icon" className="text-zinc-400 hover:text-white">
+                  <DollarSign className="w-5 h-5" />
+                </Button>
+                <Input
+                  placeholder="Type something..."
+                  value={messageInput}
+                  onChange={(e) => setMessageInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      sendMessage()
+                    }
+                  }}
+                  className="flex-1 bg-transparent border-0 text-white placeholder:text-zinc-500 focus-visible:ring-0"
+                />
+                <Button
+                  onClick={sendMessage}
+                  disabled={!messageInput.trim() || sendingMessage}
+                  className="bg-violet-600 hover:bg-violet-700 gap-2"
+                >
+                  Send
+                  <Send className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center text-zinc-500">
+              <MessageCircle className="w-16 h-16 mx-auto mb-4" />
+              <p>Select a conversation to start messaging</p>
+            </div>
           </div>
-          <h3 className="font-semibold text-lg">{selectedConversation.fanName}</h3>
-          <p className="text-sm text-muted-foreground">@alex_thompson</p>
-        </div>
+        )}
+      </div>
 
-        {/* Stats */}
-        <Card className="glass mb-4">
-          <CardContent className="p-4">
-            <h4 className="font-semibold mb-3">Fan Stats</h4>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Total Spent</span>
-                <span className="font-semibold">$485</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Messages</span>
-                <span className="font-semibold">142</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Member Since</span>
-                <span className="font-semibold">Jan 2024</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Tier</span>
-                <Badge>Premium</Badge>
-              </div>
+      {/* Right Sidebar - Fan Profile */}
+      <div className="w-80 border-l border-zinc-800 bg-[#0d1321] flex flex-col">
+        {selectedChat && fanProfile ? (
+          <>
+            {/* Profile Toggle */}
+            <div className="flex border-b border-zinc-800">
+              <button className="flex-1 py-3 text-sm font-medium text-white border-b-2 border-white flex items-center justify-center gap-2">
+                <Heart className="w-4 h-4" />
+                Fan
+              </button>
+              <button className="flex-1 py-3 text-sm font-medium text-zinc-500 flex items-center justify-center gap-2">
+                <Sparkles className="w-4 h-4" />
+                Creator
+              </button>
             </div>
-          </CardContent>
-        </Card>
 
-        {/* Tags */}
-        <Card className="glass">
-          <CardContent className="p-4">
-            <h4 className="font-semibold mb-3">Tags</h4>
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="secondary">High Spender</Badge>
-              <Badge variant="secondary">PPV Buyer</Badge>
-              <Badge variant="secondary">Regular</Badge>
-              <Badge variant="secondary">Engaged</Badge>
-            </div>
-          </CardContent>
-        </Card>
+            <ScrollArea className="flex-1">
+              <div className="p-4 space-y-6">
+                {/* Fan Header */}
+                <div>
+                  <h2 className="text-xl font-semibold text-white">
+                    {fanProfile.displayName}
+                  </h2>
+                  <p className="text-zinc-400">@{fanProfile.handle}</p>
+                </div>
 
-        {/* Notes */}
-        <Card className="glass mt-4">
-          <CardContent className="p-4">
-            <h4 className="font-semibold mb-3">Notes</h4>
-            <textarea
-              className="w-full min-h-[100px] p-2 rounded-lg bg-muted border border-border text-sm resize-none"
-              placeholder="Add private notes about this fan..."
-            />
-          </CardContent>
-        </Card>
+                {/* Basic Info */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-zinc-400">
+                      <MapPin className="w-4 h-4" />
+                      <span className="text-sm">Location</span>
+                    </div>
+                    <button className="text-sm text-violet-400 hover:text-violet-300">
+                      Click to select country <ChevronDown className="w-3 h-3 inline" />
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-zinc-400">
+                      <Calendar className="w-4 h-4" />
+                      <span className="text-sm">Birthday</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button className="text-sm text-violet-400 hover:text-violet-300">
+                        Set date <ChevronDown className="w-3 h-3 inline" />
+                      </button>
+                      <span className="text-zinc-500">-</span>
+                      <span className="text-violet-400">27y</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-zinc-400">
+                      <Heart className="w-4 h-4" />
+                      <span className="text-sm">Preferences</span>
+                    </div>
+                    <span className="text-violet-400 text-sm">rock music</span>
+                  </div>
+                </div>
+
+                {/* Activity */}
+                <div>
+                  <button className="flex items-center justify-between w-full py-2">
+                    <span className="font-medium text-white">Activity</span>
+                    <ChevronDown className="w-4 h-4 text-zinc-400" />
+                  </button>
+                  <div className="grid grid-cols-3 gap-4 mt-2">
+                    <div className="text-center">
+                      <p className="text-xs text-zinc-500">Seen</p>
+                      <p className="text-sm text-white">-</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs text-zinc-500">Response</p>
+                      <p className="text-sm text-white">2/1 7:26pm</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs text-zinc-500">Read</p>
+                      <p className="text-sm text-white">2/1 7:26pm</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Financial */}
+                <div>
+                  <button className="flex items-center justify-between w-full py-2">
+                    <span className="font-medium text-white">Financial</span>
+                    <ChevronDown className="w-4 h-4 text-zinc-400" />
+                  </button>
+                  <div className="grid grid-cols-3 gap-4 mt-2">
+                    <div className="text-center">
+                      <p className="text-xs text-zinc-500">Spent</p>
+                      <p className="text-sm text-white">$0</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs text-zinc-500">Tips</p>
+                      <p className="text-sm text-white">$0</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs text-zinc-500">PPV</p>
+                      <p className="text-sm text-white">$0</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-4 mt-3">
+                    <div className="text-center">
+                      <p className="text-xs text-zinc-500">Sub</p>
+                      <p className="text-sm text-white">No</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs text-zinc-500">Avg Tips</p>
+                      <p className="text-sm text-white">$0</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs text-zinc-500">Avg PPV</p>
+                      <p className="text-sm text-white">$0</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Custom Attributes */}
+                <div>
+                  <button className="flex items-center justify-between w-full py-2">
+                    <span className="font-medium text-white">Custom Attributes (10)</span>
+                    <ChevronDown className="w-4 h-4 text-zinc-400" />
+                  </button>
+                  <Button
+                    variant="outline"
+                    className="w-full mt-2 border-zinc-700 text-zinc-400 hover:text-white"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add
+                  </Button>
+                  <div className="mt-3 space-y-2">
+                    <div className="flex items-center justify-between p-2 rounded bg-zinc-800/50">
+                      <span className="text-sm text-zinc-400">Payday</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-white">N/A</span>
+                        <MoreVertical className="w-4 h-4 text-zinc-500" />
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded bg-zinc-800/50">
+                      <span className="text-sm text-zinc-400">Salary</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-white">-</span>
+                        <MoreVertical className="w-4 h-4 text-zinc-500" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </ScrollArea>
+          </>
+        ) : (
+          <div className="flex-1 flex items-center justify-center text-zinc-500">
+            <p>Select a chat to view fan details</p>
+          </div>
+        )}
       </div>
     </div>
   )
