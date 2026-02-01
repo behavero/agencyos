@@ -125,10 +125,6 @@ export default function ModelsClient({ models, agencyId }: ModelsClientProps) {
               
               <a 
                 href="/api/auth/fanvue"
-                onClick={(e) => {
-                  console.log('[CRM] Link clicked!')
-                  setAddModelOpen(false)
-                }}
                 className="w-full gap-2 inline-flex items-center justify-center h-11 px-8 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 font-medium transition-colors"
               >
                 <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
