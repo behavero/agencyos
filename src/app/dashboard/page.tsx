@@ -1,5 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { Sidebar } from '@/components/layout/sidebar'
+import { Header } from '@/components/layout/header'
 import DashboardClient from './dashboard-client'
 
 export default async function DashboardPage() {
@@ -32,11 +34,19 @@ export default async function DashboardPage() {
     .eq('agency_id', profile?.agency_id)
 
   return (
-    <DashboardClient
-      user={user}
-      profile={profile}
-      agency={agency}
-      models={models || []}
-    />
+    <div className="flex min-h-screen bg-background">
+      <Sidebar />
+      <div className="flex-1 ml-64">
+        <Header />
+        <main className="p-6">
+          <DashboardClient
+            user={user}
+            profile={profile}
+            agency={agency}
+            models={models || []}
+          />
+        </main>
+      </div>
+    </div>
   )
 }

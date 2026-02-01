@@ -2,11 +2,25 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import type { User } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
+import {
+  TrendingUp,
+  Users,
+  DollarSign,
+  Zap,
+  Target,
+  Trophy,
+  Flame,
+  Crown,
+  ArrowUpRight,
+  Plus,
+} from 'lucide-react'
 
 type Profile = Database['public']['Tables']['profiles']['Row']
 type Agency = Database['public']['Tables']['agencies']['Row']
@@ -23,135 +37,356 @@ export default function DashboardClient({ user, profile, agency, models }: Dashb
   const router = useRouter()
   const supabase = createClient()
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    toast.success('Logged out successfully')
-    router.push('/')
+  const handleAddModel = () => {
+    router.push('/api/auth/fanvue')
   }
 
+  // Calculate stats
+  const revenueGrowth = '+11% vs last month'
+  const activeModels = models.filter(m => m.status === 'active').length
+  const totalEarnings = agency?.treasury_balance || 0
+  const currentLevel = agency?.current_level || 1
+  const currentStreak = profile?.current_streak || 0
+  const xpCount = profile?.xp_count || 0
+  const nextLevelXp = currentLevel * 1000
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      {/* Header */}
-      <header className="border-b border-white/10 backdrop-blur-lg bg-black/20">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-              <span className="text-xl">🏰</span>
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-white">AgencyOS</h1>
-              <p className="text-sm text-gray-400">{agency?.name || 'Your Agency'}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              className="bg-gradient-to-r from-purple-500 to-pink-500"
-              onClick={() => router.push('/api/auth/fanvue')}
-            >
-              + Add Model
-            </Button>
-            <Button variant="outline" onClick={handleLogout}>
-              Logout
-            </Button>
-          </div>
+    <div className="space-y-6">
+      {/* Welcome Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">
+            Welcome back, {profile?.username || 'Grandmaster'}! 👋
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            {agency?.name || 'Your Agency'} • Level {currentLevel} • {currentStreak} day streak 🔥
+          </p>
         </div>
-      </header>
+        <Button onClick={handleAddModel} className="gap-2 shadow-lg hover-lift">
+          <Plus className="w-4 h-4" />
+          Add Model
+        </Button>
+      </div>
 
-      <main className="container mx-auto px-4 py-8">
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <Card className="bg-black/40 border-white/10 backdrop-blur">
-            <CardHeader>
-              <CardTitle className="text-yellow-500">💰 Treasury</CardTitle>
-              <CardDescription>Available Balance</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold text-white">
-                ${agency?.treasury_balance?.toFixed(2) || '0.00'}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-black/40 border-white/10 backdrop-blur">
-            <CardHeader>
-              <CardTitle className="text-purple-500">📊 Level</CardTitle>
-              <CardDescription>Agency Progress</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold text-white">
-                Level {agency?.current_level || 1}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-black/40 border-white/10 backdrop-blur">
-            <CardHeader>
-              <CardTitle className="text-pink-500">👥 Models</CardTitle>
-              <CardDescription>Active Creators</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold text-white">
-                {models.length}
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* User Info */}
-        <Card className="bg-black/40 border-white/10 backdrop-blur">
-          <CardHeader>
-            <CardTitle className="text-white">Your Profile</CardTitle>
-            <CardDescription>Account Information</CardDescription>
+      {/* Top Metrics - Horizontal Scroll Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Treasury */}
+        <Card className="glass hover-lift">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Treasury Balance</CardTitle>
+            <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center">
+              <DollarSign className="w-4 h-4 text-accent" />
+            </div>
           </CardHeader>
-          <CardContent className="space-y-2 text-white">
-            <p><strong>Email:</strong> {user.email}</p>
-            <p><strong>Username:</strong> {profile?.username || 'Not set'}</p>
-            <p><strong>Role:</strong> {profile?.role || 'No role assigned'}</p>
-            <p><strong>XP:</strong> {profile?.xp_count || 0}</p>
-            <p><strong>Streak:</strong> {profile?.current_streak || 0} days 🔥</p>
-            <p><strong>League:</strong> {profile?.league_rank || 'Iron'}</p>
+          <CardContent>
+            <div className="text-2xl font-bold">${totalEarnings.toFixed(2)}</div>
+            <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+              <TrendingUp className="w-3 h-3 text-green-500" />
+              {revenueGrowth}
+            </p>
           </CardContent>
         </Card>
 
-        {/* Models List */}
-        {models.length > 0 && (
-          <Card className="mt-6 bg-black/40 border-white/10 backdrop-blur">
-            <CardHeader>
-              <CardTitle className="text-white">Your Models</CardTitle>
-              <CardDescription>Manage your creators</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {models.map((model) => (
-                  <div
-                    key={model.id}
-                    className="flex items-center gap-4 p-4 rounded-lg bg-white/5 border border-white/10"
-                  >
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                      {model.avatar_url ? (
-                        <img
-                          src={model.avatar_url}
-                          alt={model.name || ''}
-                          className="w-full h-full rounded-full object-cover"
-                        />
-                      ) : (
-                        <span className="text-2xl">👤</span>
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-white">{model.name}</h3>
-                      <p className="text-sm text-gray-400">Status: {model.status}</p>
-                    </div>
-                    <Button variant="outline" size="sm">
-                      Manage
-                    </Button>
-                  </div>
-                ))}
+        {/* Revenue (Monthly) */}
+        <Card className="glass hover-lift bg-primary/5">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Monthly Revenue</CardTitle>
+            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+              <TrendingUp className="w-4 h-4 text-primary" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">$1,980,130</div>
+            <Badge className="mt-2 bg-accent text-accent-foreground">
+              +11% Week
+            </Badge>
+          </CardContent>
+        </Card>
+
+        {/* Active Models */}
+        <Card className="glass hover-lift bg-secondary/5">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Active Models</CardTitle>
+            <div className="w-8 h-8 rounded-lg bg-secondary/10 flex items-center justify-center">
+              <Users className="w-4 h-4 text-secondary" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{activeModels}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {models.length} total creators
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* XP & Level */}
+        <Card className="glass hover-lift bg-gradient-to-br from-primary/10 to-secondary/10">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Agency Level</CardTitle>
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-secondary flex items-center justify-center">
+              <Trophy className="w-4 h-4 text-white" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">Level {currentLevel}</div>
+            <div className="mt-2">
+              <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                <span>{xpCount} XP</span>
+                <span>{nextLevelXp} XP</span>
               </div>
-            </CardContent>
-          </Card>
-        )}
-      </main>
+              <div className="h-2 bg-muted rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-gradient-to-r from-primary to-secondary transition-all duration-500"
+                  style={{ width: `${(xpCount / nextLevelXp) * 100}%` }}
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Interaction History - Like Salesforce Design */}
+      <Card className="glass">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Interaction History</CardTitle>
+              <CardDescription>Recent deals and opportunities</CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm">
+                <Target className="w-4 h-4" />
+              </Button>
+              <Button variant="ghost" size="sm">
+                <ArrowUpRight className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Blue Card */}
+            <div className="relative p-4 rounded-2xl bg-primary text-primary-foreground shadow-lg overflow-hidden group hover-lift">
+              <div className="absolute top-2 right-2">
+                <Button variant="ghost" size="icon" className="h-6 w-6 text-primary-foreground/80">
+                  ⋯
+                </Button>
+              </div>
+              <div className="space-y-1 mb-4">
+                <p className="text-xs opacity-80">Oct 4</p>
+                <p className="font-medium">Royal Package Opportunity</p>
+              </div>
+              <div className="flex items-end justify-between">
+                <p className="text-2xl font-bold">11,250$</p>
+                <div className="flex -space-x-2">
+                  <Avatar className="w-6 h-6 border-2 border-primary">
+                    <AvatarFallback className="text-[10px]">JD</AvatarFallback>
+                  </Avatar>
+                  <Avatar className="w-6 h-6 border-2 border-primary">
+                    <AvatarFallback className="text-[10px]">AB</AvatarFallback>
+                  </Avatar>
+                  <Avatar className="w-6 h-6 border-2 border-primary">
+                    <AvatarFallback className="text-[10px]">CD</AvatarFallback>
+                  </Avatar>
+                </div>
+              </div>
+            </div>
+
+            {/* Teal Card */}
+            <div className="relative p-4 rounded-2xl bg-secondary text-secondary-foreground shadow-lg overflow-hidden group hover-lift">
+              <div className="absolute top-2 right-2">
+                <Button variant="ghost" size="icon" className="h-6 w-6 text-secondary-foreground/80">
+                  ⋯
+                </Button>
+              </div>
+              <div className="space-y-1 mb-4">
+                <p className="text-xs opacity-80">Oct 16</p>
+                <p className="font-medium">Third Deal Most Useful</p>
+              </div>
+              <div className="flex items-end justify-between">
+                <p className="text-2xl font-bold">21,300$</p>
+                <div className="flex -space-x-2">
+                  <Avatar className="w-6 h-6 border-2 border-secondary">
+                    <AvatarFallback className="text-[10px]">EF</AvatarFallback>
+                  </Avatar>
+                  <Avatar className="w-6 h-6 border-2 border-secondary">
+                    <AvatarFallback className="text-[10px]">GH</AvatarFallback>
+                  </Avatar>
+                  <Avatar className="w-6 h-6 border-2 border-secondary">
+                    <AvatarFallback className="text-[10px]">IJ</AvatarFallback>
+                  </Avatar>
+                </div>
+              </div>
+            </div>
+
+            {/* Dark Card */}
+            <div className="relative p-4 rounded-2xl bg-foreground text-background shadow-lg overflow-hidden group hover-lift">
+              <div className="absolute top-2 right-2">
+                <Button variant="ghost" size="icon" className="h-6 w-6 text-background/80">
+                  ⋯
+                </Button>
+              </div>
+              <div className="space-y-1 mb-4">
+                <p className="text-xs opacity-80">Oct 12</p>
+                <p className="font-medium">Absolute Success Deal</p>
+              </div>
+              <div className="flex items-end justify-between">
+                <p className="text-2xl font-bold">2,100$</p>
+                <div className="flex -space-x-2">
+                  <Avatar className="w-6 h-6 border-2 border-foreground">
+                    <AvatarFallback className="text-[10px]">KL</AvatarFallback>
+                  </Avatar>
+                  <Avatar className="w-6 h-6 border-2 border-foreground">
+                    <AvatarFallback className="text-[10px]">MN</AvatarFallback>
+                  </Avatar>
+                  <Avatar className="w-6 h-6 border-2 border-foreground">
+                    <AvatarFallback className="text-[10px]">OP</AvatarFallback>
+                  </Avatar>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Secondary Row */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+            {/* Yellow Card */}
+            <div className="relative p-4 rounded-2xl bg-accent text-accent-foreground shadow-lg overflow-hidden group hover-lift">
+              <div className="absolute top-2 right-2">
+                <Button variant="ghost" size="icon" className="h-6 w-6 text-accent-foreground/80">
+                  ⋯
+                </Button>
+              </div>
+              <div className="space-y-1 mb-4">
+                <p className="text-xs opacity-70">Oct 11</p>
+                <p className="font-medium">Royal Package Opportunity</p>
+              </div>
+              <div className="flex items-end justify-between">
+                <p className="text-2xl font-bold">4,160$</p>
+                <div className="flex -space-x-2">
+                  <Avatar className="w-6 h-6 border-2 border-accent">
+                    <AvatarFallback className="text-[10px]">QR</AvatarFallback>
+                  </Avatar>
+                  <Avatar className="w-6 h-6 border-2 border-accent">
+                    <AvatarFallback className="text-[10px]">ST</AvatarFallback>
+                  </Avatar>
+                </div>
+              </div>
+            </div>
+
+            {/* Light Gray Card */}
+            <div className="relative p-4 rounded-2xl bg-muted text-muted-foreground shadow-sm overflow-hidden group hover-lift">
+              <div className="absolute top-2 right-2">
+                <Button variant="ghost" size="icon" className="h-6 w-6">
+                  ⋯
+                </Button>
+              </div>
+              <div className="space-y-1 mb-4">
+                <p className="text-xs opacity-70">Oct 2</p>
+                <p className="font-medium">Adaptive Business Services</p>
+              </div>
+              <div className="flex items-end justify-between">
+                <p className="text-2xl font-bold">3,140$</p>
+                <div className="flex -space-x-2">
+                  <Avatar className="w-6 h-6 border-2 border-muted">
+                    <AvatarFallback className="text-[10px]">UV</AvatarFallback>
+                  </Avatar>
+                  <Avatar className="w-6 h-6 border-2 border-muted">
+                    <AvatarFallback className="text-[10px]">WX</AvatarFallback>
+                  </Avatar>
+                </div>
+              </div>
+            </div>
+
+            {/* Another Light Card */}
+            <div className="relative p-4 rounded-2xl bg-muted text-muted-foreground shadow-sm overflow-hidden group hover-lift">
+              <div className="absolute top-2 right-2">
+                <Button variant="ghost" size="icon" className="h-6 w-6">
+                  ⋯
+                </Button>
+              </div>
+              <div className="space-y-1 mb-4">
+                <p className="text-xs opacity-70">Oct 2</p>
+                <p className="font-medium">Second deal - Common Service</p>
+              </div>
+              <div className="flex items-end justify-between">
+                <p className="text-2xl font-bold">12,350$</p>
+                <div className="flex -space-x-2">
+                  <Avatar className="w-6 h-6 border-2 border-muted">
+                    <AvatarFallback className="text-[10px]">YZ</AvatarFallback>
+                  </Avatar>
+                  <Avatar className="w-6 h-6 border-2 border-muted">
+                    <AvatarFallback className="text-[10px]">AB</AvatarFallback>
+                  </Avatar>
+                  <Avatar className="w-6 h-6 border-2 border-muted">
+                    <AvatarFallback className="text-[10px]">CD</AvatarFallback>
+                  </Avatar>
+                </div>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Models Grid */}
+      {models.length > 0 && (
+        <Card className="glass">
+          <CardHeader>
+            <CardTitle>Your Models</CardTitle>
+            <CardDescription>Manage your creators and track performance</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {models.map((model) => (
+                <div
+                  key={model.id}
+                  className="group relative p-4 rounded-xl border border-border hover:border-primary/50 transition-all hover-lift glass"
+                >
+                  <div className="flex items-start gap-3">
+                    <Avatar className="w-12 h-12">
+                      <AvatarImage src={model.avatar_url || undefined} alt={model.name || ''} />
+                      <AvatarFallback className="bg-gradient-to-br from-primary to-secondary text-white">
+                        {model.name?.charAt(0) || 'M'}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold truncate">{model.name}</h3>
+                      <Badge variant={model.status === 'active' ? 'default' : 'secondary'} className="mt-1">
+                        {model.status}
+                      </Badge>
+                    </div>
+                  </div>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="w-full mt-4 opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    View Details
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Empty State */}
+      {models.length === 0 && (
+        <Card className="glass">
+          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+            <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+              <Users className="w-8 h-8 text-muted-foreground" />
+            </div>
+            <h3 className="text-lg font-semibold mb-2">No Models Yet</h3>
+            <p className="text-muted-foreground mb-4 max-w-sm">
+              Connect your first Fanvue creator to start tracking performance and growing your agency.
+            </p>
+            <Button onClick={handleAddModel} className="gap-2">
+              <Plus className="w-4 h-4" />
+              Add Your First Model
+            </Button>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }
