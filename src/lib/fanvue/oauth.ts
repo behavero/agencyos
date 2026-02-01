@@ -43,7 +43,7 @@ export function getAuthorizeUrl({
     response_type: "code",
     client_id: clientId,
     redirect_uri: redirectUri,
-    scope: `${DEFAULT_SCOPES} ${scopes || "read:self read:creator read:insights read:chat write:chat read:fan read:media read:post write:post read:agency"}`,
+    scope: `${DEFAULT_SCOPES} ${scopes || "read:self read:creator read:insights read:chat write:chat read:fan read:media read:post write:post read:agency read:tracking_links write:tracking_links"}`,
     state,
     code_challenge: codeChallenge,
     code_challenge_method: "S256",

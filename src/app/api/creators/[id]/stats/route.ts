@@ -75,10 +75,14 @@ export async function POST(
 
     console.log('[Stats API] User info:', JSON.stringify(userInfo, null, 2))
 
+    // Calculate date range for earnings (last 30 days)
+    const endDate = new Date().toISOString()
+    const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+
     // Fetch additional stats in parallel with detailed logging
     const [earnings, unreadCount, trackingLinks] = await Promise.all([
-      // Earnings - try different response structures
-      fanvue.getEarnings({ interval: 'month' }).then(data => {
+      // Earnings - fetch last 30 days of transactions
+      fanvue.getEarnings({ startDate, endDate, size: 50 }).then(data => {
         console.log('[Stats API] Earnings raw:', JSON.stringify(data, null, 2))
         return data
       }).catch(e => {
@@ -95,8 +99,8 @@ export async function POST(
         return null
       }),
 
-      // Tracking links
-      fanvue.getTrackingLinks({ size: 100 }).then(data => {
+      // Tracking links (requires read:tracking_links scope)
+      fanvue.getTrackingLinks({ limit: 100 }).then(data => {
         console.log('[Stats API] Tracking links raw:', JSON.stringify(data, null, 2))
         return data
       }).catch(e => {
@@ -111,18 +115,14 @@ export async function POST(
     const totalPosts = userInfo?.contentCounts?.postCount || 0
     const totalLikes = userInfo?.likesCount || 0
 
-    // Extract earnings - handle different response structures
+    // Extract earnings - Fanvue returns amounts in CENTS, sum gross from data array
     let totalRevenue = 0
-    if (earnings) {
-      // Try different possible response structures
-      if (typeof earnings.total === 'number') {
-        totalRevenue = earnings.total
-      } else if (earnings.data && Array.isArray(earnings.data)) {
-        // Sum up earnings from data array
-        totalRevenue = earnings.data.reduce((sum: number, item: any) => sum + (item.amount || 0), 0)
-      } else if (typeof earnings === 'number') {
-        totalRevenue = earnings
-      }
+    if (earnings && earnings.data && Array.isArray(earnings.data)) {
+      // Sum up gross earnings from data array (amounts are in cents)
+      const totalCents = earnings.data.reduce((sum: number, item: any) => sum + (item.gross || 0), 0)
+      // Convert cents to dollars
+      totalRevenue = totalCents / 100
+      console.log('[Stats API] Earnings: Found', earnings.data.length, 'transactions, total cents:', totalCents, 'dollars:', totalRevenue)
     }
     console.log('[Stats API] Total revenue calculated:', totalRevenue)
 

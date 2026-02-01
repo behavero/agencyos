@@ -82,18 +82,18 @@ export class FanvueClient {
   }
 
   // ==================== INSIGHTS ====================
-  async getEarnings(params?: { from?: string; to?: string; interval?: 'day' | 'week' | 'month' }) {
+  async getEarnings(params?: { startDate?: string; endDate?: string; size?: number; cursor?: string }) {
     const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
     return this.request<{
-      total: number
       data: Array<{
         date: string
-        amount: number
-        subscriptions: number
-        tips: number
-        messages: number
-        payToView: number
+        gross: number  // In cents
+        net: number    // In cents
+        currency: string | null
+        source: string
+        user: { uuid: string; handle: string; displayName: string } | null
       }>
+      nextCursor: string | null
     }>(`/insights/earnings${query}`)
   }
 
@@ -386,23 +386,23 @@ export class FanvueClient {
   }
 
   // ==================== TRACKING LINKS ====================
-  async getTrackingLinks(params?: { page?: number; size?: number }) {
+  async getTrackingLinks(params?: { limit?: number; cursor?: string }) {
     const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
     return this.request<{
       data: Array<{
         uuid: string
         name: string
-        url: string
+        linkUrl: string
+        externalSocialPlatform: string
+        createdAt: string
         clicks: number
-        conversions: number
-        revenue: number
       }>
-      totalCount: number
+      nextCursor: string | null
     }>(`/tracking-links${query}`)
   }
 
-  async createTrackingLink(data: { name: string }) {
-    return this.request<{ uuid: string; url: string }>('/tracking-links', {
+  async createTrackingLink(data: { name: string; externalSocialPlatform: string }) {
+    return this.request<{ uuid: string; linkUrl: string }>('/tracking-links', {
       method: 'POST',
       body: JSON.stringify(data),
     })
