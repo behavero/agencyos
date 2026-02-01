@@ -45,7 +45,7 @@ export function AlfredFloatingChat({ modelId }: AlfredFloatingChatProps = {}) {
       {
         id: 'welcome',
         role: 'assistant',
-        content: "Hello! I'm Alfred, your AI agency strategist. I have access to all your Fanvue data, revenue analytics, and social media stats. How can I help you grow today?",
+        content: "Hello! I'm Alfred, your OnyxOS AI strategist powered by Llama 3.3 70B. I have instant access to your Fanvue revenue, social stats, and team productivity. What would you like to analyze?",
       },
     ],
   })
@@ -128,7 +128,7 @@ export function AlfredFloatingChat({ modelId }: AlfredFloatingChatProps = {}) {
             <h3 className="font-semibold text-foreground">Alfred</h3>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-              <span>AI Strategist • GPT-4o</span>
+              <span>AI Strategist • Llama 3.3 70B</span>
             </div>
           </div>
         </div>

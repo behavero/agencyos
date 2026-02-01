@@ -1,41 +1,63 @@
-import { openai } from '@ai-sdk/openai'
 import { streamText } from 'ai'
+import { groq, ALFRED_MODEL, isGroqConfigured } from '@/lib/ai/provider'
 import { buildAgencyContext, buildModelContext } from '@/lib/ai/context-builder'
 
 // Allow streaming responses up to 30 seconds
 export const maxDuration = 30
 
+/**
+ * Alfred AI System Prompt - Optimized for Llama 3.3
+ * 
+ * Key optimizations for Llama models:
+ * - Explicit conciseness instructions (Llama tends to be verbose)
+ * - Markdown output format specification
+ * - Structured response format
+ */
 const ALFRED_SYSTEM_PROMPT = `You are Alfred, the OnyxOS AI Strategist.
 
+IDENTITY:
+- Name: Alfred
+- Platform: OnyxOS (Fanvue Agency Management)
+- Role: Strategic Advisor for content creator agencies
+
 PERSONALITY:
-- Precise, data-driven, professional
+- Precise and data-driven
 - Butler-like demeanor (inspired by Batman's Alfred)
-- Loyal and supportive, but not afraid to give honest advice
-- Uses occasional dry wit
+- Dry wit, professional tone
+- Loyal but honest
 
-CAPABILITIES:
-- Analyze Fanvue creator performance data
-- Provide actionable growth strategies
-- Help optimize revenue and engagement
-- Suggest content strategies based on trends
-- Identify opportunities and risks
+CRITICAL RULES:
+- Be EXTREMELY concise. Maximum 3-4 short paragraphs.
+- Do NOT lecture or over-explain.
+- Output in Markdown format.
+- Use bullet points for lists.
+- Bold **key metrics** and **action items**.
+- Only reference data from the provided context.
+- If data is unavailable, say so briefly.
 
-RESPONSE STYLE:
-- Start with a brief acknowledgment
-- Present data-backed insights
-- Provide 2-3 actionable recommendations
-- End with a forward-looking statement
-- Use emojis sparingly for key points (💰, 📈, 🎯, ⚠️)
-- Keep responses concise but comprehensive
+RESPONSE FORMAT:
+1. 📊 **Quick Insight** (1 sentence observation)
+2. 💡 **Actions** (2-3 bullet points max)
+3. 🎯 **Priority** (1 sentence next step)
 
 CONSTRAINTS:
-- Only make claims based on the provided context
-- If asked about data not in context, explain what's available
-- Don't invent statistics or metrics
-- Be honest about limitations`
+- Never invent statistics
+- Never apologize excessively
+- Never repeat the question back
+- Keep total response under 200 words`
 
 export async function POST(req: Request) {
   try {
+    // Check if Groq is configured
+    if (!isGroqConfigured()) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Groq API key not configured. Add GROQ_API_KEY to your environment variables. Get a free key at console.groq.com' 
+        }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
+
     const { messages, modelId } = await req.json()
 
     // Build context based on whether we have a specific model or agency-wide
@@ -46,7 +68,7 @@ export async function POST(req: Request) {
       contextData = await buildAgencyContext()
     }
 
-    // Create the full system message with context
+    // Create the full system message with injected context
     const systemMessage = `${ALFRED_SYSTEM_PROMPT}
 
 ---
@@ -54,30 +76,43 @@ CURRENT DATA CONTEXT:
 ${contextData}
 ---
 
-Use this data to answer questions accurately. Reference specific numbers when relevant.`
+Reference these numbers when relevant. Be specific with data.`
 
     const result = streamText({
-      model: openai('gpt-4o-mini'),
+      model: groq(ALFRED_MODEL),
       system: systemMessage,
       messages,
+      temperature: 0.7, // Slightly creative but focused
+      maxTokens: 500,   // Enforce conciseness
     })
 
     return result.toDataStreamResponse()
   } catch (error) {
     console.error('Alfred AI Error:', error)
     
-    // Check if it's an API key issue
-    if (error instanceof Error && error.message.includes('API key')) {
-      return new Response(
-        JSON.stringify({ 
-          error: 'OpenAI API key not configured. Please add OPENAI_API_KEY to your environment variables.' 
-        }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
-      )
+    // Handle specific error types
+    if (error instanceof Error) {
+      if (error.message.includes('API key') || error.message.includes('401')) {
+        return new Response(
+          JSON.stringify({ 
+            error: 'Invalid Groq API key. Please check your GROQ_API_KEY in environment variables.' 
+          }),
+          { status: 401, headers: { 'Content-Type': 'application/json' } }
+        )
+      }
+      
+      if (error.message.includes('rate limit') || error.message.includes('429')) {
+        return new Response(
+          JSON.stringify({ 
+            error: 'Rate limit reached. Groq free tier has limits - please wait a moment.' 
+          }),
+          { status: 429, headers: { 'Content-Type': 'application/json' } }
+        )
+      }
     }
 
     return new Response(
-      JSON.stringify({ error: 'Failed to process request' }),
+      JSON.stringify({ error: 'Failed to process request. Please try again.' }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }
     )
   }
