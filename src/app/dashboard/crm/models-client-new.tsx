@@ -123,28 +123,19 @@ export default function ModelsClient({ models, agencyId }: ModelsClientProps) {
                 </ol>
               </div>
               
-              <Button 
+              <a 
+                href="/api/auth/fanvue"
                 onClick={(e) => {
-                  e.preventDefault()
-                  console.log('[CRM] Button clicked!')
-                  console.log('[CRM] Closing dialog...')
+                  console.log('[CRM] Link clicked!')
                   setAddModelOpen(false)
-                  
-                  // Small delay to ensure dialog closes before redirect
-                  setTimeout(() => {
-                    console.log('[CRM] Redirecting to Fanvue OAuth...')
-                    window.location.href = '/api/auth/fanvue'
-                  }, 100)
                 }}
-                className="w-full gap-2"
-                size="lg"
-                type="button"
+                className="w-full gap-2 inline-flex items-center justify-center h-11 px-8 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 font-medium transition-colors"
               >
                 <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/>
                 </svg>
-                Connect with Fanvue
-              </Button>
+                <span>Connect with Fanvue</span>
+              </a>
               
               <div className="text-center">
                 <p className="text-xs text-muted-foreground">
