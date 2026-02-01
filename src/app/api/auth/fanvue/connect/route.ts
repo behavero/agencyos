@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 
 /**
  * Fanvue Direct Connection API
@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
 
     console.log('[Fanvue Connect] Attempting to connect account:', email)
 
-    // Get current user
+    // Get current user (with regular client)
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
@@ -37,14 +37,15 @@ export async function POST(request: NextRequest) {
       .eq('id', user.id)
       .single()
 
+    if (!profile?.agency_id) {
+      return NextResponse.json(
+        { error: 'No agency found for this user' },
+        { status: 400 }
+      )
+    }
+
     // TODO: Replace with actual Fanvue API authentication
     // For now, we'll simulate a successful connection
-    // The actual implementation would:
-    // 1. Call Fanvue's login API with email/password
-    // 2. Get the access token and user info
-    // 3. Store the token securely
-    
-    // Simulated Fanvue user data (replace with real API call)
     const fanvueUser = {
       uuid: `fv_${Date.now()}`,
       displayName: email.split('@')[0],
@@ -52,11 +53,14 @@ export async function POST(request: NextRequest) {
       avatarUrl: null,
     }
 
+    // Use admin client to bypass RLS for insert
+    const adminClient = createAdminClient()
+
     // Check if model already exists
-    const { data: existingModel } = await supabase
+    const { data: existingModel } = await adminClient
       .from('models')
       .select('id')
-      .eq('agency_id', profile?.agency_id)
+      .eq('agency_id', profile.agency_id)
       .ilike('name', fanvueUser.displayName)
       .single()
 
@@ -67,14 +71,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create new model entry
-    const { data: newModel, error: insertError } = await supabase
+    // Create new model entry (with admin client to bypass RLS)
+    const { data: newModel, error: insertError } = await adminClient
       .from('models')
       .insert({
-        agency_id: profile?.agency_id,
+        agency_id: profile.agency_id,
         name: fanvueUser.displayName,
         avatar_url: fanvueUser.avatarUrl,
-        fanvue_api_key: `token_${Date.now()}`, // Would be real token from Fanvue
+        fanvue_api_key: `token_${Date.now()}`,
         fanvue_user_uuid: fanvueUser.uuid,
         status: 'active',
       })
