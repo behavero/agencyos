@@ -130,13 +130,13 @@ export async function POST(
     const unreadMessages = unreadCount?.unreadMessagesCount || 0
     console.log('[Stats API] Unread messages:', unreadMessages, 'Unread chats:', unreadCount?.unreadChatsCount || 0)
 
-    // Tracking links count
+    // Tracking links count (API returns data array + nextCursor, no totalCount)
     let totalTrackingLinks = 0
-    if (trackingLinks) {
-      if (typeof trackingLinks.totalCount === 'number') {
-        totalTrackingLinks = trackingLinks.totalCount
-      } else if (trackingLinks.data && Array.isArray(trackingLinks.data)) {
-        totalTrackingLinks = trackingLinks.data.length
+    if (trackingLinks?.data && Array.isArray(trackingLinks.data)) {
+      totalTrackingLinks = trackingLinks.data.length
+      // Note: If there's a nextCursor, there are more links not counted here
+      if (trackingLinks.nextCursor) {
+        console.log('[Stats API] More tracking links exist (has nextCursor)')
       }
     }
     console.log('[Stats API] Tracking links:', totalTrackingLinks)
