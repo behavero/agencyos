@@ -4,7 +4,7 @@ import { createFanvueClient } from '@/lib/fanvue/client'
 
 /**
  * Mass Message API for a specific creator
- * Send messages to multiple fans at once
+ * Send messages to multiple fans at once using Fanvue's list-based targeting
  */
 
 export async function POST(
@@ -13,19 +13,27 @@ export async function POST(
 ) {
   const { id } = await params
   const body = await request.json()
-  const { userUuids, content, mediaIds, price, listType, listUuid } = body
+  const { 
+    text, 
+    mediaUuids, 
+    price,
+    // List-based targeting (Fanvue API v2025-06-26)
+    smartListIds,      // e.g., ['subscribers', 'followers']
+    customListUuids,   // UUIDs of custom lists
+    excludeSmartListIds,
+    excludeCustomListUuids,
+  } = body
 
-  // Either provide userUuids directly, or a list (smart/custom) to target
-  if (!content) {
+  if (!text && !mediaUuids?.length) {
     return NextResponse.json(
-      { error: 'content is required' },
+      { error: 'Either text or mediaUuids is required' },
       { status: 400 }
     )
   }
 
-  if (!userUuids?.length && !listUuid) {
+  if (!smartListIds?.length && !customListUuids?.length) {
     return NextResponse.json(
-      { error: 'Either userUuids or listUuid is required' },
+      { error: 'At least one list (smartListIds or customListUuids) is required for targeting' },
       { status: 400 }
     )
   }
@@ -53,39 +61,54 @@ export async function POST(
 
     const fanvue = createFanvueClient(model.fanvue_access_token)
 
-    let targetUuids = userUuids || []
-
-    // If using a list, fetch the members first
-    if (listUuid && !userUuids?.length) {
-      let members
-      if (listType === 'smart') {
-        members = await fanvue.getSmartListMembers(listUuid, { size: 100 })
-      } else {
-        members = await fanvue.getCustomListMembers(listUuid, { size: 100 })
+    // Build the request according to Fanvue API spec
+    const massMessageData: {
+      text?: string
+      mediaUuids?: string[]
+      price?: number | null
+      includedLists: {
+        smartListUuids?: string[]
+        customListUuids?: string[]
       }
-      targetUuids = members.data.map((m: any) => m.uuid)
+      excludedLists?: {
+        smartListUuids?: string[]
+        customListUuids?: string[]
+      }
+    } = {
+      includedLists: {},
     }
 
-    if (!targetUuids.length) {
-      return NextResponse.json(
-        { error: 'No recipients found' },
-        { status: 400 }
-      )
+    if (text) massMessageData.text = text
+    if (mediaUuids?.length) massMessageData.mediaUuids = mediaUuids
+    if (price !== undefined && price !== null) massMessageData.price = price
+
+    // Set included lists
+    if (smartListIds?.length) {
+      massMessageData.includedLists.smartListUuids = smartListIds
+    }
+    if (customListUuids?.length) {
+      massMessageData.includedLists.customListUuids = customListUuids
+    }
+
+    // Set excluded lists if provided
+    if (excludeSmartListIds?.length || excludeCustomListUuids?.length) {
+      massMessageData.excludedLists = {}
+      if (excludeSmartListIds?.length) {
+        massMessageData.excludedLists.smartListUuids = excludeSmartListIds
+      }
+      if (excludeCustomListUuids?.length) {
+        massMessageData.excludedLists.customListUuids = excludeCustomListUuids
+      }
     }
 
     // Send mass message
-    const result = await fanvue.sendMassMessage({
-      userUuids: targetUuids,
-      content,
-      mediaIds,
-      price,
-    })
+    const result = await fanvue.sendMassMessage(massMessageData)
 
-    console.log(`[Mass Message] Sent to ${result.messageCount} users`)
+    console.log(`[Mass Message] Sent to ${result.recipientCount} users, ID: ${result.id}`)
 
     return NextResponse.json({
       success: true,
-      message: `Message sent to ${result.messageCount} fans`,
+      message: `Message sent to ${result.recipientCount} fans`,
       ...result,
     })
 
