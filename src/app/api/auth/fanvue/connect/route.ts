@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
+import { authenticateWithCredentials } from '@/lib/fanvue/auth'
 
 /**
  * Fanvue Direct Connection API
- * Connects a Fanvue account using email/password credentials
+ * Authenticates with Fanvue using email/password and stores the tokens
  */
 export async function POST(request: NextRequest) {
   try {
@@ -44,42 +45,73 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // TODO: Replace with actual Fanvue API authentication
-    // For now, we'll simulate a successful connection
-    const fanvueUser = {
-      uuid: `fv_${Date.now()}`,
-      displayName: email.split('@')[0],
-      handle: email.split('@')[0].toLowerCase(),
-      avatarUrl: null,
+    // Authenticate with Fanvue in the background
+    console.log('[Fanvue Connect] Authenticating with Fanvue...')
+    const authResult = await authenticateWithCredentials(email, password)
+
+    if (!authResult.success) {
+      console.error('[Fanvue Connect] Authentication failed:', authResult.error)
+      return NextResponse.json(
+        { error: authResult.error || 'Failed to authenticate with Fanvue' },
+        { status: 401 }
+      )
     }
+
+    console.log('[Fanvue Connect] Authentication successful!')
+    const { tokens, user: fanvueUser } = authResult
 
     // Use admin client to bypass RLS for insert
     const adminClient = createAdminClient()
 
-    // Check if model already exists
+    // Check if model already exists by email or uuid
     const { data: existingModel } = await adminClient
       .from('models')
       .select('id')
       .eq('agency_id', profile.agency_id)
-      .ilike('name', fanvueUser.displayName)
+      .or(`fanvue_user_uuid.eq.${fanvueUser?.uuid},name.ilike.${fanvueUser?.displayName || email.split('@')[0]}`)
       .single()
 
     if (existingModel) {
-      return NextResponse.json(
-        { error: 'This creator is already connected' },
-        { status: 409 }
-      )
+      // Update existing model with new tokens
+      const { error: updateError } = await adminClient
+        .from('models')
+        .update({
+          fanvue_access_token: tokens?.accessToken,
+          fanvue_refresh_token: tokens?.refreshToken,
+          fanvue_token_expires_at: tokens?.expiresIn 
+            ? new Date(Date.now() + tokens.expiresIn * 1000).toISOString()
+            : null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existingModel.id)
+
+      if (updateError) throw updateError
+
+      return NextResponse.json({
+        success: true,
+        message: 'Creator tokens refreshed',
+        creator: {
+          id: existingModel.id,
+          name: fanvueUser?.displayName,
+          isUpdate: true,
+        }
+      })
     }
 
-    // Create new model entry (with admin client to bypass RLS)
+    // Create new model entry with real data
     const { data: newModel, error: insertError } = await adminClient
       .from('models')
       .insert({
         agency_id: profile.agency_id,
-        name: fanvueUser.displayName,
-        avatar_url: fanvueUser.avatarUrl,
-        fanvue_api_key: `token_${Date.now()}`,
-        fanvue_user_uuid: fanvueUser.uuid,
+        name: fanvueUser?.displayName || email.split('@')[0],
+        avatar_url: fanvueUser?.avatarUrl,
+        fanvue_user_uuid: fanvueUser?.uuid,
+        fanvue_username: fanvueUser?.handle,
+        fanvue_access_token: tokens?.accessToken,
+        fanvue_refresh_token: tokens?.refreshToken,
+        fanvue_token_expires_at: tokens?.expiresIn 
+          ? new Date(Date.now() + tokens.expiresIn * 1000).toISOString()
+          : null,
         status: 'active',
       })
       .select()
@@ -90,7 +122,7 @@ export async function POST(request: NextRequest) {
       throw insertError
     }
 
-    console.log('[Fanvue Connect] Creator connected successfully:', fanvueUser.displayName)
+    console.log('[Fanvue Connect] Creator connected successfully:', fanvueUser?.displayName)
 
     return NextResponse.json({
       success: true,
@@ -99,6 +131,13 @@ export async function POST(request: NextRequest) {
         id: newModel.id,
         name: newModel.name,
         status: newModel.status,
+        stats: fanvueUser ? {
+          followers: fanvueUser.fanCounts?.followersCount || 0,
+          subscribers: fanvueUser.fanCounts?.subscribersCount || 0,
+          posts: fanvueUser.contentCounts?.postCount || 0,
+          media: (fanvueUser.contentCounts?.imageCount || 0) + 
+                 (fanvueUser.contentCounts?.videoCount || 0),
+        } : null,
       }
     })
 
