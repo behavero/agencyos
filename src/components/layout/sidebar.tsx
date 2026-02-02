@@ -25,6 +25,7 @@ import {
   Calendar,
   CalendarClock,
   Link2,
+  UserPlus,
 } from 'lucide-react'
 
 interface NavigationItem {
@@ -75,6 +76,7 @@ const fullNavigation: NavigationSection[] = [
     items: [
       { name: 'Team', href: '/dashboard/team', icon: Users, permission: 'showTeam' },
       { name: 'Planning', href: '/dashboard/team/planning', icon: CalendarClock, permission: 'showTeam' },
+      { name: 'Invite', href: '/dashboard/team/invite', icon: UserPlus, permission: 'showTeam' },
       { name: 'Agency HQ', href: '/dashboard/agency-settings', icon: Building2, permission: 'showAgencySettings' },
     ],
   },

@@ -75,6 +75,6 @@ export const config = {
      * - api/cron (cron job endpoints - have CRON_SECRET verification)
      * - api/bio/track (public tracking endpoint)
      */
-    '/((?!_next/static|_next/image|favicon.ico|public|privacy|terms|data-deletion|u/|s/|api/auth|api/webhooks|api/cron|api/bio/track).*)',
+    '/((?!_next/static|_next/image|favicon.ico|public|privacy|terms|data-deletion|join|u/|s/|api/auth|api/webhooks|api/cron|api/bio/track|api/invitations/validate|api/invitations/accept).*)',
   ],
 }
