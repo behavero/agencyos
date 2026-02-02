@@ -44,7 +44,7 @@ export function EarningsByType({ data }: EarningsByTypeProps) {
                   borderRadius: '8px',
                   color: '#fff',
                 }}
-                formatter={(value: number) => `$${value.toFixed(2)}`}
+                formatter={(value: any) => [`$${Number(value).toFixed(2)}`, '']}
               />
             </PieChart>
           </ResponsiveContainer>
