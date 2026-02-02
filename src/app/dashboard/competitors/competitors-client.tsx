@@ -170,13 +170,16 @@ export function CompetitorsClient({ agencyId, models }: CompetitorsClientProps) 
       return
     }
 
+    // Strip @ symbol if present
+    const cleanUsername = formData.username.trim().replace(/^@/, '')
+
     setIsAdding(true)
     try {
       const response = await fetch('/api/ghost/accounts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          username: formData.username,
+          username: cleanUsername,
           platform: formData.platform,
           accountType: formData.accountType,
           modelId: formData.modelId || undefined,
