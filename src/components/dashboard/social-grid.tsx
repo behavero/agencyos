@@ -38,7 +38,7 @@ import {
 } from 'lucide-react'
 
 // Platforms that support OAuth connection
-const OAUTH_PLATFORMS = ['youtube'] as const
+const OAUTH_PLATFORMS = ['youtube', 'instagram'] as const
 
 // Platform configurations
 const PLATFORMS = [
@@ -206,7 +206,43 @@ export function SocialGrid({ modelId, modelName }: SocialGridProps) {
     if (platformId === 'youtube') {
       return `/api/auth/social/youtube/login?modelId=${modelId}`
     }
+    if (platformId === 'instagram') {
+      return `/api/auth/social/meta/login?modelId=${modelId}`
+    }
     return null
+  }
+
+  // Refresh Instagram stats from API
+  const handleRefreshInstagram = async (connectionId: string) => {
+    setIsRefreshing('instagram')
+    try {
+      const response = await fetch('/api/social/instagram/stats', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connectionId }),
+      })
+      
+      if (response.ok) {
+        toast.success('Instagram insights refreshed! 📸')
+        await fetchStats()
+      } else {
+        toast.error('Failed to refresh Instagram insights')
+      }
+    } catch (error) {
+      console.error(error)
+      toast.error('Failed to refresh stats')
+    } finally {
+      setIsRefreshing(null)
+    }
+  }
+
+  // Generic refresh handler for OAuth platforms
+  const handleRefreshOAuth = (platformId: string, connectionId: string) => {
+    if (platformId === 'youtube') {
+      handleRefreshYouTube(connectionId)
+    } else if (platformId === 'instagram') {
+      handleRefreshInstagram(connectionId)
+    }
   }
 
   useEffect(() => {
@@ -374,7 +410,7 @@ export function SocialGrid({ modelId, modelName }: SocialGridProps) {
                       disabled={isRefreshing === platform.id}
                       onClick={(e) => {
                         e.stopPropagation()
-                        handleRefreshYouTube(connection.id)
+                        handleRefreshOAuth(platform.id, connection.id)
                       }}
                     >
                       <RefreshCw className={`w-3 h-3 ${isRefreshing === platform.id ? 'animate-spin' : ''}`} />
@@ -392,7 +428,7 @@ export function SocialGrid({ modelId, modelName }: SocialGridProps) {
                       disabled={isRefreshing === platform.id}
                       onClick={(e) => {
                         e.stopPropagation()
-                        handleRefreshYouTube(connection.id)
+                        handleRefreshOAuth(platform.id, connection.id)
                       }}
                     >
                       <RefreshCw className={`w-3 h-3 ${isRefreshing === platform.id ? 'animate-spin' : ''}`} />
