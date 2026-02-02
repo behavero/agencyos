@@ -20,6 +20,7 @@ import {
   Banknote,
   Ghost,
   BarChart3,
+  Calendar,
 } from 'lucide-react'
 
 const navigation = [
@@ -40,6 +41,7 @@ const navigation = [
       { name: 'Ghost Tracker', href: '/dashboard/competitors', icon: Ghost },
       { name: 'Quests', href: '/dashboard/quests', icon: Target },
       { name: 'Content', href: '/dashboard/content', icon: Sparkles },
+      { name: 'Calendar', href: '/dashboard/content/calendar', icon: Calendar },
       { name: 'Vault', href: '/dashboard/content/vault', icon: Image },
       { name: 'Campaigns', href: '/dashboard/messages/campaigns', icon: Megaphone },
     ],

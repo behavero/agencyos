@@ -716,6 +716,209 @@ export const analyzeBusinessHealth = tool({
 })
 
 /**
+ * Tool: Get Upcoming Posts
+ * Fetches scheduled content tasks
+ */
+export const getUpcomingPosts = tool({
+  description: 'Get upcoming scheduled posts and content tasks. Use when asked about content schedule, upcoming posts, or what needs to be posted.',
+  parameters: z.object({
+    hours: z.number().optional().describe('Number of hours to look ahead (default: 24)'),
+    platform: z.enum(['instagram', 'fanvue', 'tiktok', 'youtube', 'x', 'all']).optional().describe('Filter by platform'),
+  }),
+  execute: async ({ hours = 24, platform = 'all' }) => {
+    try {
+      const supabase = await createAdminClient()
+
+      const now = new Date()
+      const futureDate = new Date(now.getTime() + hours * 60 * 60 * 1000)
+
+      let query = supabase
+        .from('content_tasks')
+        .select('*, model:models(name)')
+        .eq('status', 'scheduled')
+        .gte('scheduled_at', now.toISOString())
+        .lte('scheduled_at', futureDate.toISOString())
+        .order('scheduled_at', { ascending: true })
+
+      if (platform !== 'all') {
+        query = query.eq('platform', platform)
+      }
+
+      const { data: tasks } = await query.limit(10)
+
+      if (!tasks || tasks.length === 0) {
+        return {
+          message: `No posts scheduled in the next ${hours} hours.`,
+          tasks: [],
+        }
+      }
+
+      return {
+        summary: `${tasks.length} post(s) scheduled in the next ${hours} hours`,
+        tasks: tasks.map(t => ({
+          title: t.title,
+          platform: t.platform,
+          type: t.content_type,
+          model: (t.model as { name?: string } | null)?.name || 'Unassigned',
+          scheduledAt: new Date(t.scheduled_at!).toLocaleString(),
+          caption: t.caption?.substring(0, 100) || 'No caption',
+        })),
+      }
+    } catch (error) {
+      console.error('getUpcomingPosts error:', error)
+      return { error: 'Failed to fetch upcoming posts' }
+    }
+  },
+})
+
+/**
+ * Tool: Log Post Completion
+ * Mark a scheduled post as posted
+ */
+export const logPostCompletion = tool({
+  description: 'Mark a scheduled post as completed/posted. Use when user says they posted something or wants to mark content as done.',
+  parameters: z.object({
+    searchTerm: z.string().describe('Title or description to search for the post'),
+    platform: z.enum(['instagram', 'fanvue', 'tiktok', 'youtube', 'x']).optional().describe('Platform to filter'),
+  }),
+  execute: async ({ searchTerm, platform }) => {
+    try {
+      const supabase = await createAdminClient()
+
+      // Search for the task
+      let query = supabase
+        .from('content_tasks')
+        .select('*, model:models(name)')
+        .eq('status', 'scheduled')
+        .ilike('title', `%${searchTerm}%`)
+        .order('scheduled_at', { ascending: true })
+        .limit(5)
+
+      if (platform) {
+        query = query.eq('platform', platform)
+      }
+
+      const { data: tasks } = await query
+
+      if (!tasks || tasks.length === 0) {
+        return {
+          success: false,
+          message: `No scheduled post found matching "${searchTerm}"`,
+        }
+      }
+
+      // If multiple matches, return them for clarification
+      if (tasks.length > 1) {
+        return {
+          success: false,
+          message: 'Multiple posts found. Please be more specific:',
+          matches: tasks.map(t => ({
+            title: t.title,
+            platform: t.platform,
+            model: (t.model as { name?: string } | null)?.name,
+            scheduledAt: new Date(t.scheduled_at!).toLocaleString(),
+          })),
+        }
+      }
+
+      // Update the single match
+      const task = tasks[0]
+      const { error } = await supabase
+        .from('content_tasks')
+        .update({
+          status: 'posted',
+          posted_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', task.id)
+
+      if (error) {
+        return { success: false, message: 'Failed to update task' }
+      }
+
+      return {
+        success: true,
+        message: `Marked as posted: "${task.title}" on ${task.platform}`,
+        task: {
+          title: task.title,
+          platform: task.platform,
+          model: (task.model as { name?: string } | null)?.name,
+          postedAt: new Date().toLocaleString(),
+        },
+      }
+    } catch (error) {
+      console.error('logPostCompletion error:', error)
+      return { error: 'Failed to log post completion' }
+    }
+  },
+})
+
+/**
+ * Tool: Get Missed Posts
+ * Check for posts that were scheduled but not posted
+ */
+export const getMissedPosts = tool({
+  description: 'Get posts that were scheduled but missed (not posted on time). Use when asked about missed content or schedule issues.',
+  parameters: z.object({}),
+  execute: async () => {
+    try {
+      const supabase = await createAdminClient()
+
+      // Find scheduled posts that are past their time
+      const { data: missedTasks } = await supabase
+        .from('content_tasks')
+        .select('*, model:models(name)')
+        .eq('status', 'scheduled')
+        .lt('scheduled_at', new Date().toISOString())
+        .order('scheduled_at', { ascending: false })
+        .limit(10)
+
+      // Also get explicitly marked as missed
+      const { data: markedMissed } = await supabase
+        .from('content_tasks')
+        .select('*, model:models(name)')
+        .eq('status', 'missed')
+        .order('scheduled_at', { ascending: false })
+        .limit(10)
+
+      const allMissed = [...(missedTasks || []), ...(markedMissed || [])]
+
+      if (allMissed.length === 0) {
+        return {
+          message: 'No missed posts! All content is on schedule. 🎉',
+          missedCount: 0,
+        }
+      }
+
+      // Calculate how late each post is
+      const now = new Date()
+      const missedWithDelay = allMissed.map(t => {
+        const scheduledTime = new Date(t.scheduled_at!)
+        const delayHours = Math.round((now.getTime() - scheduledTime.getTime()) / (1000 * 60 * 60))
+        return {
+          title: t.title,
+          platform: t.platform,
+          model: (t.model as { name?: string } | null)?.name || 'Unassigned',
+          scheduledAt: scheduledTime.toLocaleString(),
+          hoursLate: delayHours,
+          status: t.status,
+        }
+      })
+
+      return {
+        message: `⚠️ ${allMissed.length} post(s) missed or overdue`,
+        missedCount: allMissed.length,
+        posts: missedWithDelay,
+        recommendation: 'Consider rescheduling or marking as missed/cancelled',
+      }
+    } catch (error) {
+      console.error('getMissedPosts error:', error)
+      return { error: 'Failed to check missed posts' }
+    }
+  },
+})
+
+/**
  * Export all tools as a single object for use in streamText
  */
 export const alfredTools = {
@@ -728,4 +931,7 @@ export const alfredTools = {
   analyze_social_profile: analyzeSocialProfile,
   get_watched_accounts: getWatchedAccounts,
   analyze_business_health: analyzeBusinessHealth,
+  get_upcoming_posts: getUpcomingPosts,
+  log_post_completion: logPostCompletion,
+  get_missed_posts: getMissedPosts,
 }
