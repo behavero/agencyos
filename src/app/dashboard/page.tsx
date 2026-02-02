@@ -76,6 +76,15 @@ export default async function DashboardPage() {
     DashboardAnalytics.getExpenseHistory(agencyId, 6),
   ])
 
+  // DEBUG: Log dashboard data (Phase 51D - Data Pipeline Verification)
+  console.log('=== DASHBOARD DATA DEBUG ===')
+  console.log('Agency ID:', agencyId)
+  console.log('Revenue History:', JSON.stringify(revenueHistory, null, 2))
+  console.log('Revenue Breakdown:', JSON.stringify(revenueBreakdown, null, 2))
+  console.log('Dashboard KPIs:', JSON.stringify(dashboardKPIs, null, 2))
+  console.log('Expense History:', JSON.stringify(expenseHistory, null, 2))
+  console.log('=========================')
+
   return (
     <div className="flex min-h-screen bg-zinc-950">
       <Sidebar />
