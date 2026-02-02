@@ -2227,6 +2227,218 @@ export const draftSalesScript = tool({
 })
 
 /**
+ * Tool: Create Flash Quest
+ * Create a time-limited competitive challenge
+ */
+export const createFlashQuestTool = tool({
+  description:
+    'Create a flash quest (time-limited challenge) for the team. Use when an admin/owner asks to create a competition, challenge, or race.',
+  parameters: z.object({
+    title: z.string().describe('Quest title (e.g., "The Morning Rush")'),
+    description: z.string().optional().describe('Quest description'),
+    type: z
+      .enum(['revenue', 'messages', 'unlocks'])
+      .describe(
+        'What triggers progress: revenue (sales), messages (chats sent), unlocks (PPV sales)'
+      ),
+    targetValue: z.number().describe('Target to hit (e.g., 100 for $100 revenue)'),
+    rewardAmount: z.number().describe('Cash bonus reward in dollars'),
+    durationMinutes: z
+      .number()
+      .describe('How long the quest lasts in minutes (e.g., 60 for 1 hour)'),
+  }),
+  execute: async ({ title, description, type, targetValue, rewardAmount, durationMinutes }) => {
+    try {
+      const supabase = await createAdminClient()
+
+      // Get first agency
+      const { data: agency } = await supabase.from('agencies').select('id').limit(1).single()
+
+      if (!agency) {
+        return { error: 'No agency found.' }
+      }
+
+      const expiresAt = new Date(Date.now() + durationMinutes * 60 * 1000)
+
+      const { data: quest, error } = await supabase
+        .from('quests')
+        .insert({
+          agency_id: agency.id,
+          title,
+          description: description || `Complete ${targetValue} ${type} to win!`,
+          type,
+          target_value: targetValue,
+          reward_amount: rewardAmount,
+          xp_reward: Math.round(rewardAmount * 10),
+          expires_at: expiresAt.toISOString(),
+          is_flash: true,
+          is_daily: false,
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+
+      return {
+        success: true,
+        message: `🚀 Flash Quest Created!`,
+        quest: {
+          title: quest.title,
+          type: quest.type,
+          target: targetValue,
+          reward: `$${rewardAmount}`,
+          xp: quest.xp_reward,
+          expiresIn: `${durationMinutes} minutes`,
+        },
+        announcement: `⚡ **FLASH QUEST!** First to hit ${targetValue} ${type} wins **$${rewardAmount}**! Time limit: ${durationMinutes} minutes. GO!`,
+      }
+    } catch (error) {
+      console.error('createFlashQuest error:', error)
+      return { error: 'Failed to create flash quest' }
+    }
+  },
+})
+
+/**
+ * Tool: Get Leaderboard
+ * Show who's winning this week
+ */
+export const getLeaderboardTool = tool({
+  description:
+    'Get the weekly leaderboard showing who is generating the most revenue. Use when asked about rankings, who is winning, competition status, or performance comparison.',
+  parameters: z.object({
+    limit: z.number().optional().describe('Number of results to show (default: 5)'),
+  }),
+  execute: async ({ limit = 5 }) => {
+    try {
+      const supabase = await createAdminClient()
+
+      // Get all profiles with revenue
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, username, level, total_revenue_generated, current_streak, xp_count')
+        .not('role', 'is', null)
+        .order('total_revenue_generated', { ascending: false })
+        .limit(limit)
+
+      if (!profiles || profiles.length === 0) {
+        return {
+          message: 'No leaderboard data yet. Start selling to climb the ranks!',
+          leaderboard: [],
+        }
+      }
+
+      const rankEmojis = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟']
+
+      const leaderboard = profiles.map((p, i) => ({
+        rank: i + 1,
+        emoji: rankEmojis[i] || `#${i + 1}`,
+        name: p.username || 'Unknown',
+        level: p.level || 1,
+        revenue: `$${(p.total_revenue_generated || 0).toLocaleString()}`,
+        streak: p.current_streak || 0,
+        xp: p.xp_count || 0,
+      }))
+
+      const leader = leaderboard[0]
+      const summary = `${leader.emoji} **${leader.name}** leads with ${leader.revenue} (Level ${leader.level})`
+
+      return {
+        summary,
+        leaderboard,
+        formatted: leaderboard
+          .map(p => `${p.emoji} **${p.name}** - ${p.revenue} (Lvl ${p.level}, ${p.streak}🔥)`)
+          .join('\n'),
+      }
+    } catch (error) {
+      console.error('getLeaderboard error:', error)
+      return { error: 'Failed to fetch leaderboard' }
+    }
+  },
+})
+
+/**
+ * Tool: Get User Quest Progress
+ * Check progress on active quests
+ */
+export const getUserQuestProgress = tool({
+  description:
+    'Get active quest progress for a user or the team. Use when asked about quest status, what quests are available, or progress on challenges.',
+  parameters: z.object({
+    username: z
+      .string()
+      .optional()
+      .describe('Username to check (optional, defaults to showing all)'),
+  }),
+  execute: async ({ username }) => {
+    try {
+      const supabase = await createAdminClient()
+
+      // Get active quests with progress
+      const query = supabase
+        .from('quests')
+        .select(
+          `
+          id, title, type, target_value, reward_amount, xp_reward, expires_at, is_flash,
+          progress:quest_progress(current_value, status, user:profiles(username))
+        `
+        )
+        .is('completed_at', null)
+        .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
+        .limit(10)
+
+      const { data: quests } = await query
+
+      if (!quests || quests.length === 0) {
+        return {
+          message: 'No active quests right now.',
+          quests: [],
+        }
+      }
+
+      const activeQuests = quests.map(q => {
+        const progress = q.progress || []
+        const relevantProgress = username
+          ? progress.filter((p: { user?: { username?: string } }) =>
+              p.user?.username?.toLowerCase().includes(username.toLowerCase())
+            )
+          : progress
+
+        return {
+          title: q.title,
+          type: q.type,
+          target: q.target_value,
+          reward: q.reward_amount > 0 ? `$${q.reward_amount}` : null,
+          xp: q.xp_reward,
+          isFlash: q.is_flash,
+          expiresAt: q.expires_at,
+          participants: relevantProgress.map(
+            (p: { current_value?: number; status?: string; user?: { username?: string } }) => ({
+              name: p.user?.username || 'Unknown',
+              progress: `${p.current_value || 0}/${q.target_value}`,
+              percentage: Math.round(((p.current_value || 0) / q.target_value) * 100),
+              status: p.status,
+            })
+          ),
+        }
+      })
+
+      const flashQuests = activeQuests.filter(q => q.isFlash)
+      const regularQuests = activeQuests.filter(q => !q.isFlash)
+
+      return {
+        flash: flashQuests,
+        regular: regularQuests,
+        summary: `${flashQuests.length} flash quest(s), ${regularQuests.length} regular quest(s) active`,
+      }
+    } catch (error) {
+      console.error('getUserQuestProgress error:', error)
+      return { error: 'Failed to fetch quest progress' }
+    }
+  },
+})
+
+/**
  * Export all tools as a single object for use in streamText
  */
 export const alfredTools = {
@@ -2256,4 +2468,7 @@ export const alfredTools = {
   search_knowledge_base: searchKnowledgeBase,
   add_winning_script: addWinningScript,
   draft_sales_script: draftSalesScript,
+  create_flash_quest: createFlashQuestTool,
+  get_leaderboard: getLeaderboardTool,
+  get_quest_progress: getUserQuestProgress,
 }
