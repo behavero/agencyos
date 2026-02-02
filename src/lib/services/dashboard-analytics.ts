@@ -432,3 +432,164 @@ export async function getExpenseHistory(
     }
   })
 }
+
+/**
+ * Get Earnings by Type (Phase 51D)
+ * Returns earnings breakdown by category for donut chart
+ */
+export async function getEarningsByType(agencyId: string, days?: number) {
+  const supabase = await createClient()
+
+  let query = supabase
+    .from('fanvue_transactions')
+    .select('category, amount')
+    .eq('agency_id', agencyId)
+
+  if (days) {
+    const startDate = new Date()
+    startDate.setDate(startDate.getDate() - days)
+    query = query.gte('created_at', startDate.toISOString())
+  }
+
+  const { data: transactions } = await query
+
+  if (!transactions || transactions.length === 0) {
+    return []
+  }
+
+  // Aggregate by category
+  const categoryTotals: Record<string, number> = {}
+  transactions.forEach(txn => {
+    const category = txn.category || 'other'
+    categoryTotals[category] = (categoryTotals[category] || 0) + (txn.amount || 0)
+  })
+
+  // Map to display format with colors (matching Fanvue style)
+  const categoryColors: Record<string, string> = {
+    message: '#f97316', // orange
+    subscription: '#ec4899', // pink
+    renewals: '#ec4899', // pink (alias for subscription)
+    tip: '#3b82f6', // blue
+    post: '#a855f7', // purple
+    referral: '#10b981', // green
+    other: '#6b7280', // gray
+  }
+
+  const categoryLabels: Record<string, string> = {
+    message: 'Messages',
+    subscription: 'Subs',
+    renewals: 'Renewals',
+    tip: 'Tips',
+    post: 'Posts',
+    referral: 'Referrals',
+  }
+
+  return Object.entries(categoryTotals)
+    .map(([category, amount]) => ({
+      category: categoryLabels[category] || category.charAt(0).toUpperCase() + category.slice(1),
+      amount: Math.round(amount * 100) / 100,
+      color: categoryColors[category] || categoryColors.other,
+    }))
+    .sort((a, b) => b.amount - a.amount)
+}
+
+/**
+ * Get Monthly Earnings List (Phase 51D)
+ * Returns monthly earnings with expandable transaction details
+ */
+export async function getMonthlyEarningsList(agencyId: string, months: number = 12) {
+  const supabase = await createClient()
+
+  const startDate = new Date()
+  startDate.setMonth(startDate.getMonth() - months)
+
+  const { data: transactions } = await supabase
+    .from('fanvue_transactions')
+    .select('*')
+    .eq('agency_id', agencyId)
+    .gte('created_at', startDate.toISOString())
+    .order('created_at', { ascending: false })
+
+  if (!transactions || transactions.length === 0) {
+    return []
+  }
+
+  // Group by month
+  const monthlyData: Record<
+    string,
+    {
+      month: string
+      year: number
+      transactions: typeof transactions
+    }
+  > = {}
+
+  transactions.forEach(txn => {
+    const date = new Date(txn.created_at || '')
+    const month = date.toLocaleDateString('en-US', { month: 'long' })
+    const year = date.getFullYear()
+    const key = `${month}-${year}`
+
+    if (!monthlyData[key]) {
+      monthlyData[key] = {
+        month,
+        year,
+        transactions: [],
+      }
+    }
+    monthlyData[key].transactions.push(txn)
+  })
+
+  // Convert to array and calculate totals
+  return Object.values(monthlyData)
+    .map(monthData => {
+      const gross = monthData.transactions.reduce((sum, txn) => sum + (txn.amount || 0), 0)
+      const fees = gross * 0.2 // Assume 20% platform fee
+      const net = gross - fees
+
+      // Group transactions by category
+      const categoryTotals: Record<string, { amount: number; count: number }> = {}
+      monthData.transactions.forEach(txn => {
+        const category = txn.category || 'other'
+        if (!categoryTotals[category]) {
+          categoryTotals[category] = { amount: 0, count: 0 }
+        }
+        categoryTotals[category].amount += txn.amount || 0
+        categoryTotals[category].count += 1
+      })
+
+      return {
+        month: monthData.month,
+        year: monthData.year,
+        net: Math.round(net * 100) / 100,
+        gross: Math.round(gross * 100) / 100,
+        fees: Math.round(fees * 100) / 100,
+        transactions: Object.entries(categoryTotals)
+          .map(([category, data]) => ({
+            category,
+            amount: Math.round(data.amount * 100) / 100,
+            count: data.count,
+          }))
+          .sort((a, b) => b.amount - a.amount),
+      }
+    })
+    .sort((a, b) => {
+      // Sort by year then month (newest first)
+      if (a.year !== b.year) return b.year - a.year
+      const monthOrder = [
+        'January',
+        'February',
+        'March',
+        'April',
+        'May',
+        'June',
+        'July',
+        'August',
+        'September',
+        'October',
+        'November',
+        'December',
+      ]
+      return monthOrder.indexOf(b.month) - monthOrder.indexOf(a.month)
+    })
+}

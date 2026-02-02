@@ -65,6 +65,8 @@ export default async function DashboardPage() {
     modelPerformance,
     dashboardKPIs,
     expenseHistory,
+    earningsByType,
+    monthlyEarningsList,
   ] = await Promise.all([
     DashboardAnalytics.getRevenueHistory(agencyId, 30),
     DashboardAnalytics.getRevenueBreakdown(agencyId, 30),
@@ -74,6 +76,8 @@ export default async function DashboardPage() {
     DashboardAnalytics.getModelPerformance(agencyId),
     DashboardAnalytics.getDashboardKPIs(agencyId),
     DashboardAnalytics.getExpenseHistory(agencyId, 6),
+    DashboardAnalytics.getEarningsByType(agencyId),
+    DashboardAnalytics.getMonthlyEarningsList(agencyId, 12),
   ])
 
   // DEBUG: Log dashboard data (Phase 51D - Data Pipeline Verification)
@@ -105,6 +109,8 @@ export default async function DashboardPage() {
             modelPerformance={modelPerformance}
             dashboardKPIs={dashboardKPIs}
             expenseHistory={expenseHistory}
+            earningsByType={earningsByType}
+            monthlyEarningsList={monthlyEarningsList}
           />
         </main>
       </div>
