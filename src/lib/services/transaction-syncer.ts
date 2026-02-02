@@ -1,6 +1,6 @@
 /**
  * Transaction Syncer Service
- * Phase 49 - Syncs Fanvue transactions to local database
+ * Phase 54C - Syncs Fanvue transactions using OAuth Client Credentials
  *
  * This service fetches transactions from Fanvue API and stores them
  * in the fanvue_transactions table for granular analytics.
@@ -9,6 +9,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { createFanvueClient, FanvueAPIError } from '@/lib/fanvue/client'
+import { getFanvueServerToken } from '@/lib/services/fanvue-auth'
 
 export interface SyncResult {
   success: boolean
@@ -40,16 +41,31 @@ export async function syncModelTransactions(modelId: string): Promise<SyncResult
       }
     }
 
-    if (!model.fanvue_access_token) {
-      return {
-        success: false,
-        transactionsSynced: 0,
-        errors: ['No Fanvue access token for this model'],
+    // PHASE 54C: Use OAuth Client Credentials instead of model tokens
+    console.log('🔐 Acquiring Fanvue OAuth token...')
+    let accessToken: string
+
+    try {
+      // Get server-level OAuth token (client credentials flow)
+      accessToken = await getFanvueServerToken()
+      console.log('✅ Using OAuth Client Credentials token')
+    } catch (oauthError: any) {
+      console.warn('⚠️ OAuth failed, trying model token fallback:', oauthError.message)
+
+      // Fallback to model's individual token if OAuth fails
+      if (!model.fanvue_access_token) {
+        return {
+          success: false,
+          transactionsSynced: 0,
+          errors: ['OAuth failed and no model token available'],
+        }
       }
+      accessToken = model.fanvue_access_token
+      console.log('🔄 Using model token as fallback')
     }
 
-    // Initialize Fanvue client
-    const fanvueClient = createFanvueClient(model.fanvue_access_token)
+    // Initialize Fanvue client with the acquired token
+    const fanvueClient = createFanvueClient(accessToken)
 
     // Get last synced transaction date
     const { data: lastTransaction } = await supabase

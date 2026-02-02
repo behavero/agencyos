@@ -1,55 +1,49 @@
 /**
  * DEBUG PROBE - Raw Fanvue API Response
- * Phase 54B - Diagnostic endpoint to see exact API responses
+ * Phase 54C - Test OAuth Client Credentials + API Access
  */
 
 import { NextResponse } from 'next/server'
-import { createAdminClient } from '@/lib/supabase/server'
+import { getFanvueServerToken } from '@/lib/services/fanvue-auth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
-    const supabase = createAdminClient()
+    // STEP 1: Test OAuth Authentication
+    console.log('🔐 Testing Fanvue OAuth Client Credentials...')
 
-    // 1. Get the first model with Fanvue token
-    const { data: models, error: modelsError } = await supabase
-      .from('models')
-      .select('*')
-      .not('fanvue_access_token', 'is', null)
-      .limit(1)
-
-    if (modelsError || !models || models.length === 0) {
-      return NextResponse.json({
-        error: 'No models with Fanvue tokens found',
-        hint: 'Go to dashboard and click "Add Model" to connect Fanvue',
-        models_error: modelsError?.message,
-      })
+    let token: string
+    try {
+      token = await getFanvueServerToken()
+    } catch (authError: any) {
+      return NextResponse.json(
+        {
+          phase: 'OAUTH_AUTHENTICATION',
+          status: 'FAILED',
+          error: authError.message,
+          hint: 'Check that FANVUE_CLIENT_ID and FANVUE_CLIENT_SECRET are set in Vercel environment variables',
+          docs: 'https://github.com/fanvue/fanvue-app-starter',
+        },
+        { status: 500 }
+      )
     }
 
-    const model = models[0]
-    const token = model.fanvue_access_token
+    console.log('✅ OAuth token acquired successfully')
 
-    if (!token) {
-      return NextResponse.json({
-        error: 'Model has no access token',
-        model: model.name,
-      })
-    }
+    // STEP 2: Test API Access with the token
+    console.log('📊 Testing Fanvue Earnings API...')
 
-    // 2. Construct the CORRECT Fanvue API URL (from docs)
-    // https://api.fanvue.com/docs/api-reference/reference/insights/get-earnings
-    const startDate = new Date('2020-01-01T00:00:00.000Z') // Fetch all historical data
+    const startDate = new Date('2020-01-01T00:00:00.000Z') // All historical data
     const endDate = new Date() // Up to now
 
     const url = new URL('https://api.fanvue.com/insights/earnings')
     url.searchParams.set('startDate', startDate.toISOString())
     url.searchParams.set('endDate', endDate.toISOString())
-    url.searchParams.set('size', '50') // Max allowed
+    url.searchParams.set('size', '50') // Max allowed per Fanvue docs
 
-    // 3. Make the RAW request with correct headers
-    const response = await fetch(url.toString(), {
+    const apiResponse = await fetch(url.toString(), {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -58,41 +52,54 @@ export async function GET() {
       },
     })
 
-    const status = response.status
-    const rawData = await response.json().catch(() => ({ error: 'Failed to parse JSON' }))
+    const status = apiResponse.status
+    const rawData = await apiResponse.json().catch(() => ({
+      error: 'Failed to parse JSON response',
+    }))
 
-    // 4. Return EVERYTHING for debugging
+    // STEP 3: Return comprehensive diagnostics
     return NextResponse.json(
       {
-        success: status === 200,
-        debug_info: {
-          status_code: status,
-          api_url: url.toString(),
-          model_name: model.name,
-          model_username: model.fanvue_username,
-          has_token: !!token,
-          token_preview: token ? `${token.substring(0, 10)}...` : null,
-          request_params: {
+        phase: 'COMPLETE_DIAGNOSTICS',
+        oauth_test: {
+          status: 'SUCCESS',
+          token_preview: `${token.substring(0, 20)}...`,
+          token_length: token.length,
+        },
+        api_test: {
+          status: status === 200 ? 'SUCCESS' : 'FAILED',
+          http_status: status,
+          url: url.toString(),
+          params: {
             startDate: startDate.toISOString(),
             endDate: endDate.toISOString(),
             size: 50,
           },
         },
-        raw_fanvue_response: rawData,
-        interpretation: {
+        raw_response: rawData,
+        analysis: {
           has_data: rawData.data && rawData.data.length > 0,
           transaction_count: rawData.data ? rawData.data.length : 0,
-          has_next_page: !!rawData.nextCursor,
-          sample_transaction: rawData.data && rawData.data[0] ? rawData.data[0] : null,
+          has_pagination: !!rawData.nextCursor,
+          sample_transaction: rawData.data?.[0] || null,
+          error_message: rawData.error || rawData.message || null,
         },
+        next_steps:
+          status === 200
+            ? rawData.data && rawData.data.length > 0
+              ? '✅ SUCCESS! Earnings data is accessible. The sync should work now.'
+              : '⚠️ API works but returned 0 transactions. Check date range or account has data.'
+            : `❌ API returned ${status}. Check token permissions/scopes.`,
       },
       { status: 200 }
     )
   } catch (error: any) {
     return NextResponse.json(
       {
-        fatal_error: error.message,
+        phase: 'FATAL_ERROR',
+        error: error.message,
         stack: error.stack,
+        hint: 'Check server logs for more details',
       },
       { status: 500 }
     )
