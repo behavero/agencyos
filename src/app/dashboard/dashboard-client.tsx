@@ -63,6 +63,7 @@ import {
 } from 'lucide-react'
 import { AggregatedSocialGrid } from '@/components/dashboard/social-grid'
 import { BestSellersWidget } from '@/components/dashboard/best-sellers-widget'
+import { SyncButton } from '@/components/dashboard/sync-button'
 
 // Dark mode chart theme for Recharts
 const CHART_THEME = {
@@ -313,10 +314,13 @@ export default function DashboardClient({
             {agency?.name || 'Your Agency'} • Level {currentLevel} • {currentStreak} day streak 🔥
           </p>
         </div>
-        <Button onClick={handleAddModel} className="gap-2 shadow-lg hover-lift">
-          <Plus className="w-4 h-4" />
-          Add Model
-        </Button>
+        <div className="flex items-center gap-2">
+          <SyncButton />
+          <Button onClick={handleAddModel} className="gap-2 shadow-lg hover-lift">
+            <Plus className="w-4 h-4" />
+            Add Model
+          </Button>
+        </div>
       </div>
 
       {/* Unified Dashboard Tabs */}
