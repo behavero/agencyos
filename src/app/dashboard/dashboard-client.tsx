@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   ChartContainer,
   ChartTooltip,
@@ -222,7 +223,22 @@ export default function DashboardClient({ user, profile, agency, models, totalEx
         </Button>
       </div>
 
-      {/* Top KPI Cards */}
+      {/* Unified Dashboard Tabs */}
+      <Tabs defaultValue="overview" className="space-y-6">
+        <TabsList className="bg-zinc-900 border border-zinc-800">
+          <TabsTrigger value="overview" className="data-[state=active]:bg-primary data-[state=active]:text-black">
+            📊 Overview
+          </TabsTrigger>
+          <TabsTrigger value="fanvue" className="data-[state=active]:bg-primary data-[state=active]:text-black">
+            💰 Fanvue & Finance
+          </TabsTrigger>
+          <TabsTrigger value="social" className="data-[state=active]:bg-primary data-[state=active]:text-black">
+            👻 Social Media
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="space-y-6 mt-0">
+          {/* Top KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Gross Revenue */}
         <Card className="glass border-primary/20 card-interactive">
@@ -481,94 +497,6 @@ export default function DashboardClient({ user, profile, agency, models, totalEx
         </Card>
       </div>
 
-      {/* Social Media Reach */}
-      <AggregatedSocialGrid models={models.map(m => ({ id: m.id, name: m.name || 'Unknown' }))} />
-
-      {/* Financial Breakdown */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Revenue Breakdown */}
-        <Card className="glass">
-          <CardHeader>
-            <CardTitle>Revenue Breakdown</CardTitle>
-            <CardDescription>How your earnings are distributed</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 rounded-lg bg-primary/10">
-                <span className="text-sm font-medium">Gross Revenue</span>
-                <span className="text-lg font-bold text-primary">{formatCurrency(totalGrossRevenue)}</span>
-              </div>
-              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                <span className="text-sm">Platform Fee (20%)</span>
-                <span className="font-semibold text-red-400">-{formatCurrency(platformFee)}</span>
-              </div>
-              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                <span className="text-sm">Operating Expenses</span>
-                <span className="font-semibold text-red-400">-{formatCurrency(totalExpenses)}</span>
-              </div>
-              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm">Taxes ({(taxRate * 100).toFixed(0)}%)</span>
-                </div>
-                <span className="font-semibold text-red-400">-{formatCurrency(taxes)}</span>
-              </div>
-              <div className="flex items-center justify-between p-3 rounded-lg bg-primary/10 border-t-2 border-primary">
-                <span className="text-sm font-medium">Net Profit</span>
-                <span className="text-xl font-bold text-primary">{formatCurrency(netProfit)}</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Capital Allocation */}
-        <Card className="glass">
-          <CardHeader>
-            <CardTitle>Capital Allocation</CardTitle>
-            <CardDescription>Suggested profit distribution</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium">Reinvest in Growth (60%)</span>
-                  <span className="text-lg font-bold text-primary">{formatCurrency(netProfit * 0.6)}</span>
-                </div>
-                <div className="h-2 bg-muted rounded-full overflow-hidden">
-                  <div className="h-full bg-primary rounded-full" style={{ width: '60%' }} />
-                </div>
-              </div>
-              <div className="p-4 rounded-lg bg-muted/50">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium">Owner Distribution (40%)</span>
-                  <span className="text-lg font-bold">{formatCurrency(netProfit * 0.4)}</span>
-                </div>
-                <div className="h-2 bg-muted rounded-full overflow-hidden">
-                  <div className="h-full bg-secondary rounded-full" style={{ width: '40%' }} />
-                </div>
-              </div>
-              <div className="flex gap-2 pt-2">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="flex-1"
-                  onClick={() => router.push('/dashboard/expenses')}
-                >
-                  View Expenses
-                </Button>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="flex-1"
-                  onClick={() => router.push('/dashboard/agency-settings')}
-                >
-                  Tax Settings
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
       {/* Models Grid */}
       {models.length > 0 && (
         <Card className="glass">
@@ -647,6 +575,183 @@ export default function DashboardClient({ user, profile, agency, models, totalEx
           </CardContent>
         </Card>
       )}
+        </TabsContent>
+
+        {/* Fanvue & Finance Tab */}
+        <TabsContent value="fanvue" className="space-y-6 mt-0">
+          <Card className="glass border-primary/20">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <DollarSign className="h-5 w-5 text-primary" />
+                Revenue Analysis
+              </CardTitle>
+              <CardDescription>Detailed breakdown of your Fanvue financials</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-6">
+                {/* Revenue Metrics */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
+                    <p className="text-sm text-muted-foreground">Gross Revenue</p>
+                    <p className="text-2xl font-bold text-primary">{formatCurrency(totalGrossRevenue)}</p>
+                  </div>
+                  <div className="p-4 rounded-lg bg-muted/50">
+                    <p className="text-sm text-muted-foreground">Platform Fee (20%)</p>
+                    <p className="text-2xl font-bold text-red-400">-{formatCurrency(platformFee)}</p>
+                  </div>
+                  <div className="p-4 rounded-lg bg-muted/50">
+                    <p className="text-sm text-muted-foreground">Expenses</p>
+                    <p className="text-2xl font-bold text-yellow-400">-{formatCurrency(totalExpenses)}</p>
+                  </div>
+                  <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/20">
+                    <p className="text-sm text-muted-foreground">Net Profit</p>
+                    <p className="text-2xl font-bold text-green-400">{formatCurrency(netProfit)}</p>
+                  </div>
+                </div>
+
+                {/* Profit Margin */}
+                <div className="p-4 rounded-lg bg-gradient-to-r from-primary/10 to-green-500/10 border border-primary/20">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Profit Margin</span>
+                    <span className="text-3xl font-bold text-primary">{profitMargin}%</span>
+                  </div>
+                  <div className="h-3 bg-muted rounded-full overflow-hidden mt-2">
+                    <div 
+                      className="h-full bg-gradient-to-r from-primary to-green-400 rounded-full transition-all"
+                      style={{ width: `${Math.min(Number(profitMargin), 100)}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Tax Info */}
+                <div className="p-4 rounded-lg bg-muted/30 border border-border">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Estimated Taxes</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {agency?.tax_jurisdiction || 'Unknown'} • {(taxRate * 100).toFixed(0)}% rate
+                      </p>
+                    </div>
+                    <p className="text-xl font-bold text-yellow-400">{formatCurrency(taxes)}</p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Model Performance Comparison */}
+          <Card className="glass">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5 text-violet-500" />
+                Model Performance
+              </CardTitle>
+              <CardDescription>Compare revenue and subscribers across your creators</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {models.map((model) => {
+                  const modelRevenue = Number(model.revenue_total || 0)
+                  const modelSubs = Number(model.subscribers_count || 0)
+                  const revenuePercent = totalGrossRevenue > 0 ? (modelRevenue / totalGrossRevenue * 100) : 0
+                  
+                  return (
+                    <div key={model.id} className="p-4 rounded-lg border border-border hover:border-primary/50 transition-colors">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="w-10 h-10">
+                            <AvatarImage src={model.avatar_url || undefined} />
+                            <AvatarFallback className="bg-gradient-to-br from-primary to-green-400">
+                              {model.name?.charAt(0) || 'M'}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="font-semibold">{model.name}</p>
+                            <p className="text-xs text-muted-foreground">{modelSubs.toLocaleString()} subscribers</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-lg font-bold text-primary">{formatCurrency(modelRevenue)}</p>
+                          <p className="text-xs text-muted-foreground">{revenuePercent.toFixed(1)}% of total</p>
+                        </div>
+                      </div>
+                      <div className="h-2 bg-muted rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-gradient-to-r from-primary to-green-400 rounded-full transition-all"
+                          style={{ width: `${Math.min(revenuePercent, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  )
+                })}
+                {models.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Users className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                    <p>No models connected yet</p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Social Media Tab */}
+        <TabsContent value="social" className="space-y-6 mt-0">
+          <AggregatedSocialGrid models={models.map(m => ({ id: m.id, name: m.name || 'Unknown' }))} />
+          
+          <Card className="glass border-purple-500/20">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Globe className="h-5 w-5 text-purple-400" />
+                Social Media Strategy
+              </CardTitle>
+              <CardDescription>Track your presence across Instagram, TikTok, and more</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="p-4 rounded-lg bg-purple-500/5 border border-purple-500/20">
+                  <div className="flex items-center gap-3 mb-3">
+                    <Globe className="w-5 h-5 text-purple-400" />
+                    <h3 className="font-semibold">Total Reach</h3>
+                  </div>
+                  <p className="text-3xl font-bold text-purple-400">
+                    {totalFollowers.toLocaleString()}
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-1">Followers across all platforms</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-4 rounded-lg bg-muted/30 border border-border">
+                    <p className="text-sm text-muted-foreground">Active Models</p>
+                    <p className="text-2xl font-bold">{models.length}</p>
+                  </div>
+                  <div className="p-4 rounded-lg bg-muted/30 border border-border">
+                    <p className="text-sm text-muted-foreground">Total Posts</p>
+                    <p className="text-2xl font-bold">
+                      {models.reduce((sum, m) => sum + Number(m.posts_count || 0), 0)}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-lg border border-border bg-gradient-to-r from-blue-500/5 to-purple-500/5">
+                  <p className="text-sm font-medium mb-2">💡 Pro Tip</p>
+                  <p className="text-sm text-muted-foreground">
+                    Use the <strong>Ghost Tracker</strong> feature to monitor competitors and slave accounts without logging in.
+                  </p>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="mt-3"
+                    onClick={() => router.push('/dashboard/competitors')}
+                  >
+                    Open Ghost Tracker →
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

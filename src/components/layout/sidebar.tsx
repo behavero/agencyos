@@ -48,12 +48,6 @@ const fullNavigation: NavigationSection[] = [
     items: [
       { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, permission: 'showDashboard' },
       {
-        name: 'Analytics',
-        href: '/dashboard/analytics',
-        icon: BarChart3,
-        permission: 'showAnalytics',
-      },
-      {
         name: 'Messages',
         href: '/dashboard/messages',
         icon: MessageSquare,
