@@ -90,6 +90,15 @@ interface DashboardClientProps {
   modelPerformance: ModelPerformanceItem[]
   dashboardKPIs: DashboardKPIs
   expenseHistory: ExpenseHistoryPoint[]
+  earningsByType: Array<{ category: string; amount: number; color: string }>
+  monthlyEarningsList: Array<{
+    month: string
+    year: number
+    net: number
+    gross: number
+    fees: number
+    transactions: Array<{ category: string; amount: number; count: number }>
+  }>
 }
 
 // Chart configs - Lime Theme
