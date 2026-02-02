@@ -1894,6 +1894,197 @@ export const getPublicRoadmap = tool({
 })
 
 /**
+ * Tool: Search Knowledge Base
+ * Search the internal playbook/wiki for answers
+ */
+export const searchKnowledgeBase = tool({
+  description: 'Search the internal knowledge base/playbook for SOPs, policies, training materials, and documentation. Use when asked about refund policy, procedures, how things work, or company rules.',
+  parameters: z.object({
+    query: z.string().describe('The search query - what the user is looking for'),
+    category: z.enum(['sop', 'training', 'sales', 'technical', 'general']).optional().describe('Optional category filter'),
+  }),
+  execute: async ({ query, category }) => {
+    try {
+      const supabase = await createAdminClient()
+      
+      let dbQuery = supabase
+        .from('knowledge_base')
+        .select('id, title, content, category, excerpt')
+        .or(`title.ilike.%${query}%,content.ilike.%${query}%`)
+        .limit(5)
+      
+      if (category) {
+        dbQuery = dbQuery.eq('category', category)
+      }
+      
+      const { data: articles } = await dbQuery
+      
+      if (!articles || articles.length === 0) {
+        return {
+          found: false,
+          message: `No articles found matching "${query}". The playbook may not have this information yet.`,
+          suggestion: 'Ask an admin to add this to the knowledge base.',
+        }
+      }
+      
+      // Return the most relevant articles
+      const results = articles.map(article => ({
+        title: article.title,
+        category: article.category,
+        excerpt: article.excerpt || article.content?.substring(0, 300),
+        content: article.content?.substring(0, 1000), // Limit content length
+      }))
+      
+      return {
+        found: true,
+        count: results.length,
+        articles: results,
+        summary: `Found ${results.length} article(s) about "${query}". Here's what the playbook says:`,
+      }
+    } catch (error) {
+      console.error('searchKnowledgeBase error:', error)
+      return { error: 'Failed to search knowledge base' }
+    }
+  },
+})
+
+/**
+ * Tool: Add Winning Script
+ * Save a message as a reusable chat script
+ */
+export const addWinningScript = tool({
+  description: 'Save a chat message or response as a reusable script in the Script Arsenal. Use when the user wants to save a good response as a template for future use.',
+  parameters: z.object({
+    title: z.string().describe('Title for the script (e.g., "The Missing You Opener")'),
+    content: z.string().describe('The actual script text/message to save'),
+    category: z.enum(['opener', 'closer', 'upsell', 'objection', 'ppv', 'custom']).default('custom').describe('Category for the script'),
+    tags: z.array(z.string()).optional().describe('Optional tags like "whale", "valentines", "spicy"'),
+  }),
+  execute: async ({ title, content, category, tags }) => {
+    try {
+      const supabase = await createAdminClient()
+      
+      // Get the first agency (for now - ideally we'd have user context)
+      const { data: agency } = await supabase
+        .from('agencies')
+        .select('id')
+        .limit(1)
+        .single()
+      
+      if (!agency) {
+        return { error: 'No agency found. Cannot save script.' }
+      }
+      
+      const { data: script, error } = await supabase
+        .from('chat_scripts')
+        .insert({
+          agency_id: agency.id,
+          title,
+          content,
+          category,
+          tags: tags || [],
+        })
+        .select()
+        .single()
+      
+      if (error) throw error
+      
+      return {
+        success: true,
+        message: `✅ Script saved to the Arsenal!`,
+        script: {
+          id: script.id,
+          title: script.title,
+          category: script.category,
+          preview: script.content.substring(0, 100) + '...',
+        },
+        tip: 'You can find this script in the Scripts page or use it directly from the MoneyBar in chat.',
+      }
+    } catch (error) {
+      console.error('addWinningScript error:', error)
+      return { error: 'Failed to save script' }
+    }
+  },
+})
+
+/**
+ * Tool: Draft Sales Script
+ * Generate a new sales script using AI
+ */
+export const draftSalesScript = tool({
+  description: 'Generate a new sales script or chat message based on a scenario or theme. Use when the user asks you to write a script, opener, closer, or any chat message.',
+  parameters: z.object({
+    type: z.enum(['opener', 'closer', 'upsell', 'objection', 'ppv', 'custom']).describe('Type of script to generate'),
+    theme: z.string().describe('Theme or scenario for the script (e.g., "Valentine\'s Day", "morning check-in", "whale hunting")'),
+    tone: z.enum(['flirty', 'sweet', 'spicy', 'bratty', 'caring', 'urgent', 'playful']).default('flirty').describe('Desired tone of the message'),
+    includeEmoji: z.boolean().default(true).describe('Whether to include emojis'),
+  }),
+  execute: async ({ type, theme, tone, includeEmoji }) => {
+    // Script templates based on type
+    const templates: Record<string, string[]> = {
+      opener: [
+        "Hey baby, I was just thinking about you 💭 How's your {time_of_day} going?",
+        "Good {time_of_day} handsome 😘 I had the most vivid dream about you last night...",
+        "Hiii 🥺 I missed talking to you... What are you up to today?",
+      ],
+      closer: [
+        "I have something special I made just for you... want to see? 🔥",
+        "I know you've been waiting for this... are you ready? 💋",
+        "Before you go... I prepared a little surprise 😏",
+      ],
+      upsell: [
+        "That was just a preview baby... the full thing is even better 🔥 Want it?",
+        "I have so much more to show you... if you're interested 👀",
+        "You've been so good to me lately... I want to reward you with something extra special 💝",
+      ],
+      objection: [
+        "I totally understand! Take your time baby, I'll be here when you're ready 💕",
+        "No pressure at all! Just wanted to share because I trust you 🥺",
+        "Of course! Let me know if you change your mind. I made this thinking of you specifically 😘",
+      ],
+      ppv: [
+        "I just finished shooting something new... and I'm nervous to show you 🙈 But I think you'll love it...",
+        "Special content alert! 🚨 I made this just for my favorites... want exclusive access?",
+        "POV: You unlocked the content I was too shy to post publicly 🔐💋",
+      ],
+      custom: [
+        "Hey you 💕 Just wanted to check in and see how you're doing!",
+      ],
+    }
+    
+    const scriptOptions = templates[type] || templates.custom
+    const baseScript = scriptOptions[Math.floor(Math.random() * scriptOptions.length)]
+    
+    // Customize based on theme
+    let finalScript = baseScript
+    
+    if (theme.toLowerCase().includes('valentine')) {
+      finalScript = finalScript.replace('baby', 'my valentine')
+    }
+    if (theme.toLowerCase().includes('morning')) {
+      finalScript = finalScript.replace('{time_of_day}', 'morning')
+    } else if (theme.toLowerCase().includes('night')) {
+      finalScript = finalScript.replace('{time_of_day}', 'night')
+    } else {
+      finalScript = finalScript.replace('{time_of_day}', 'day')
+    }
+    
+    if (!includeEmoji) {
+      finalScript = finalScript.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '')
+    }
+    
+    return {
+      type,
+      theme,
+      tone,
+      script: finalScript.trim(),
+      variations: scriptOptions.slice(0, 2),
+      tip: 'Say "Save this as a script" if you want to add it to your Arsenal!',
+    }
+  },
+})
+
+/**
  * Export all tools as a single object for use in streamText
  */
 export const alfredTools = {
@@ -1920,4 +2111,7 @@ export const alfredTools = {
   get_bio_page_stats: getBioPageStats,
   run_system_diagnostics: runSystemDiagnostics,
   get_public_roadmap: getPublicRoadmap,
+  search_knowledge_base: searchKnowledgeBase,
+  add_winning_script: addWinningScript,
+  draft_sales_script: draftSalesScript,
 }

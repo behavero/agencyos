@@ -26,6 +26,8 @@ import {
   CalendarClock,
   Link2,
   UserPlus,
+  GraduationCap,
+  ScrollText,
 } from 'lucide-react'
 
 interface NavigationItem {
@@ -62,6 +64,8 @@ const fullNavigation: NavigationSection[] = [
       { name: 'Onyx Link', href: '/dashboard/content/bio', icon: Link2, permission: 'showVault' },
       { name: 'Vault', href: '/dashboard/content/vault', icon: Image, permission: 'showVault' },
       { name: 'Campaigns', href: '/dashboard/messages/campaigns', icon: Megaphone, permission: 'showCampaigns' },
+      { name: 'Academy', href: '/dashboard/academy', icon: GraduationCap, permission: 'showDashboard' },
+      { name: 'Scripts', href: '/dashboard/academy/scripts', icon: ScrollText, permission: 'showDashboard' },
     ],
   },
   {

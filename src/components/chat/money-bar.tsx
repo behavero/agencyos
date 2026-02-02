@@ -10,25 +10,16 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { toast } from 'sonner'
+import { ScriptSelector } from './script-selector'
 import {
   Send,
   Image,
   DollarSign,
-  FileText,
   Eye,
   EyeOff,
   X,
   Lock,
-  Paperclip,
-  Sparkles,
 } from 'lucide-react'
 
 interface VaultAsset {
@@ -40,12 +31,6 @@ interface VaultAsset {
   price?: number
 }
 
-interface ChatScript {
-  id: string
-  name: string
-  content: string
-}
-
 interface MoneyBarProps {
   onSend: (message: string, options?: { 
     price?: number
@@ -54,7 +39,6 @@ interface MoneyBarProps {
   }) => void
   blurMode: boolean
   onBlurToggle: () => void
-  scripts?: ChatScript[]
   onOpenVault?: () => void
   isLoading?: boolean
   placeholder?: string
@@ -64,7 +48,6 @@ export function MoneyBar({
   onSend,
   blurMode,
   onBlurToggle,
-  scripts = [],
   onOpenVault,
   isLoading = false,
   placeholder = 'Type a message...',
@@ -106,14 +89,6 @@ export function MoneyBar({
     
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
-    }
-  }
-
-  // Handle script selection
-  const handleScriptSelect = (scriptId: string) => {
-    const script = scripts.find(s => s.id === scriptId)
-    if (script) {
-      setMessage(script.content)
     }
   }
 
@@ -233,22 +208,8 @@ export function MoneyBar({
           </PopoverContent>
         </Popover>
 
-        {/* Scripts Dropdown */}
-        {scripts.length > 0 && (
-          <Select onValueChange={handleScriptSelect}>
-            <SelectTrigger className="h-8 w-auto gap-1.5 bg-transparent border-none text-zinc-400 hover:text-white">
-              <FileText className="w-4 h-4" />
-              <span className="text-xs">Scripts</span>
-            </SelectTrigger>
-            <SelectContent className="bg-zinc-800 border-zinc-700">
-              {scripts.map((script) => (
-                <SelectItem key={script.id} value={script.id}>
-                  {script.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
+        {/* Scripts Selector */}
+        <ScriptSelector onSelect={(content) => setMessage(content)} />
 
         {/* Spacer */}
         <div className="flex-1" />
