@@ -7,11 +7,11 @@ import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Input } from '@/components/ui/input'
 import type { Database } from '@/types/database.types'
-import { 
-  Plus, 
+import {
+  Plus,
   Search,
-  Users, 
-  DollarSign, 
+  Users,
+  DollarSign,
   MoreVertical,
   Trash2,
   Settings,
@@ -19,7 +19,7 @@ import {
   MessageCircle,
   Image,
   Heart,
-  Link2
+  Link2,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -30,6 +30,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
+import Link from 'next/link'
+import { AddCreatorDialog } from '@/components/creators/add-creator-dialog'
 
 type Model = Database['public']['Tables']['models']['Row']
 
@@ -74,13 +76,16 @@ function formatRelativeTime(dateStr: string | null | undefined): string {
   return date.toLocaleDateString()
 }
 
-export default function CreatorManagementClient({ models, agencyId }: CreatorManagementClientProps) {
+export default function CreatorManagementClient({
+  models,
+  agencyId,
+}: CreatorManagementClientProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [refreshingIds, setRefreshingIds] = useState<Set<string>>(new Set())
-  
+
   // Handle OAuth success/error from URL params
   useEffect(() => {
     const success = searchParams.get('success')
@@ -89,13 +94,13 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
     if (success === 'connected') {
       toast.success('🎉 Creator connected successfully!')
       window.history.replaceState({}, '', '/dashboard/creator-management')
-      
+
       // Auto-refresh stats for new creator
       const latestModel = models[0]
       if (latestModel) {
         handleRefreshStats(latestModel.id, latestModel.name || 'Creator')
       }
-      
+
       router.refresh()
     } else if (error) {
       const errorMessages: Record<string, string> = {
@@ -178,7 +183,7 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
     }
   }
 
-  const filteredModels = models.filter((model) => {
+  const filteredModels = models.filter(model => {
     const matchesSearch = model.name?.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesStatus = statusFilter === 'all' || model.status === statusFilter
     return matchesSearch && matchesStatus
@@ -190,11 +195,9 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Creator Management</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage your creators and their settings
-          </p>
+          <p className="text-muted-foreground mt-1">Manage your creators and their settings</p>
         </div>
-        
+
         <div className="flex gap-2">
           {filteredModels.length > 0 && (
             <Button
@@ -207,13 +210,7 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
               Refresh All
             </Button>
           )}
-          <Button
-            onClick={handleConnectCreator}
-            className="gap-2 shadow-lg bg-violet-600 hover:bg-violet-700"
-          >
-            <Plus className="w-4 h-4" />
-            Add Creator
-          </Button>
+          <AddCreatorDialog agencyId={agencyId || ''} />
         </div>
       </div>
 
@@ -224,13 +221,13 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
           <Input
             placeholder="Search creators..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={e => setSearchQuery(e.target.value)}
             className="pl-10"
           />
         </div>
         <select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onChange={e => setStatusFilter(e.target.value)}
           className="px-4 py-2 rounded-md border border-border bg-background"
         >
           <option value="all">All Status</option>
@@ -248,23 +245,17 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
             </div>
             <h3 className="text-xl font-semibold mb-2">No Creators Yet</h3>
             <p className="text-muted-foreground mb-6 text-center max-w-md">
-              Connect your first Fanvue creator account to start managing their content and performance
+              Add your first creator to start managing their content and performance
             </p>
-            
-            <Button
-              onClick={handleConnectCreator}
-              className="gap-2 bg-violet-600 hover:bg-violet-700"
-            >
-              <Plus className="w-4 h-4" />
-              Add Your First Creator
-            </Button>
+
+            <AddCreatorDialog agencyId={agencyId || ''} />
           </CardContent>
         </Card>
       ) : (
         <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-          {filteredModels.map((model) => {
+          {filteredModels.map(model => {
             const isRefreshing = refreshingIds.has(model.id)
-            
+
             return (
               <Card key={model.id} className="hover:shadow-lg transition-shadow">
                 <CardContent className="pt-6">
@@ -278,7 +269,9 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between">
                         <div>
-                          <h3 className="font-semibold text-lg truncate">{model.name || 'Unnamed Creator'}</h3>
+                          <h3 className="font-semibold text-lg truncate">
+                            {model.name || 'Unnamed Creator'}
+                          </h3>
                           <div className="flex items-center gap-2 mt-1">
                             <Badge variant={model.status === 'active' ? 'default' : 'secondary'}>
                               {model.status === 'active' ? '🟢 Active' : '⚫ Inactive'}
@@ -297,11 +290,13 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem 
+                            <DropdownMenuItem
                               onClick={() => handleRefreshStats(model.id, model.name || undefined)}
                               disabled={isRefreshing}
                             >
-                              <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+                              <RefreshCw
+                                className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`}
+                              />
                               {isRefreshing ? 'Refreshing...' : 'Refresh Stats'}
                             </DropdownMenuItem>
                             <DropdownMenuItem>
@@ -309,7 +304,7 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
                               Settings
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem 
+                            <DropdownMenuItem
                               onClick={() => handleDeleteCreator(model.id, model.name || 'Creator')}
                               className="text-red-600 focus:text-red-600"
                             >
@@ -321,7 +316,7 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
                       </div>
                     </div>
                   </div>
-                  
+
                   {/* Stats Grid - Real Data */}
                   <div className="grid grid-cols-3 gap-4 text-center mt-6">
                     <div>
@@ -343,7 +338,9 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
                         <DollarSign className="w-3 h-3" />
                         <span className="text-xs">Revenue</span>
                       </div>
-                      <p className="font-semibold text-green-600">{formatCurrency(model.revenue_total)}</p>
+                      <p className="font-semibold text-green-600">
+                        {formatCurrency(model.revenue_total)}
+                      </p>
                     </div>
                   </div>
 
@@ -378,13 +375,15 @@ export default function CreatorManagementClient({ models, agencyId }: CreatorMan
                       <p className="text-xs text-muted-foreground">Links</p>
                     </div>
                   </div>
-                  
+
                   <div className="flex gap-2 mt-4">
-                    <Button className="flex-1" variant="outline">
-                      View Details
-                    </Button>
-                    <Button 
-                      variant="outline" 
+                    <Link href={`/dashboard/creator-management/${model.id}`} className="flex-1">
+                      <Button className="w-full" variant="outline">
+                        View Details
+                      </Button>
+                    </Link>
+                    <Button
+                      variant="outline"
                       size="icon"
                       onClick={() => handleRefreshStats(model.id, model.name || undefined)}
                       disabled={isRefreshing}
