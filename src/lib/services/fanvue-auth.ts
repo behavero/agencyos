@@ -4,6 +4,8 @@
  * Based on: https://github.com/fanvue/fanvue-app-starter
  */
 
+import { createAdminClient } from '@/lib/supabase/server'
+
 interface FanvueTokenResponse {
   access_token: string
   token_type: string
@@ -125,7 +127,6 @@ export function clearFanvueTokenCache() {
  * Automatically refreshes if expired or expiring soon
  */
 export async function getModelAccessToken(modelId: string): Promise<string> {
-  const { createAdminClient } = await import('@/lib/supabase/server')
   const supabase = createAdminClient()
 
   // Get model's token info
