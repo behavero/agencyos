@@ -22,26 +22,32 @@ import {
   Target,
   Users,
   Receipt,
+  Globe,
+  Instagram,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 
 const SUGGESTED_PROMPTS = [
   { icon: '📊', text: 'Give me a full agency performance report' },
-  { icon: '💡', text: 'What strategies can increase our revenue?' },
+  { icon: '🌐', text: 'Check instagram.com/kimkardashian stats' },
+  { icon: '🔍', text: 'Research our top competitor\'s social presence' },
   { icon: '🎯', text: 'Which quests should we prioritize today?' },
-  { icon: '📱', text: 'How can we improve social media reach?' },
   { icon: '💰', text: 'Audit our expenses and find savings' },
   { icon: '🌟', text: 'Analyze our top performer\'s growth potential' },
 ]
 
 // Tool name to display name and icon mapping
-const TOOL_INFO: Record<string, { name: string; icon: React.ReactNode }> = {
+const TOOL_INFO: Record<string, { name: string; icon: React.ReactNode; color?: string }> = {
+  // Internal data tools
   get_agency_financials: { name: 'Financials', icon: <DollarSign className="w-3 h-3" /> },
   get_model_stats: { name: 'Model Stats', icon: <Database className="w-3 h-3" /> },
   check_quest_status: { name: 'Quests', icon: <Target className="w-3 h-3" /> },
   get_expense_summary: { name: 'Expenses', icon: <Receipt className="w-3 h-3" /> },
   get_payroll_overview: { name: 'Payroll', icon: <Users className="w-3 h-3" /> },
+  // Web tools (special styling)
+  scrape_web: { name: 'Browsing Web', icon: <Globe className="w-3 h-3" />, color: 'blue' },
+  analyze_social_profile: { name: 'Analyzing Profile', icon: <Instagram className="w-3 h-3" />, color: 'purple' },
 }
 
 interface AlfredFloatingChatProps {
@@ -61,10 +67,10 @@ export function AlfredFloatingChat({ modelId }: AlfredFloatingChatProps = {}) {
       {
         id: 'welcome',
         role: 'assistant',
-        content: "Hello! I'm Alfred, your OnyxOS AI strategist. I can fetch **live data** from your agency - financials, model stats, quests, expenses, and payroll. Ask me anything and I'll pull the real numbers.",
+        content: "Hello! I'm Alfred, your OnyxOS AI strategist with **eyes on the web**. I can fetch live agency data AND browse the internet. Ask me to check competitor profiles, research trends, or scrape any URL. What would you like to explore?",
       },
     ],
-    maxSteps: 5, // Allow multi-step tool calls
+    maxSteps: 8, // Allow more steps for web scraping + analysis
   })
 
   // Scroll to bottom when messages change
@@ -180,19 +186,32 @@ export function AlfredFloatingChat({ modelId }: AlfredFloatingChatProps = {}) {
                   {message.toolInvocations.map((tool, idx) => {
                     const toolInfo = TOOL_INFO[tool.toolName] || { name: tool.toolName, icon: <Wrench className="w-3 h-3" /> }
                     const isComplete = tool.state === 'result'
+                    const isWebTool = toolInfo.color === 'blue' || toolInfo.color === 'purple'
+                    
+                    // Special styling for web tools
+                    const getToolStyles = () => {
+                      if (isComplete) {
+                        if (toolInfo.color === 'blue') return "border-blue-500/30 text-blue-400 bg-blue-500/5"
+                        if (toolInfo.color === 'purple') return "border-purple-500/30 text-purple-400 bg-purple-500/5"
+                        return "border-primary/30 text-primary bg-primary/5"
+                      }
+                      if (toolInfo.color === 'blue') return "border-blue-500/30 text-blue-400 bg-blue-500/5 animate-pulse"
+                      if (toolInfo.color === 'purple') return "border-purple-500/30 text-purple-400 bg-purple-500/5 animate-pulse"
+                      return "border-yellow-500/30 text-yellow-500 bg-yellow-500/5 animate-pulse"
+                    }
+                    
                     return (
                       <Badge 
                         key={idx}
                         variant="outline"
-                        className={cn(
-                          "text-xs gap-1 transition-all",
-                          isComplete 
-                            ? "border-primary/30 text-primary bg-primary/5" 
-                            : "border-yellow-500/30 text-yellow-500 bg-yellow-500/5 animate-pulse"
-                        )}
+                        className={cn("text-xs gap-1 transition-all", getToolStyles())}
                       >
                         {toolInfo.icon}
-                        {isComplete ? toolInfo.name : `Fetching ${toolInfo.name}...`}
+                        {isComplete 
+                          ? toolInfo.name 
+                          : isWebTool 
+                            ? `${toolInfo.name}...` 
+                            : `Fetching ${toolInfo.name}...`}
                       </Badge>
                     )
                   })}

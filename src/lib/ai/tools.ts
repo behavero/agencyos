@@ -344,6 +344,183 @@ export const getPayrollOverview = tool({
 })
 
 /**
+ * Tool: Scrape Web
+ * Uses Firecrawl to fetch and parse web content
+ */
+export const scrapeWeb = tool({
+  description: 'Scrape a website to read its content. Use this to check Instagram profiles, TikTok pages, competitor sites, or read any public web page. ALWAYS use this when the user provides a URL or asks about a public social profile.',
+  parameters: z.object({
+    url: z.string().url().describe('The full URL to scrape (e.g., https://instagram.com/username)'),
+  }),
+  execute: async ({ url }) => {
+    try {
+      const apiKey = process.env.FIRECRAWL_API_KEY
+      
+      if (!apiKey) {
+        return { 
+          error: 'Web scraping not configured. FIRECRAWL_API_KEY is missing.',
+          suggestion: 'Get a free key at firecrawl.dev'
+        }
+      }
+      
+      console.log(`[Alfred] Scraping: ${url}`)
+      
+      const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          url: url,
+          formats: ['markdown'],
+          onlyMainContent: true,
+          timeout: 30000,
+        }),
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        console.error('[Alfred] Firecrawl error:', response.status, errorData)
+        
+        if (response.status === 402) {
+          return { error: 'Firecrawl credits exhausted. Please check your account.' }
+        }
+        if (response.status === 403) {
+          return { error: 'This website blocks automated access.' }
+        }
+        if (response.status === 404) {
+          return { error: 'Page not found. Check if the URL is correct.' }
+        }
+        
+        return { error: `Failed to scrape page: ${response.status}` }
+      }
+      
+      const data = await response.json()
+      
+      if (!data.success) {
+        return { error: data.error || 'Failed to scrape page' }
+      }
+      
+      // Extract useful info
+      const markdown = data.data?.markdown || ''
+      const metadata = data.data?.metadata || {}
+      
+      // Truncate if too long (Groq context limit)
+      const truncatedMarkdown = markdown.length > 8000 
+        ? markdown.substring(0, 8000) + '\n\n... (content truncated for brevity)'
+        : markdown
+      
+      return {
+        url: url,
+        title: metadata.title || 'Unknown',
+        description: metadata.description || null,
+        content: truncatedMarkdown,
+        scrapeSuccess: true,
+        contentLength: markdown.length,
+      }
+    } catch (error) {
+      console.error('[Alfred] scrapeWeb error:', error)
+      return { 
+        error: 'Failed to access the website. It may be down or blocking requests.',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      }
+    }
+  },
+})
+
+/**
+ * Tool: Analyze Social Profile
+ * Specialized tool for social media profile analysis
+ */
+export const analyzeSocialProfile = tool({
+  description: 'Analyze a social media profile (Instagram, TikTok, X/Twitter) and extract key metrics like followers, bio, and recent activity. Use when asked to research a competitor or check a social profile.',
+  parameters: z.object({
+    platform: z.enum(['instagram', 'tiktok', 'twitter', 'x']).describe('The social media platform'),
+    username: z.string().describe('The username/handle (without @ symbol)'),
+  }),
+  execute: async ({ platform, username }) => {
+    try {
+      const apiKey = process.env.FIRECRAWL_API_KEY
+      
+      if (!apiKey) {
+        return { 
+          error: 'Web scraping not configured.',
+          suggestion: 'Get a free key at firecrawl.dev'
+        }
+      }
+      
+      // Build platform URL
+      const platformUrls: Record<string, string> = {
+        instagram: `https://www.instagram.com/${username}/`,
+        tiktok: `https://www.tiktok.com/@${username}`,
+        twitter: `https://twitter.com/${username}`,
+        x: `https://x.com/${username}`,
+      }
+      
+      const url = platformUrls[platform]
+      if (!url) {
+        return { error: `Unknown platform: ${platform}` }
+      }
+      
+      console.log(`[Alfred] Analyzing ${platform} profile: @${username}`)
+      
+      const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          url: url,
+          formats: ['markdown'],
+          onlyMainContent: true,
+          timeout: 30000,
+        }),
+      })
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          return { error: `Profile @${username} not found on ${platform}` }
+        }
+        return { error: `Failed to access ${platform} profile` }
+      }
+      
+      const data = await response.json()
+      
+      if (!data.success) {
+        return { error: `Could not scrape ${platform}. The platform may be blocking access.` }
+      }
+      
+      const markdown = data.data?.markdown || ''
+      const metadata = data.data?.metadata || {}
+      
+      // Extract key info from profile pages
+      // This is a basic extraction - platform-specific parsing would improve results
+      const followerMatch = markdown.match(/(\d+(?:,\d{3})*(?:\.\d+)?[KMB]?)\s*(?:followers|Followers)/i)
+      const followingMatch = markdown.match(/(\d+(?:,\d{3})*(?:\.\d+)?[KMB]?)\s*(?:following|Following)/i)
+      const postsMatch = markdown.match(/(\d+(?:,\d{3})*)\s*(?:posts|Posts)/i)
+      
+      return {
+        platform,
+        username: `@${username}`,
+        url: url,
+        title: metadata.title || null,
+        bio: metadata.description || null,
+        followers: followerMatch ? followerMatch[1] : 'Unable to extract',
+        following: followingMatch ? followingMatch[1] : 'Unable to extract',
+        posts: postsMatch ? postsMatch[1] : 'Unable to extract',
+        contentPreview: markdown.substring(0, 2000),
+        scrapeSuccess: true,
+      }
+    } catch (error) {
+      console.error('[Alfred] analyzeSocialProfile error:', error)
+      return { error: 'Failed to analyze social profile' }
+    }
+  },
+})
+
+/**
  * Export all tools as a single object for use in streamText
  */
 export const alfredTools = {
@@ -352,4 +529,6 @@ export const alfredTools = {
   check_quest_status: checkQuestStatus,
   get_expense_summary: getExpenseSummary,
   get_payroll_overview: getPayrollOverview,
+  scrape_web: scrapeWeb,
+  analyze_social_profile: analyzeSocialProfile,
 }

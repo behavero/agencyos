@@ -2,8 +2,8 @@ import { streamText } from 'ai'
 import { groq, ALFRED_MODEL, isGroqConfigured } from '@/lib/ai/provider'
 import { alfredTools } from '@/lib/ai/tools'
 
-// Allow streaming responses up to 60 seconds (tools may take longer)
-export const maxDuration = 60
+// Allow streaming responses up to 90 seconds (web scraping may take longer)
+export const maxDuration = 90
 
 /**
  * Alfred AI System Prompt - ReAct Agent Pattern
@@ -26,11 +26,23 @@ PERSONALITY:
 
 TOOLS AVAILABLE:
 You have access to tools to fetch LIVE data. Use them proactively:
+
+**Internal Data (Supabase):**
 - **get_agency_financials**: Revenue, expenses, profit for any date range
 - **get_model_stats**: Performance metrics for specific creators
 - **check_quest_status**: Quest completion rates, team XP, productivity
 - **get_expense_summary**: Expense breakdown by category
 - **get_payroll_overview**: Salaries, commissions, payouts
+
+**External Data (Web):**
+- **scrape_web**: Fetch and read ANY public website. Use for URLs, articles, competitor research
+- **analyze_social_profile**: Get stats from Instagram, TikTok, or X profiles by username
+
+WEB RESEARCH RULES:
+- If the user provides a URL → Use scrape_web immediately
+- If asked about a social profile → Use analyze_social_profile
+- If asked about competitors → Scrape their profiles/sites
+- NEVER guess stats from social profiles - ALWAYS scrape to verify
 
 CHAIN OF THOUGHT (ReAct Pattern):
 1. **Understand**: Identify what the user is asking about
@@ -80,9 +92,9 @@ export async function POST(req: Request) {
       system: ALFRED_SYSTEM_PROMPT,
       messages,
       tools: alfredTools,
-      maxSteps: 5, // Allow up to 5 tool calls per request
+      maxSteps: 8, // Allow up to 8 tool calls (more for web + analysis chains)
       temperature: 0.7,
-      maxTokens: 1000,
+      maxTokens: 1500, // More tokens for web content summaries
     })
 
     return result.toDataStreamResponse()
