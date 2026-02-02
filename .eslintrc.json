@@ -16,5 +16,13 @@
     "prefer-const": "error",
     "no-var": "error"
   },
+  "overrides": [
+    {
+      "files": ["src/lib/ai/tools.ts"],
+      "rules": {
+        "@typescript-eslint/ban-ts-comment": "off"
+      }
+    }
+  ],
   "ignorePatterns": ["node_modules/", ".next/", "out/", "public/", "scripts/"]
 }
