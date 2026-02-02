@@ -17,7 +17,9 @@ export async function POST(
     const { model_id, messages } = body
 
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -38,19 +40,26 @@ export async function POST(
       .single()
 
     // Build context for AI
-    const messageContext = messages?.length > 0
-      ? messages.slice(-50).map((m: { role: string; content: string }) => 
-          `${m.role === 'fan' ? 'Fan' : 'Model'}: ${m.content}`
-        ).join('\n')
-      : 'No recent messages available.'
+    const messageContext =
+      messages?.length > 0
+        ? messages
+            .slice(-50)
+            .map(
+              (m: { role: string; content: string }) =>
+                `${m.role === 'fan' ? 'Fan' : 'Model'}: ${m.content}`
+            )
+            .join('\n')
+        : 'No recent messages available.'
 
-    const existingData = fan ? `
+    const existingData = fan
+      ? `
 Current CRM Data:
 - Total Spent: $${fan.total_spend || 0}
 - Custom Attributes: ${JSON.stringify(fan.custom_attributes || {})}
 - Tags: ${(fan.tags || []).join(', ') || 'None'}
 - Notes: ${fan.notes || 'None'}
-` : 'New fan - no existing data.'
+`
+      : 'New fan - no existing data.'
 
     // Generate summary
     const result = await generateText({
@@ -75,7 +84,6 @@ ${messageContext}
 
 Generate a fan intelligence summary:`,
       temperature: 0.7,
-      maxTokens: 300,
     })
 
     const summary = result.text
@@ -88,24 +96,22 @@ Generate a fan intelligence summary:`,
       .single()
 
     if (profile?.agency_id) {
-      await adminClient
-        .from('fan_insights')
-        .upsert({
+      await adminClient.from('fan_insights').upsert(
+        {
           agency_id: profile.agency_id,
           model_id,
           fan_id: fanId,
           ai_summary: summary,
           ai_summary_updated_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
-        }, { onConflict: 'model_id,fan_id' })
+        },
+        { onConflict: 'model_id,fan_id' }
+      )
     }
 
     return NextResponse.json({ summary })
   } catch (error) {
     console.error('[Fan Summary API] Error:', error)
-    return NextResponse.json(
-      { error: 'Failed to generate summary' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to generate summary' }, { status: 500 })
   }
 }

@@ -7,7 +7,7 @@ export const maxDuration = 90
 
 /**
  * Alfred AI System Prompt - ReAct Agent Pattern
- * 
+ *
  * Optimized for Llama 3.3 with tool calling capabilities.
  * Uses the ReAct (Reasoning + Acting) pattern for dynamic data fetching.
  */
@@ -77,8 +77,9 @@ export async function POST(req: Request) {
     // Check if Groq is configured
     if (!isGroqConfigured()) {
       return new Response(
-        JSON.stringify({ 
-          error: 'Groq API key not configured. Add GROQ_API_KEY to your environment variables. Get a free key at console.groq.com' 
+        JSON.stringify({
+          error:
+            'Groq API key not configured. Add GROQ_API_KEY to your environment variables. Get a free key at console.groq.com',
         }),
         { status: 500, headers: { 'Content-Type': 'application/json' } }
       )
@@ -92,48 +93,46 @@ export async function POST(req: Request) {
       system: ALFRED_SYSTEM_PROMPT,
       messages,
       tools: alfredTools,
-      maxSteps: 8, // Allow up to 8 tool calls (more for web + analysis chains)
       temperature: 0.7,
-      maxTokens: 1500, // More tokens for web content summaries
     })
 
-    return result.toDataStreamResponse()
+    return result.toTextStreamResponse()
   } catch (error) {
     console.error('Alfred AI Error:', error)
-    
+
     // Handle specific error types
     if (error instanceof Error) {
       if (error.message.includes('API key') || error.message.includes('401')) {
         return new Response(
-          JSON.stringify({ 
-            error: 'Invalid Groq API key. Please check your GROQ_API_KEY in environment variables.' 
+          JSON.stringify({
+            error: 'Invalid Groq API key. Please check your GROQ_API_KEY in environment variables.',
           }),
           { status: 401, headers: { 'Content-Type': 'application/json' } }
         )
       }
-      
+
       if (error.message.includes('rate limit') || error.message.includes('429')) {
         return new Response(
-          JSON.stringify({ 
-            error: 'Rate limit reached. Groq free tier has limits - please wait a moment.' 
+          JSON.stringify({
+            error: 'Rate limit reached. Groq free tier has limits - please wait a moment.',
           }),
           { status: 429, headers: { 'Content-Type': 'application/json' } }
         )
       }
-      
+
       if (error.message.includes('tool') || error.message.includes('function')) {
         return new Response(
-          JSON.stringify({ 
-            error: 'Tool execution error. Some data may be unavailable.' 
+          JSON.stringify({
+            error: 'Tool execution error. Some data may be unavailable.',
           }),
           { status: 500, headers: { 'Content-Type': 'application/json' } }
         )
       }
     }
 
-    return new Response(
-      JSON.stringify({ error: 'Failed to process request. Please try again.' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    )
+    return new Response(JSON.stringify({ error: 'Failed to process request. Please try again.' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    })
   }
 }

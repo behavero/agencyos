@@ -4,7 +4,7 @@ import { alfredTools } from '@/lib/ai/tools'
 
 /**
  * Telegram Handler - The Brain Bridge
- * 
+ *
  * Receives messages from Telegram and processes them through
  * Alfred's AI system with full tool access.
  */
@@ -55,7 +55,9 @@ export async function processAlfredMessage(
   username?: string
 ): Promise<string> {
   try {
-    console.log(`[Telegram] Processing message from ${username || userId}: ${message.substring(0, 50)}...`)
+    console.log(
+      `[Telegram] Processing message from ${username || userId}: ${message.substring(0, 50)}...`
+    )
 
     // Generate response using Groq with tools
     const result = await generateText({
@@ -63,7 +65,6 @@ export async function processAlfredMessage(
       system: TELEGRAM_SYSTEM_PROMPT,
       prompt: message,
       tools: alfredTools,
-      maxSteps: 5, // Allow multiple tool calls
       temperature: 0.7,
     })
 
@@ -89,7 +90,7 @@ export async function processAlfredMessage(
     return response
   } catch (error) {
     console.error('[Telegram] Error processing message:', error)
-    
+
     // Return user-friendly error message
     if (error instanceof Error) {
       if (error.message.includes('rate limit')) {
@@ -99,7 +100,7 @@ export async function processAlfredMessage(
         return '⚠️ AI service configuration error. Please contact admin.'
       }
     }
-    
+
     return '❌ Sorry, I encountered an error processing your request. Please try again.'
   }
 }

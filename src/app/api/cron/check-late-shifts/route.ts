@@ -30,14 +30,16 @@ export async function POST(request: NextRequest) {
 
     const { data: lateShifts, error: shiftsError } = await adminClient
       .from('shifts')
-      .select(`
+      .select(
+        `
         id,
         employee_id,
         start_time,
         title,
         employee:profiles(username, agency_id),
         agency:agencies(name)
-      `)
+      `
+      )
       .eq('status', 'scheduled')
       .lt('start_time', lateThreshold.toISOString())
       .gt('start_time', new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString()) // Within last 2 hours
@@ -72,15 +74,16 @@ export async function POST(request: NextRequest) {
       const shiftStart = new Date(shift.start_time)
       const minutesLate = Math.floor((now.getTime() - shiftStart.getTime()) / 60000)
 
-      const employeeName = (shift.employee as { username: string | null })?.username || 'Unknown'
+      const employee = Array.isArray(shift.employee) ? shift.employee[0] : shift.employee
+      const employeeName = (employee as { username: string | null })?.username || 'Unknown'
       const shiftTitle = shift.title || 'Shift'
-      
+
       alerts.push(
         `⚠️ **LATE ALERT**\n` +
-        `Employee: ${employeeName}\n` +
-        `Shift: ${shiftTitle}\n` +
-        `Was due: ${minutesLate} minutes ago\n` +
-        `Status: No clock-in detected`
+          `Employee: ${employeeName}\n` +
+          `Shift: ${shiftTitle}\n` +
+          `Was due: ${minutesLate} minutes ago\n` +
+          `Status: No clock-in detected`
       )
 
       // Update shift notes to mark as alerted
@@ -96,7 +99,7 @@ export async function POST(request: NextRequest) {
         if (!userId) continue
 
         const message = alerts.join('\n\n---\n\n')
-        
+
         try {
           const response = await fetch(
             `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
@@ -112,7 +115,10 @@ export async function POST(request: NextRequest) {
           )
 
           if (!response.ok) {
-            console.error('[Cron Late Shifts] Failed to send Telegram alert:', await response.text())
+            console.error(
+              '[Cron Late Shifts] Failed to send Telegram alert:',
+              await response.text()
+            )
           }
         } catch (telegramError) {
           console.error('[Cron Late Shifts] Telegram error:', telegramError)
@@ -121,10 +127,10 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`[Cron Late Shifts] Sent ${alerts.length} alerts`)
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       alerts: alerts.length,
-      details: alerts 
+      details: alerts,
     })
   } catch (error) {
     console.error('[Cron Late Shifts] Error:', error)
@@ -136,7 +142,7 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const secret = searchParams.get('secret')
-  
+
   if (secret !== CRON_SECRET) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

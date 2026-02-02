@@ -122,6 +122,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       )
     }
 
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'Failed to send mass message'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
