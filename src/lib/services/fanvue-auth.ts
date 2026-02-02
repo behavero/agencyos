@@ -119,3 +119,121 @@ export function clearFanvueTokenCache() {
   tokenCache = null
   console.log('🗑️ Fanvue token cache cleared')
 }
+
+/**
+ * Gets a valid access token for a specific model
+ * Automatically refreshes if expired or expiring soon
+ */
+export async function getModelAccessToken(modelId: string): Promise<string> {
+  const { createAdminClient } = await import('@/lib/supabase/server')
+  const supabase = createAdminClient()
+
+  // Get model's token info
+  const { data: model, error } = await supabase
+    .from('models')
+    .select('fanvue_access_token, fanvue_refresh_token, fanvue_token_expires_at')
+    .eq('id', modelId)
+    .single()
+
+  if (error || !model) {
+    throw new Error(`Model not found: ${modelId}`)
+  }
+
+  if (!model.fanvue_access_token) {
+    throw new Error(`Model ${modelId} has no Fanvue access token`)
+  }
+
+  // Check if token is expired or expiring soon (within 1 hour)
+  const expiresAt = model.fanvue_token_expires_at ? new Date(model.fanvue_token_expires_at) : null
+  const now = new Date()
+  const oneHourFromNow = new Date(now.getTime() + 60 * 60 * 1000)
+
+  const needsRefresh = expiresAt && expiresAt < oneHourFromNow
+
+  if (!needsRefresh) {
+    console.log(`✅ Model ${modelId} token is valid`)
+    return model.fanvue_access_token
+  }
+
+  // Token needs refresh
+  if (!model.fanvue_refresh_token) {
+    throw new Error(
+      `Model ${modelId} token is expired but no refresh token available. ` +
+        'User needs to reconnect their Fanvue account.'
+    )
+  }
+
+  console.log(`🔄 Refreshing token for model ${modelId}...`)
+
+  try {
+    const refreshedToken = await refreshFanvueToken(model.fanvue_refresh_token)
+
+    // Update database with new tokens
+    await supabase.rpc('update_fanvue_token', {
+      p_model_id: modelId,
+      p_access_token: refreshedToken.access_token,
+      p_refresh_token: refreshedToken.refresh_token || model.fanvue_refresh_token,
+      p_expires_in: refreshedToken.expires_in || 3600,
+    })
+
+    console.log(`✅ Token refreshed successfully for model ${modelId}`)
+    return refreshedToken.access_token
+  } catch (error: any) {
+    console.error(`❌ Failed to refresh token for model ${modelId}:`, error.message)
+    throw new Error(
+      `Token refresh failed: ${error.message}. User may need to reconnect their Fanvue account.`
+    )
+  }
+}
+
+/**
+ * Refreshes a Fanvue access token using a refresh token
+ */
+async function refreshFanvueToken(refreshToken: string): Promise<{
+  access_token: string
+  refresh_token?: string
+  expires_in: number
+  token_type: string
+}> {
+  const clientId = process.env.NEXT_PUBLIC_FANVUE_CLIENT_ID
+  const clientSecret = process.env.FANVUE_CLIENT_SECRET
+
+  if (!clientId || !clientSecret) {
+    throw new Error('Fanvue OAuth credentials not configured')
+  }
+
+  const authUrl = `${process.env.FANVUE_AUTH_URL || 'https://auth.fanvue.com'}/oauth/token`
+
+  const response = await fetch(authUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+      client_id: clientId,
+      client_secret: clientSecret,
+    }),
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(
+      `Token refresh failed: ${response.status} ${response.statusText} - ${errorText}`
+    )
+  }
+
+  const data = await response.json()
+
+  if (!data.access_token) {
+    throw new Error('No access_token in refresh response')
+  }
+
+  return {
+    access_token: data.access_token,
+    refresh_token: data.refresh_token,
+    expires_in: data.expires_in || 3600,
+    token_type: data.token_type || 'Bearer',
+  }
+}

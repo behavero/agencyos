@@ -1,14 +1,15 @@
 /**
  * Transaction Syncer Service
- * Phase 54C - Syncs Fanvue transactions using model access tokens
+ * Phase 55 - Intelligent cursor-based incremental sync with automatic token refresh
  *
- * This service fetches transactions from Fanvue API and stores them
- * in the fanvue_transactions table for granular analytics.
+ * This service fetches only NEW transactions from Fanvue API using cursor-based
+ * pagination and automatic token refresh for resilient, scalable syncing.
  */
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { createFanvueClient, FanvueAPIError } from '@/lib/fanvue/client'
+import { getModelAccessToken } from '@/lib/services/fanvue-auth'
 
 export interface SyncResult {
   success: boolean
@@ -28,7 +29,7 @@ export async function syncModelTransactions(modelId: string): Promise<SyncResult
     // Get model details
     const { data: model, error: modelError } = await supabase
       .from('models')
-      .select('id, agency_id, fanvue_access_token, fanvue_user_uuid')
+      .select('id, agency_id, fanvue_user_uuid, last_transaction_sync')
       .eq('id', modelId)
       .single()
 
@@ -40,32 +41,34 @@ export async function syncModelTransactions(modelId: string): Promise<SyncResult
       }
     }
 
-    // Use the model's existing Fanvue access token (obtained via Authorization Code flow)
-    if (!model.fanvue_access_token) {
+    console.log(`🔄 Starting incremental sync for model ${model.id}...`)
+
+    // PHASE 55: Automatic token refresh
+    let accessToken: string
+    try {
+      accessToken = await getModelAccessToken(modelId)
+      console.log('✅ Got valid access token (auto-refreshed if needed)')
+    } catch (error: any) {
       return {
         success: false,
         transactionsSynced: 0,
-        errors: ['No Fanvue access token for this model - connect account first'],
+        errors: [`Token error: ${error.message}`],
       }
     }
 
-    console.log('🔐 Using model access token for:', model.id)
+    // Initialize Fanvue client with the valid/refreshed token
+    const fanvueClient = createFanvueClient(accessToken)
 
-    // Initialize Fanvue client with the model's token
-    const fanvueClient = createFanvueClient(model.fanvue_access_token)
+    // PHASE 55: Use last_transaction_sync for cursor-based incremental sync
+    // This dramatically reduces API calls and sync time
+    const startDate = model.last_transaction_sync
+      ? new Date(new Date(model.last_transaction_sync).getTime() + 1000) // Add 1 second buffer
+      : new Date('2024-01-01T00:00:00Z') // Default for first-time sync
 
-    // Get last synced transaction date
-    const { data: lastTransaction } = await supabase
-      .from('fanvue_transactions')
-      .select('fanvue_created_at')
-      .eq('model_id', modelId)
-      .order('fanvue_created_at', { ascending: false })
-      .limit(1)
-      .single()
-
-    const startDate = lastTransaction?.fanvue_created_at
-      ? new Date(lastTransaction.fanvue_created_at)
-      : new Date('2020-01-01') // Default: Fetch all historical data from Fanvue launch
+    console.log(`📅 Syncing transactions since: ${startDate.toISOString()}`)
+    const timeSinceLastSync = Date.now() - startDate.getTime()
+    const hoursSinceLastSync = Math.round(timeSinceLastSync / (1000 * 60 * 60))
+    console.log(`⏱️  Last synced ${hoursSinceLastSync} hours ago`)
 
     // Fetch earnings from Fanvue (with pagination)
     let allEarnings: any[] = []
@@ -152,11 +155,14 @@ export async function syncModelTransactions(modelId: string): Promise<SyncResult
       }
     }
 
-    // Update model's last sync timestamp
-    await supabase
-      .from('models')
-      .update({ stats_updated_at: new Date().toISOString() })
-      .eq('id', modelId)
+    // PHASE 55: Mark sync complete with new cursor position
+    await supabase.rpc('mark_sync_complete', {
+      p_model_id: modelId,
+      p_sync_type: 'transactions',
+    })
+
+    const syncDuration = Date.now() - Date.now()
+    console.log(`✅ Sync complete: ${transactions.length} transactions in ${syncDuration}ms`)
 
     return {
       success: true,
