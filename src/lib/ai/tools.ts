@@ -1258,6 +1258,268 @@ export const getShiftSchedule = tool({
 })
 
 /**
+ * Tool: Create Tracking Link
+ * Create a smart redirect link
+ */
+export const createTrackingLink = tool({
+  description: 'Create a smart redirect/tracking link with optional breakout. Use when asked to create a deep link, short link, or tracking link.',
+  parameters: z.object({
+    slug: z.string().describe('Short slug for the link (e.g., "shower" for /s/shower)'),
+    name: z.string().optional().describe('Internal name for reference'),
+    target_url: z.string().url().describe('The destination URL'),
+    breakout: z.enum(['smart', 'force', 'none']).optional().describe('Breakout mode: smart (detect in-app), force (always), none (direct)'),
+  }),
+  execute: async ({ slug, name, target_url, breakout = 'smart' }) => {
+    try {
+      const supabase = await createAdminClient()
+
+      // Get agency from first profile
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('agency_id')
+        .limit(1)
+        .single()
+
+      if (!profiles?.agency_id) {
+        return { success: false, error: 'No agency found' }
+      }
+
+      // Check if slug is taken
+      const { data: existing } = await supabase
+        .from('redirect_links')
+        .select('id')
+        .eq('slug', slug)
+        .single()
+
+      if (existing) {
+        return { success: false, error: `Slug "${slug}" is already taken` }
+      }
+
+      // Create the link
+      const { data: link, error } = await supabase
+        .from('redirect_links')
+        .insert({
+          agency_id: profiles.agency_id,
+          slug,
+          name: name || slug,
+          target_url,
+          breakout_mode: breakout,
+          target_type: 'external',
+        })
+        .select()
+        .single()
+
+      if (error) {
+        return { success: false, error: error.message }
+      }
+
+      return {
+        success: true,
+        message: `Created tracking link: /s/${slug}`,
+        link: {
+          slug: link.slug,
+          url: `/s/${link.slug}`,
+          target: link.target_url,
+          breakout: link.breakout_mode,
+        },
+      }
+    } catch (error) {
+      console.error('createTrackingLink error:', error)
+      return { success: false, error: 'Failed to create tracking link' }
+    }
+  },
+})
+
+/**
+ * Tool: Get Link Performance
+ * Analyze link and button click performance
+ */
+export const getLinkPerformance = tool({
+  description: 'Get performance stats for tracking links and bio page buttons. Use when asked about link performance, CTR, which button is winning, or click stats.',
+  parameters: z.object({
+    type: z.enum(['all', 'bio_pages', 'redirect_links']).optional().describe('Type of links to analyze'),
+  }),
+  execute: async ({ type = 'all' }) => {
+    try {
+      const supabase = await createAdminClient()
+
+      const results: {
+        bioPages?: Array<{ title: string; slug: string; visits: number; clicks: number; ctr: string; topButton?: string }>
+        redirectLinks?: Array<{ name: string; slug: string; clicks: number; target: string }>
+        summary?: { totalClicks: number; topPerformer: string }
+      } = {}
+
+      // Get bio pages with stats
+      if (type === 'all' || type === 'bio_pages') {
+        const { data: pages } = await supabase
+          .from('bio_pages')
+          .select(`
+            id, title, slug, total_visits, total_clicks,
+            blocks:bio_blocks(id, content, click_count)
+          `)
+          .order('total_clicks', { ascending: false })
+          .limit(10)
+
+        results.bioPages = pages?.map(p => {
+          const blocks = (p.blocks || []) as Array<{ id: string; content: { label?: string }; click_count: number }>
+          const topButton = blocks
+            .filter(b => b.click_count > 0)
+            .sort((a, b) => (b.click_count || 0) - (a.click_count || 0))[0]
+
+          const ctr = p.total_visits > 0 
+            ? ((p.total_clicks / p.total_visits) * 100).toFixed(1)
+            : '0'
+
+          return {
+            title: p.title,
+            slug: `/u/${p.slug}`,
+            visits: p.total_visits || 0,
+            clicks: p.total_clicks || 0,
+            ctr: `${ctr}%`,
+            topButton: topButton?.content?.label || undefined,
+          }
+        }) || []
+      }
+
+      // Get redirect links
+      if (type === 'all' || type === 'redirect_links') {
+        const { data: links } = await supabase
+          .from('redirect_links')
+          .select('id, name, slug, click_count, target_url')
+          .eq('is_active', true)
+          .order('click_count', { ascending: false })
+          .limit(10)
+
+        results.redirectLinks = links?.map(l => ({
+          name: l.name || l.slug,
+          slug: `/s/${l.slug}`,
+          clicks: l.click_count || 0,
+          target: l.target_url,
+        })) || []
+      }
+
+      // Calculate summary
+      const totalBioClicks = results.bioPages?.reduce((sum, p) => sum + p.clicks, 0) || 0
+      const totalLinkClicks = results.redirectLinks?.reduce((sum, l) => sum + l.clicks, 0) || 0
+
+      const allItems = [
+        ...(results.bioPages?.map(p => ({ name: `Bio: ${p.title}`, clicks: p.clicks })) || []),
+        ...(results.redirectLinks?.map(l => ({ name: `Link: ${l.name}`, clicks: l.clicks })) || []),
+      ].sort((a, b) => b.clicks - a.clicks)
+
+      results.summary = {
+        totalClicks: totalBioClicks + totalLinkClicks,
+        topPerformer: allItems[0]?.name || 'No data',
+      }
+
+      return results
+    } catch (error) {
+      console.error('getLinkPerformance error:', error)
+      return { error: 'Failed to get link performance' }
+    }
+  },
+})
+
+/**
+ * Tool: Get Bio Page Stats
+ * Get detailed stats for a specific bio page
+ */
+export const getBioPageStats = tool({
+  description: 'Get detailed analytics for a bio page including button clicks and traffic sources. Use when asked about a specific bio page performance.',
+  parameters: z.object({
+    slug: z.string().describe('The bio page slug (e.g., "lana")'),
+  }),
+  execute: async ({ slug }) => {
+    try {
+      const supabase = await createAdminClient()
+
+      // Get page with blocks
+      const { data: page, error } = await supabase
+        .from('bio_pages')
+        .select(`
+          id, title, slug, status, total_visits, total_clicks,
+          blocks:bio_blocks(id, type, content, click_count)
+        `)
+        .eq('slug', slug)
+        .single()
+
+      if (error || !page) {
+        return { error: `Bio page "/${slug}" not found` }
+      }
+
+      // Get recent tracking events
+      const { data: events } = await supabase
+        .from('tracking_events')
+        .select('event_type, device_type, is_in_app_browser, in_app_source, created_at')
+        .eq('source_id', page.id)
+        .eq('source_type', 'bio_page')
+        .order('created_at', { ascending: false })
+        .limit(100)
+
+      // Calculate stats
+      const blocks = (page.blocks || []) as Array<{ id: string; type: string; content: { label?: string }; click_count: number }>
+      const buttons = blocks
+        .filter(b => b.type === 'button')
+        .sort((a, b) => (b.click_count || 0) - (a.click_count || 0))
+
+      const deviceBreakdown: Record<string, number> = {}
+      const inAppSources: Record<string, number> = {}
+      let inAppCount = 0
+
+      events?.forEach(e => {
+        // Device breakdown
+        const device = e.device_type || 'unknown'
+        deviceBreakdown[device] = (deviceBreakdown[device] || 0) + 1
+
+        // In-app browser tracking
+        if (e.is_in_app_browser) {
+          inAppCount++
+          const source = e.in_app_source || 'other'
+          inAppSources[source] = (inAppSources[source] || 0) + 1
+        }
+      })
+
+      const ctr = page.total_visits > 0 
+        ? ((page.total_clicks / page.total_visits) * 100).toFixed(1)
+        : '0'
+
+      return {
+        page: {
+          title: page.title,
+          url: `/u/${page.slug}`,
+          status: page.status,
+        },
+        stats: {
+          totalVisits: page.total_visits || 0,
+          totalClicks: page.total_clicks || 0,
+          ctr: `${ctr}%`,
+        },
+        buttonPerformance: buttons.slice(0, 5).map(b => ({
+          label: b.content?.label || 'Unnamed',
+          clicks: b.click_count || 0,
+        })),
+        devices: deviceBreakdown,
+        inAppBrowser: {
+          percentage: events?.length ? ((inAppCount / events.length) * 100).toFixed(1) + '%' : '0%',
+          sources: inAppSources,
+        },
+        insights: [
+          buttons[0]?.click_count > 0 
+            ? `Top button: "${buttons[0]?.content?.label}" with ${buttons[0]?.click_count} clicks`
+            : 'No button clicks yet',
+          inAppCount > events?.length! * 0.5 
+            ? '⚠️ High in-app browser traffic - breakout is important!'
+            : 'Traffic sources look healthy',
+        ],
+      }
+    } catch (error) {
+      console.error('getBioPageStats error:', error)
+      return { error: 'Failed to get bio page stats' }
+    }
+  },
+})
+
+/**
  * Export all tools as a single object for use in streamText
  */
 export const alfredTools = {
@@ -1278,4 +1540,7 @@ export const alfredTools = {
   get_top_fans: getTopFans,
   get_team_attendance: getTeamAttendance,
   get_shift_schedule: getShiftSchedule,
+  create_tracking_link: createTrackingLink,
+  get_link_performance: getLinkPerformance,
+  get_bio_page_stats: getBioPageStats,
 }

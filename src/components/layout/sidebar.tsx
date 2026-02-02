@@ -24,6 +24,7 @@ import {
   BarChart3,
   Calendar,
   CalendarClock,
+  Link2,
 } from 'lucide-react'
 
 interface NavigationItem {
@@ -57,6 +58,7 @@ const fullNavigation: NavigationSection[] = [
       { name: 'Quests', href: '/dashboard/quests', icon: Target, permission: 'showQuests' },
       { name: 'Content', href: '/dashboard/content', icon: Sparkles, permission: 'showContent' },
       { name: 'Calendar', href: '/dashboard/content/calendar', icon: Calendar, permission: 'showCalendar' },
+      { name: 'Onyx Link', href: '/dashboard/content/bio', icon: Link2, permission: 'showVault' },
       { name: 'Vault', href: '/dashboard/content/vault', icon: Image, permission: 'showVault' },
       { name: 'Campaigns', href: '/dashboard/messages/campaigns', icon: Megaphone, permission: 'showCampaigns' },
     ],
