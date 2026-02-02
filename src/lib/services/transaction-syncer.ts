@@ -62,14 +62,14 @@ export async function syncModelTransactions(modelId: string): Promise<SyncResult
 
     const startDate = lastTransaction?.fanvue_created_at
       ? new Date(lastTransaction.fanvue_created_at)
-      : new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) // Default: last 90 days
+      : new Date('2020-01-01') // Default: Fetch all historical data from Fanvue launch
 
     // Fetch earnings from Fanvue (with pagination)
     let allEarnings: any[] = []
     let cursor: string | null = null
     let hasMore = true
     let pageCount = 0
-    const maxPages = 10 // Safety limit
+    const maxPages = 50 // Safety limit (100 per page = 5000 transactions max)
 
     while (hasMore && pageCount < maxPages) {
       try {
