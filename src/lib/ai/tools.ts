@@ -1710,6 +1710,69 @@ export const runSystemDiagnostics = tool({
 })
 
 /**
+ * Tool: Get Public Roadmap
+ * Returns the high-level product roadmap for OnyxOS (for public/landing page use)
+ */
+export const getPublicRoadmap = tool({
+  description: 'Get the public product roadmap for OnyxOS. Use this when asked about upcoming features, product plans, or what\'s next for the platform.',
+  parameters: z.object({}),
+  execute: async () => {
+    return {
+      platform: 'OnyxOS',
+      version: '1.0',
+      roadmap: [
+        {
+          phase: 'Q1 2026 - Foundation',
+          status: 'completed',
+          features: [
+            'Multi-model management dashboard',
+            'Fanvue, YouTube, and Instagram integrations',
+            'Advanced CRM with fan tracking',
+            'Alfred AI assistant with ReAct capabilities',
+            'Content vault and mass messaging',
+          ]
+        },
+        {
+          phase: 'Q2 2026 - Intelligence',
+          status: 'in_progress',
+          features: [
+            'Onyx Link bio page builder with breakout technology',
+            'Advanced KPI engine and funnel analytics',
+            'Team management with shift tracking',
+            'Quest engine and gamification',
+            'Telegram bot integration',
+          ]
+        },
+        {
+          phase: 'Q3 2026 - Automation',
+          status: 'planned',
+          features: [
+            'AI-powered chat automation (GPT-4 chatters)',
+            'Smart scheduling and auto-posting',
+            'Competitor intelligence and tracking',
+            'Advanced email/SMS campaigns',
+            'Custom workflow builder',
+          ]
+        },
+        {
+          phase: 'Q4 2026 - Scale',
+          status: 'planned',
+          features: [
+            'White-label agency dashboard',
+            'Multi-agency network management',
+            'Advanced revenue forecasting',
+            'API access for custom integrations',
+            'Mobile app (iOS/Android)',
+          ]
+        }
+      ],
+      nextMilestone: 'Launch of AI Chat Automation (Q3 2026)',
+      requestAccess: 'https://onyxos.io/login',
+    }
+  },
+})
+
+/**
  * Export all tools as a single object for use in streamText
  */
 export const alfredTools = {
@@ -1734,4 +1797,5 @@ export const alfredTools = {
   get_link_performance: getLinkPerformance,
   get_bio_page_stats: getBioPageStats,
   run_system_diagnostics: runSystemDiagnostics,
+  get_public_roadmap: getPublicRoadmap,
 }

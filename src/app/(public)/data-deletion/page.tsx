@@ -1,4 +1,5 @@
 import { Metadata } from 'next'
+import { LegalWrapper } from '@/components/marketing/legal-wrapper'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Mail, Clock, Shield, Trash2 } from 'lucide-react'
@@ -10,8 +11,9 @@ export const metadata: Metadata = {
 
 export default function DataDeletionPage() {
   return (
-    <div className="text-zinc-100">
-      <div className="max-w-3xl mx-auto px-6 py-16">
+    <LegalWrapper>
+      <div className="text-zinc-100">
+        <div className="max-w-3xl mx-auto px-6 py-16">
         <h1 className="text-4xl font-bold mb-2">Data Deletion Request</h1>
         <p className="text-zinc-400 mb-8">
           Remove your data from OnyxOS in compliance with GDPR and platform policies.
@@ -178,7 +180,8 @@ export default function DataDeletionPage() {
           </div>
         </div>
 
+        </div>
       </div>
-    </div>
+    </LegalWrapper>
   )
 }
