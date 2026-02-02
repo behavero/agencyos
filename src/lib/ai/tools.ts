@@ -1083,6 +1083,181 @@ export const getTopFans = tool({
 })
 
 /**
+ * Tool: Get Team Attendance
+ * Check who is working, late, or missed shifts
+ */
+export const getTeamAttendance = tool({
+  description: 'Get current team attendance status, who is online, late, or missed their shift. Use when asked about team status, who is working, or attendance.',
+  parameters: z.object({
+    date: z.string().optional().describe('Date to check (YYYY-MM-DD), defaults to today'),
+  }),
+  execute: async ({ date }) => {
+    try {
+      const supabase = await createAdminClient()
+
+      const targetDate = date ? new Date(date) : new Date()
+      const startOfDay = new Date(targetDate)
+      startOfDay.setHours(0, 0, 0, 0)
+      const endOfDay = new Date(targetDate)
+      endOfDay.setHours(23, 59, 59, 999)
+
+      // Get shifts for the day
+      const { data: shifts } = await supabase
+        .from('shifts')
+        .select('*, employee:profiles(username, role)')
+        .gte('start_time', startOfDay.toISOString())
+        .lt('start_time', endOfDay.toISOString())
+
+      // Get active timesheets (currently clocked in)
+      const { data: activeTimesheets } = await supabase
+        .from('timesheets')
+        .select('*, employee:profiles(username, role)')
+        .eq('status', 'active')
+        .is('clock_out', null)
+
+      const now = new Date()
+
+      // Categorize team members
+      const working = activeTimesheets?.map(t => ({
+        name: (t.employee as { username?: string } | null)?.username || 'Unknown',
+        role: (t.employee as { role?: string } | null)?.role,
+        clockedInAt: new Date(t.clock_in).toLocaleTimeString(),
+        isLate: t.is_late,
+        lateMinutes: t.late_minutes || 0,
+      })) || []
+
+      const scheduled: Array<{ name: string; role: string | null; shiftStart: string; status: string }> = []
+      const late: Array<{ name: string; role: string | null; shiftStart: string; minutesLate: number }> = []
+      const completed: Array<{ name: string; role: string | null; hoursWorked: string }> = []
+
+      shifts?.forEach(shift => {
+        const employee = shift.employee as { username?: string; role?: string } | null
+        const shiftStart = new Date(shift.start_time)
+        const isCurrentlyWorking = working.some(w => w.name === employee?.username)
+
+        if (shift.status === 'completed') {
+          const shiftEnd = new Date(shift.end_time)
+          const hours = Math.round((shiftEnd.getTime() - shiftStart.getTime()) / (1000 * 60 * 60) * 10) / 10
+          completed.push({
+            name: employee?.username || 'Unknown',
+            role: employee?.role || null,
+            hoursWorked: `${hours}h`,
+          })
+        } else if (shift.status === 'scheduled' && shiftStart <= now && !isCurrentlyWorking) {
+          const minutesLate = Math.floor((now.getTime() - shiftStart.getTime()) / 60000)
+          late.push({
+            name: employee?.username || 'Unknown',
+            role: employee?.role || null,
+            shiftStart: shiftStart.toLocaleTimeString(),
+            minutesLate,
+          })
+        } else if (shift.status === 'scheduled' && shiftStart > now) {
+          scheduled.push({
+            name: employee?.username || 'Unknown',
+            role: employee?.role || null,
+            shiftStart: shiftStart.toLocaleTimeString(),
+            status: 'upcoming',
+          })
+        }
+      })
+
+      const summary = []
+      if (working.length > 0) summary.push(`${working.length} working`)
+      if (late.length > 0) summary.push(`${late.length} late`)
+      if (scheduled.length > 0) summary.push(`${scheduled.length} upcoming`)
+
+      return {
+        date: targetDate.toLocaleDateString(),
+        summary: summary.join(', ') || 'No shifts today',
+        currentlyWorking: working,
+        lateNoClockIn: late,
+        scheduledLater: scheduled,
+        completedToday: completed,
+        alerts: late.map(l => `⚠️ ${l.name} is ${l.minutesLate}min late`),
+      }
+    } catch (error) {
+      console.error('getTeamAttendance error:', error)
+      return { error: 'Failed to get attendance data' }
+    }
+  },
+})
+
+/**
+ * Tool: Get Shift Schedule
+ * Get upcoming shifts for the team
+ */
+export const getShiftSchedule = tool({
+  description: 'Get the shift schedule for the team. Use when asked about who is working, upcoming shifts, or the schedule.',
+  parameters: z.object({
+    days: z.number().optional().describe('Number of days to look ahead (default: 7)'),
+    employeeName: z.string().optional().describe('Optional: filter by employee name'),
+  }),
+  execute: async ({ days = 7, employeeName }) => {
+    try {
+      const supabase = await createAdminClient()
+
+      const now = new Date()
+      const futureDate = new Date(now.getTime() + days * 24 * 60 * 60 * 1000)
+
+      let query = supabase
+        .from('shifts')
+        .select('*, employee:profiles(username, role)')
+        .gte('start_time', now.toISOString())
+        .lte('start_time', futureDate.toISOString())
+        .in('status', ['scheduled', 'in_progress'])
+        .order('start_time', { ascending: true })
+
+      const { data: shifts } = await query
+
+      if (!shifts || shifts.length === 0) {
+        return {
+          message: `No shifts scheduled in the next ${days} days`,
+          shifts: [],
+        }
+      }
+
+      // Filter by employee name if provided
+      let filteredShifts = shifts
+      if (employeeName) {
+        filteredShifts = shifts.filter(s => {
+          const employee = s.employee as { username?: string } | null
+          return employee?.username?.toLowerCase().includes(employeeName.toLowerCase())
+        })
+      }
+
+      // Group by day
+      const byDay: Record<string, typeof filteredShifts> = {}
+      filteredShifts.forEach(shift => {
+        const day = new Date(shift.start_time).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+        if (!byDay[day]) byDay[day] = []
+        byDay[day].push(shift)
+      })
+
+      return {
+        period: `Next ${days} days`,
+        totalShifts: filteredShifts.length,
+        schedule: Object.entries(byDay).map(([day, dayShifts]) => ({
+          day,
+          shifts: dayShifts.map(s => {
+            const employee = s.employee as { username?: string; role?: string } | null
+            return {
+              employee: employee?.username || 'Unknown',
+              role: employee?.role,
+              time: `${new Date(s.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${new Date(s.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+              title: s.title || 'Shift',
+              status: s.status,
+            }
+          }),
+        })),
+      }
+    } catch (error) {
+      console.error('getShiftSchedule error:', error)
+      return { error: 'Failed to get shift schedule' }
+    }
+  },
+})
+
+/**
  * Export all tools as a single object for use in streamText
  */
 export const alfredTools = {
@@ -1101,4 +1276,6 @@ export const alfredTools = {
   update_fan_attribute: updateFanAttribute,
   get_fan_brief: getFanBrief,
   get_top_fans: getTopFans,
+  get_team_attendance: getTeamAttendance,
+  get_shift_schedule: getShiftSchedule,
 }

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
+import { TimeClock } from './time-clock'
 
 export function Header() {
   return (
@@ -29,6 +30,11 @@ export function Header() {
 
       {/* Right Actions */}
       <div className="flex items-center gap-3">
+        {/* Time Clock Widget - Shows for non-owner employees */}
+        <TimeClock />
+        
+        <Separator orientation="vertical" className="h-6" />
+        
         {/* Notifications */}
         <Button 
           size="icon" 
