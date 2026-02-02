@@ -1710,6 +1710,127 @@ export const runSystemDiagnostics = tool({
 })
 
 /**
+ * Tool: Get Payroll Estimate
+ * Calculate estimated paycheck for a staff member
+ */
+export const getPayrollEstimate = tool({
+  description: 'Calculate estimated paycheck for a staff member based on hours worked and sales generated. Use when asked about payroll, what someone owes, or payment estimates.',
+  parameters: z.object({
+    staffName: z.string().describe('Name of the staff member (can be partial match)'),
+    startDate: z.string().optional().describe('Start date for calculation (defaults to 30 days ago)'),
+    endDate: z.string().optional().describe('End date for calculation (defaults to today)'),
+  }),
+  execute: async ({ staffName, startDate, endDate }) => {
+    try {
+      const supabase = await createAdminClient()
+      
+      // Default date range: last 30 days
+      const end = endDate || new Date().toISOString().split('T')[0]
+      const start = startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+      
+      // Find staff member
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, username, role')
+        .ilike('username', `%${staffName}%`)
+        .limit(1)
+      
+      if (!profiles || profiles.length === 0) {
+        return { error: `No staff member found matching "${staffName}"` }
+      }
+      
+      const profile = profiles[0]
+      
+      // Get payout settings
+      const { data: settings } = await supabase
+        .from('payout_settings')
+        .select('*')
+        .eq('profile_id', profile.id)
+        .single()
+      
+      if (!settings) {
+        return {
+          staff_name: profile.username,
+          role: profile.role,
+          error: 'No payout settings configured for this staff member.',
+          recommendation: 'Configure their pay model in the Payroll settings.',
+        }
+      }
+      
+      // Calculate hours worked
+      let hoursWorked = 0
+      let hourlyPay = 0
+      
+      if (settings.pay_model === 'hourly' || settings.pay_model === 'hybrid') {
+        const { data: timesheets } = await supabase
+          .from('timesheets')
+          .select('clock_in, clock_out')
+          .eq('employee_id', profile.id)
+          .gte('clock_in', start)
+          .lte('clock_in', end)
+          .not('clock_out', 'is', null)
+        
+        if (timesheets && timesheets.length > 0) {
+          hoursWorked = timesheets.reduce((total, timesheet) => {
+            const clockIn = new Date(timesheet.clock_in).getTime()
+            const clockOut = new Date(timesheet.clock_out).getTime()
+            const duration = (clockOut - clockIn) / (1000 * 60 * 60)
+            return total + duration
+          }, 0)
+          
+          hourlyPay = hoursWorked * (settings.hourly_rate || 0)
+        }
+      }
+      
+      // Calculate sales/commission
+      let salesGenerated = 0
+      let commissionPay = 0
+      
+      if (settings.pay_model === 'commission' || settings.pay_model === 'hybrid') {
+        const { data: fanInsights } = await supabase
+          .from('fan_insights')
+          .select('total_spent')
+          .eq('chatter_id', profile.id)
+          .gte('last_message_at', start)
+          .lte('last_message_at', end)
+        
+        if (fanInsights && fanInsights.length > 0) {
+          salesGenerated = fanInsights.reduce((total, insight) => {
+            return total + (insight.total_spent || 0)
+          }, 0)
+        }
+        
+        commissionPay = salesGenerated * (settings.commission_percent || 0)
+      }
+      
+      const totalEstimate = hourlyPay + commissionPay
+      
+      return {
+        staff_name: profile.username,
+        role: profile.role,
+        pay_model: settings.pay_model,
+        period: { start, end },
+        hours_worked: Math.round(hoursWorked * 100) / 100,
+        hourly_rate: settings.hourly_rate || 0,
+        hourly_pay: `$${Math.round(hourlyPay * 100) / 100}`,
+        sales_generated: `$${Math.round(salesGenerated * 100) / 100}`,
+        commission_rate: `${(settings.commission_percent * 100).toFixed(1)}%`,
+        commission_pay: `$${Math.round(commissionPay * 100) / 100}`,
+        estimated_total: `$${Math.round(totalEstimate * 100) / 100}`,
+        breakdown: settings.pay_model === 'hybrid'
+          ? `${profile.username} worked ${hoursWorked.toFixed(1)} hours ($${hourlyPay.toFixed(2)}) and generated $${salesGenerated.toFixed(2)} in sales ($${commissionPay.toFixed(2)} commission).`
+          : settings.pay_model === 'hourly'
+          ? `${profile.username} worked ${hoursWorked.toFixed(1)} hours at $${settings.hourly_rate}/hr.`
+          : `${profile.username} generated $${salesGenerated.toFixed(2)} in sales with ${(settings.commission_percent * 100).toFixed(1)}% commission.`,
+      }
+    } catch (error) {
+      console.error('getPayrollEstimate error:', error)
+      return { error: 'Failed to calculate payroll estimate' }
+    }
+  },
+})
+
+/**
  * Tool: Get Public Roadmap
  * Returns the high-level product roadmap for OnyxOS (for public/landing page use)
  */
@@ -1781,6 +1902,7 @@ export const alfredTools = {
   check_quest_status: checkQuestStatus,
   get_expense_summary: getExpenseSummary,
   get_payroll_overview: getPayrollOverview,
+  get_payroll_estimate: getPayrollEstimate,
   scrape_web: scrapeWeb,
   analyze_social_profile: analyzeSocialProfile,
   get_watched_accounts: getWatchedAccounts,

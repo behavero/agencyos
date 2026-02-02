@@ -1,58 +1,41 @@
+import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { PayrollClient } from './payroll-client'
+import PayrollClient from './payroll-client'
+
+export const metadata = {
+  title: 'Payroll | OnyxOS',
+  description: 'Manage staff payroll and generate payment statements',
+}
 
 export default async function PayrollPage() {
   const supabase = await createClient()
   
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    redirect('/login')
-  }
-
-  // Get user's profile and agency
+  if (!user) redirect('/login')
+  
   const { data: profile } = await supabase
     .from('profiles')
     .select('agency_id, role')
     .eq('id', user.id)
     .single()
-
-  if (!profile?.agency_id) {
+  
+  if (!profile || !['owner', 'admin'].includes(profile.role)) {
     redirect('/dashboard')
   }
-
-  // Fetch team members with payroll info
-  const { data: employees } = await supabase
-    .from('profiles')
-    .select('id, username, role, base_salary, commission_rate, payment_method, avatar_url')
-    .eq('agency_id', profile.agency_id)
-    .not('role', 'is', null)
-    .order('role')
-
-  // Fetch recent payouts
-  const { data: payouts } = await supabase
-    .from('payouts')
-    .select(`
-      *,
-      recipient:profiles(id, username, avatar_url, role)
-    `)
-    .eq('agency_id', profile.agency_id)
-    .order('created_at', { ascending: false })
-    .limit(50)
-
-  // Fetch models for assignment
-  const { data: models } = await supabase
-    .from('models')
-    .select('id, name, total_revenue')
-    .eq('agency_id', profile.agency_id)
-
+  
   return (
-    <PayrollClient 
-      employees={employees || []}
-      payouts={payouts || []}
-      models={models || []}
-      agencyId={profile.agency_id}
-      userRole={profile.role}
-    />
+    <div className="container mx-auto py-8 px-4">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-white mb-2">The Treasury</h1>
+        <p className="text-zinc-400">
+          Hybrid payroll engine for hourly, commission, and mixed compensation models.
+        </p>
+      </div>
+      
+      <Suspense fallback={<div className="text-zinc-400">Loading payroll...</div>}>
+        <PayrollClient userId={user.id} agencyId={profile.agency_id} />
+      </Suspense>
+    </div>
   )
 }
