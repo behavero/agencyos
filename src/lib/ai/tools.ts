@@ -1520,6 +1520,196 @@ export const getBioPageStats = tool({
 })
 
 /**
+ * Tool: Run System Diagnostics
+ * Check system health and connectivity
+ */
+export const runSystemDiagnostics = tool({
+  description: 'Run a full system health check including database, storage, and external services. Use when asked about system status, health check, or if everything is working.',
+  parameters: z.object({}),
+  execute: async () => {
+    try {
+      const results: {
+        timestamp: string
+        overall: 'healthy' | 'degraded' | 'critical'
+        services: Record<string, { status: string; latency?: number; error?: string }>
+      } = {
+        timestamp: new Date().toISOString(),
+        overall: 'healthy',
+        services: {},
+      }
+
+      // 1. Supabase Database Check
+      try {
+        const start = Date.now()
+        const supabase = await createAdminClient()
+        const { error } = await supabase.from('agencies').select('id').limit(1)
+        const latency = Date.now() - start
+
+        if (error) {
+          results.services.database = { status: '❌ Error', error: error.message }
+          results.overall = 'critical'
+        } else {
+          results.services.database = { 
+            status: latency < 100 ? '✅ Excellent' : latency < 300 ? '⚠️ Slow' : '❌ Very Slow', 
+            latency 
+          }
+          if (latency > 300) results.overall = 'degraded'
+        }
+      } catch (error) {
+        results.services.database = { 
+          status: '❌ Critical Error', 
+          error: error instanceof Error ? error.message : 'Unknown error' 
+        }
+        results.overall = 'critical'
+      }
+
+      // 2. Telegram Webhook Check
+      try {
+        const botToken = process.env.TELEGRAM_BOT_TOKEN
+        const allowedUsers = process.env.TELEGRAM_ALLOWED_USERS?.split(',') || []
+
+        if (!botToken || allowedUsers.length === 0) {
+          results.services.telegram = { status: '⚠️ Not Configured' }
+        } else {
+          const response = await fetch(`https://api.telegram.org/bot${botToken}/getMe`, {
+            method: 'GET',
+          })
+
+          if (response.ok) {
+            const data = await response.json()
+            results.services.telegram = { 
+              status: '✅ Connected', 
+              error: `Bot: @${data.result?.username || 'unknown'}` 
+            }
+          } else {
+            results.services.telegram = { status: '❌ Connection Failed' }
+            results.overall = 'degraded'
+          }
+        }
+      } catch (error) {
+        results.services.telegram = { 
+          status: '❌ Error', 
+          error: error instanceof Error ? error.message : 'Unknown' 
+        }
+      }
+
+      // 3. Groq AI Check
+      try {
+        const groqKey = process.env.GROQ_API_KEY
+        if (!groqKey) {
+          results.services.groq = { status: '⚠️ Not Configured' }
+        } else {
+          // Just check that the key exists and looks valid
+          results.services.groq = { status: '✅ Configured' }
+        }
+      } catch (error) {
+        results.services.groq = { status: '❌ Error' }
+      }
+
+      // 4. Supabase Storage Check
+      try {
+        const supabase = await createAdminClient()
+        const { data: buckets, error } = await supabase.storage.listBuckets()
+
+        if (error) {
+          results.services.storage = { status: '❌ Error', error: error.message }
+          results.overall = 'degraded'
+        } else {
+          const agencyBucket = buckets?.find(b => b.name === 'agency_assets')
+          results.services.storage = { 
+            status: agencyBucket ? '✅ Ready' : '⚠️ Bucket Missing',
+            error: agencyBucket ? `${buckets?.length} buckets` : undefined
+          }
+          if (!agencyBucket) results.overall = 'degraded'
+        }
+      } catch (error) {
+        results.services.storage = { 
+          status: '❌ Error', 
+          error: error instanceof Error ? error.message : 'Unknown' 
+        }
+      }
+
+      // 5. Firecrawl Web Scraping Check
+      try {
+        const firecrawlKey = process.env.FIRECRAWL_API_KEY
+        results.services.firecrawl = { 
+          status: firecrawlKey ? '✅ Configured' : '⚠️ Not Configured' 
+        }
+      } catch (error) {
+        results.services.firecrawl = { status: '❌ Error' }
+      }
+
+      // 6. Fanvue API Check
+      try {
+        const supabase = await createAdminClient()
+        const { data: models } = await supabase
+          .from('models')
+          .select('fanvue_api_key')
+          .not('fanvue_api_key', 'is', null)
+          .limit(1)
+
+        if (models && models.length > 0) {
+          results.services.fanvue = { status: '✅ API Keys Found' }
+        } else {
+          results.services.fanvue = { status: '⚠️ No API Keys' }
+        }
+      } catch (error) {
+        results.services.fanvue = { status: '❌ Error' }
+      }
+
+      // 7. Environment Check
+      const requiredEnvVars = [
+        'NEXT_PUBLIC_SUPABASE_URL',
+        'NEXT_PUBLIC_SUPABASE_ANON_KEY',
+        'SUPABASE_SERVICE_ROLE_KEY',
+      ]
+
+      const missingEnvVars = requiredEnvVars.filter(v => !process.env[v])
+      
+      if (missingEnvVars.length > 0) {
+        results.services.environment = { 
+          status: '❌ Critical', 
+          error: `Missing: ${missingEnvVars.join(', ')}` 
+        }
+        results.overall = 'critical'
+      } else {
+        results.services.environment = { status: '✅ All Required Vars Set' }
+      }
+
+      // Generate summary
+      const healthyCount = Object.values(results.services).filter(s => s.status.includes('✅')).length
+      const totalCount = Object.keys(results.services).length
+      
+      const summary = results.overall === 'healthy'
+        ? `✅ **All Systems Nominal** (${healthyCount}/${totalCount} services healthy)`
+        : results.overall === 'degraded'
+        ? `⚠️ **System Degraded** (${healthyCount}/${totalCount} services healthy)`
+        : `🔴 **Critical Issues Detected** (${healthyCount}/${totalCount} services healthy)`
+
+      return {
+        summary,
+        overall: results.overall,
+        timestamp: results.timestamp,
+        services: results.services,
+        recommendation: results.overall === 'critical'
+          ? 'Immediate attention required. Check error logs and environment variables.'
+          : results.overall === 'degraded'
+          ? 'Some services need attention. Review warnings and configure missing services.'
+          : 'System is running smoothly. Ready for production.',
+      }
+    } catch (error) {
+      console.error('runSystemDiagnostics error:', error)
+      return { 
+        summary: '🔴 **Diagnostic Failed**',
+        overall: 'critical',
+        error: 'Failed to run system diagnostics',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      }
+    }
+  },
+})
+
+/**
  * Export all tools as a single object for use in streamText
  */
 export const alfredTools = {
@@ -1543,4 +1733,5 @@ export const alfredTools = {
   create_tracking_link: createTrackingLink,
   get_link_performance: getLinkPerformance,
   get_bio_page_stats: getBioPageStats,
+  run_system_diagnostics: runSystemDiagnostics,
 }

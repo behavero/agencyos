@@ -64,13 +64,17 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
+     * - public (public assets)
      * - privacy (public legal page)
      * - terms (public legal page)
      * - data-deletion (public legal page)
+     * - u/ (public bio pages)
+     * - s/ (smart redirects)
      * - api/auth (auth routes)
-     * - api/webhooks (webhook endpoints)
-     * - api/cron (cron job endpoints)
+     * - api/webhooks (webhook endpoints - have their own signature verification)
+     * - api/cron (cron job endpoints - have CRON_SECRET verification)
+     * - api/bio/track (public tracking endpoint)
      */
-    '/((?!_next/static|_next/image|favicon.ico|privacy|terms|data-deletion|api/auth|api/webhooks|api/cron).*)',
+    '/((?!_next/static|_next/image|favicon.ico|public|privacy|terms|data-deletion|u/|s/|api/auth|api/webhooks|api/cron|api/bio/track).*)',
   ],
 }
