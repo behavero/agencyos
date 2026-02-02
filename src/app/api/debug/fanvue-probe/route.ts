@@ -1,38 +1,46 @@
 /**
  * DEBUG PROBE - Raw Fanvue API Response
- * Phase 54C - Test OAuth Client Credentials + API Access
+ * Phase 54C - Test Model Tokens + API Access
  */
 
 import { NextResponse } from 'next/server'
-import { getFanvueServerToken } from '@/lib/services/fanvue-auth'
+import { createAdminClient } from '@/lib/supabase/server'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
-    // STEP 1: Test OAuth Authentication
-    console.log('🔐 Testing Fanvue OAuth Client Credentials...')
+    const supabase = createAdminClient()
 
-    let token: string
-    try {
-      token = await getFanvueServerToken()
-    } catch (authError: any) {
+    // STEP 1: Get the first model with a Fanvue token
+    console.log('🔍 Looking for models with Fanvue tokens...')
+
+    const { data: models, error: modelsError } = await supabase
+      .from('models')
+      .select('id, name, fanvue_username, fanvue_access_token')
+      .not('fanvue_access_token', 'is', null)
+      .limit(1)
+
+    if (modelsError || !models || models.length === 0) {
       return NextResponse.json(
         {
-          phase: 'OAUTH_AUTHENTICATION',
+          phase: 'MODEL_LOOKUP',
           status: 'FAILED',
-          error: authError.message,
-          hint: 'Check that FANVUE_CLIENT_ID and FANVUE_CLIENT_SECRET are set in Vercel environment variables',
-          docs: 'https://github.com/fanvue/fanvue-app-starter',
+          error: 'No models with Fanvue tokens found in database',
+          hint: 'Connect a Fanvue account first via the dashboard',
+          models_error: modelsError?.message,
         },
-        { status: 500 }
+        { status: 404 }
       )
     }
 
-    console.log('✅ OAuth token acquired successfully')
+    const model = models[0]
+    const token = model.fanvue_access_token!
 
-    // STEP 2: Test API Access with the token
+    console.log('✅ Found model:', model.name, model.fanvue_username)
+
+    // STEP 2: Test API Access with the model token
     console.log('📊 Testing Fanvue Earnings API...')
 
     const startDate = new Date('2020-01-01T00:00:00.000Z') // All historical data
@@ -61,8 +69,11 @@ export async function GET() {
     return NextResponse.json(
       {
         phase: 'COMPLETE_DIAGNOSTICS',
-        oauth_test: {
-          status: 'SUCCESS',
+        model_info: {
+          id: model.id,
+          name: model.name,
+          username: model.fanvue_username,
+          has_token: true,
           token_preview: `${token.substring(0, 20)}...`,
           token_length: token.length,
         },
@@ -88,8 +99,10 @@ export async function GET() {
           status === 200
             ? rawData.data && rawData.data.length > 0
               ? '✅ SUCCESS! Earnings data is accessible. The sync should work now.'
-              : '⚠️ API works but returned 0 transactions. Check date range or account has data.'
-            : `❌ API returned ${status}. Check token permissions/scopes.`,
+              : '⚠️ API works but returned 0 transactions. This means either: 1) No data in date range, 2) Wrong Fanvue account connected, or 3) Token expired.'
+            : status === 401
+              ? '❌ Token expired or invalid. Reconnect your Fanvue account in the dashboard.'
+              : `❌ API returned ${status}. Check token permissions/scopes.`,
       },
       { status: 200 }
     )

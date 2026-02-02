@@ -42,59 +42,74 @@ export async function getFanvueServerToken(): Promise<string> {
     )
   }
 
-  // OAuth endpoint from official Fanvue starter
-  const authUrl = `${process.env.FANVUE_AUTH_URL || 'https://auth.fanvue.com'}/oauth/token`
+  // Try multiple possible OAuth endpoints (Fanvue's exact endpoint isn't documented)
+  const possibleEndpoints = [
+    `${process.env.FANVUE_API_URL || 'https://api.fanvue.com'}/oauth/token`, // Most common for API client credentials
+    `${process.env.FANVUE_AUTH_URL || 'https://auth.fanvue.com'}/oauth/token`,
+    `${process.env.FANVUE_AUTH_URL || 'https://auth.fanvue.com'}/token`,
+  ]
 
-  try {
-    // Make the OAuth token request
-    const response = await fetch(authUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        grant_type: 'client_credentials',
-        client_id: clientId,
-        client_secret: clientSecret,
-        // Scopes needed for earnings data
-        scope: 'read:self read:earnings read:transactions',
-      }),
-    })
+  let lastError: any = null
 
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error('❌ Fanvue OAuth failed:', {
-        status: response.status,
-        statusText: response.statusText,
-        body: errorText,
+  // Try each endpoint until one works
+  for (const authUrl of possibleEndpoints) {
+    try {
+      console.log(`🔄 Trying OAuth endpoint: ${authUrl}`)
+
+      // Make the OAuth token request
+      const response = await fetch(authUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          grant_type: 'client_credentials',
+          client_id: clientId,
+          client_secret: clientSecret,
+          // Scopes needed for earnings data
+          scope: 'read:self read:earnings read:transactions',
+        }),
       })
-      throw new Error(`Fanvue OAuth failed: ${response.status} ${response.statusText}`)
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.warn(`⚠️ Endpoint ${authUrl} failed: ${response.status}`)
+        lastError = new Error(`${response.status} ${response.statusText}: ${errorText}`)
+        continue // Try next endpoint
+      }
+
+      const data: FanvueTokenResponse = await response.json()
+
+      if (!data.access_token) {
+        console.warn(`⚠️ Endpoint ${authUrl} returned no token`)
+        lastError = new Error('No access_token in response')
+        continue
+      }
+
+      // SUCCESS! Cache the token
+      const expiresIn = data.expires_in || 3600
+      tokenCache = {
+        token: data.access_token,
+        expiresAt: Date.now() + (expiresIn - 300) * 1000,
+      }
+
+      console.log('✅ Got fresh Fanvue token from:', authUrl, {
+        token_preview: data.access_token.substring(0, 20) + '...',
+        expires_in: expiresIn,
+        scope: data.scope,
+      })
+
+      return data.access_token
+    } catch (error: any) {
+      console.warn(`⚠️ Error with endpoint ${authUrl}:`, error.message)
+      lastError = error
+      continue
     }
-
-    const data: FanvueTokenResponse = await response.json()
-
-    if (!data.access_token) {
-      throw new Error('❌ No access_token in Fanvue OAuth response')
-    }
-
-    // Cache the token (with 5min buffer before actual expiry)
-    const expiresIn = data.expires_in || 3600 // Default 1 hour
-    tokenCache = {
-      token: data.access_token,
-      expiresAt: Date.now() + (expiresIn - 300) * 1000, // 5min buffer
-    }
-
-    console.log('✅ Got fresh Fanvue token:', {
-      token_preview: data.access_token.substring(0, 20) + '...',
-      expires_in: expiresIn,
-      scope: data.scope,
-    })
-
-    return data.access_token
-  } catch (error: any) {
-    console.error('❌ Error fetching Fanvue token:', error)
-    throw error
   }
+
+  // All endpoints failed
+  console.error('❌ All OAuth endpoints failed. Last error:', lastError)
+  throw lastError || new Error('Failed to fetch Fanvue OAuth token from any endpoint')
 }
 
 /**
