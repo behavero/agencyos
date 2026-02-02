@@ -8,10 +8,7 @@ import { createFanvueClient } from '@/lib/fanvue/client'
  * - POST: Send a message to a fan
  */
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const { searchParams } = new URL(request.url)
   const page = parseInt(searchParams.get('page') || '1')
@@ -19,14 +16,16 @@ export async function GET(
 
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }
 
     const adminClient = createAdminClient()
-    
+
     // Get creator's tokens
     const { data: model } = await adminClient
       .from('models')
@@ -42,45 +41,38 @@ export async function GET(
     const chats = await fanvue.getChats({ page, size })
 
     return NextResponse.json(chats)
-
-  } catch (error: any) {
+  } catch (error) {
     console.error('[Messages API] GET Error:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const body = await request.json()
   const { userUuid, text, mediaUuids, price, templateUuid } = body
 
   if (!userUuid) {
-    return NextResponse.json(
-      { error: 'userUuid is required' },
-      { status: 400 }
-    )
+    return NextResponse.json({ error: 'userUuid is required' }, { status: 400 })
   }
 
   if (!text && !mediaUuids?.length) {
-    return NextResponse.json(
-      { error: 'Either text or mediaUuids is required' },
-      { status: 400 }
-    )
+    return NextResponse.json({ error: 'Either text or mediaUuids is required' }, { status: 400 })
   }
 
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }
 
     const adminClient = createAdminClient()
-    
+
     // Get creator's tokens
     const { data: model } = await adminClient
       .from('models')
@@ -115,12 +107,12 @@ export async function POST(
       message: 'Message sent successfully',
       messageUuid: result.messageUuid,
     })
-
-  } catch (error: any) {
+  } catch (error) {
     console.error('[Messages API] POST Error:', error)
-    
+
     // Handle rate limiting
-    if (error.statusCode === 429) {
+    const statusCode = (error as { statusCode?: number })?.statusCode
+    if (statusCode === 429) {
       return NextResponse.json(
         {
           error: 'Rate limit exceeded',

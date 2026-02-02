@@ -9,10 +9,7 @@ import { createFanvueClient } from '@/lib/fanvue/client'
  * - DELETE: Delete a post
  */
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const { searchParams } = new URL(request.url)
   const page = parseInt(searchParams.get('page') || '1')
@@ -21,14 +18,16 @@ export async function GET(
 
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }
 
     const adminClient = createAdminClient()
-    
+
     // Get creator's tokens
     const { data: model } = await adminClient
       .from('models')
@@ -44,38 +43,34 @@ export async function GET(
     const posts = await fanvue.getPosts({ page, size, type })
 
     return NextResponse.json(posts)
-
-  } catch (error: any) {
+  } catch (error) {
     console.error('[Posts API] GET Error:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const body = await request.json()
   const { content, mediaIds, price, scheduleAt } = body
 
   if (!content) {
-    return NextResponse.json(
-      { error: 'content is required' },
-      { status: 400 }
-    )
+    return NextResponse.json({ error: 'content is required' }, { status: 400 })
   }
 
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }
 
     const adminClient = createAdminClient()
-    
+
     // Get creator's tokens
     const { data: model } = await adminClient
       .from('models')
@@ -88,7 +83,7 @@ export async function POST(
     }
 
     const fanvue = createFanvueClient(model.fanvue_access_token)
-    
+
     const result = await fanvue.createPost({
       content,
       mediaIds,
@@ -112,10 +107,10 @@ export async function POST(
       message: 'Post created successfully',
       ...result,
     })
-
-  } catch (error: any) {
+  } catch (error) {
     console.error('[Posts API] POST Error:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
 
@@ -128,22 +123,21 @@ export async function DELETE(
   const postUuid = searchParams.get('postUuid')
 
   if (!postUuid) {
-    return NextResponse.json(
-      { error: 'postUuid is required' },
-      { status: 400 }
-    )
+    return NextResponse.json({ error: 'postUuid is required' }, { status: 400 })
   }
 
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }
 
     const adminClient = createAdminClient()
-    
+
     // Get creator's tokens
     const { data: model } = await adminClient
       .from('models')
@@ -156,7 +150,7 @@ export async function DELETE(
     }
 
     const fanvue = createFanvueClient(model.fanvue_access_token)
-    
+
     await fanvue.deletePost(postUuid)
 
     // Update post count
@@ -174,9 +168,9 @@ export async function DELETE(
       success: true,
       message: 'Post deleted successfully',
     })
-
-  } catch (error: any) {
+  } catch (error) {
     console.error('[Posts API] DELETE Error:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

@@ -17,14 +17,16 @@ export async function GET(
 
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }
 
     const adminClient = createAdminClient()
-    
+
     // Get creator's tokens
     const { data: model } = await adminClient
       .from('models')
@@ -51,9 +53,9 @@ export async function GET(
       pagination: messages.pagination,
       creatorUuid,
     })
-
-  } catch (error: any) {
+  } catch (error) {
     console.error('[Chat Messages API] GET Error:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase/server'
 
 /**
  * Alfred AI Tools - ReAct Agent Capabilities
- * 
+ *
  * These tools allow Alfred to dynamically fetch data from Supabase
  * only when needed, reducing latency and increasing intelligence.
  */
@@ -14,7 +14,8 @@ import { createAdminClient } from '@/lib/supabase/server'
  * Fetches revenue, expenses, and net profit for a date range
  */
 export const getAgencyFinancials = tool({
-  description: 'Get total revenue, expenses, and net profit for the agency within a specific date range. Use this when asked about financials, revenue, expenses, profit, or money.',
+  description:
+    'Get total revenue, expenses, and net profit for the agency within a specific date range. Use this when asked about financials, revenue, expenses, profit, or money.',
   parameters: z.object({
     startDate: z.string().describe('Start date in ISO format (YYYY-MM-DD)'),
     endDate: z.string().describe('End date in ISO format (YYYY-MM-DD)'),
@@ -22,38 +23,37 @@ export const getAgencyFinancials = tool({
   execute: async ({ startDate, endDate }) => {
     try {
       const supabase = await createAdminClient()
-      
+
       // Get total revenue from transactions
       const { data: transactions } = await supabase
         .from('transactions')
         .select('amount')
         .gte('created_at', startDate)
         .lte('created_at', endDate)
-      
+
       const totalRevenue = transactions?.reduce((sum, t) => sum + (t.amount || 0), 0) || 0
-      
+
       // Get total expenses
       const { data: expenses } = await supabase
         .from('expenses')
         .select('amount')
         .gte('date', startDate)
         .lte('date', endDate)
-      
+
       const totalExpenses = expenses?.reduce((sum, e) => sum + (e.amount || 0), 0) || 0
-      
+
       // Get model revenues
-      const { data: models } = await supabase
-        .from('models')
-        .select('name, total_revenue')
-      
-      const modelBreakdown = models?.map(m => ({
-        name: m.name,
-        revenue: m.total_revenue || 0
-      })) || []
-      
+      const { data: models } = await supabase.from('models').select('name, total_revenue')
+
+      const modelBreakdown =
+        models?.map(m => ({
+          name: m.name,
+          revenue: m.total_revenue || 0,
+        })) || []
+
       const netProfit = totalRevenue - totalExpenses
       const profitMargin = totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : 0
-      
+
       return {
         period: { startDate, endDate },
         totalRevenue: `$${totalRevenue.toLocaleString()}`,
@@ -76,27 +76,28 @@ export const getAgencyFinancials = tool({
  * Fetches detailed performance metrics for a specific model
  */
 export const getModelStats = tool({
-  description: 'Get detailed performance metrics for a specific model/creator including revenue, subscribers, messages, and social media trends. Use when asked about a specific model or creator.',
+  description:
+    'Get detailed performance metrics for a specific model/creator including revenue, subscribers, messages, and social media trends. Use when asked about a specific model or creator.',
   parameters: z.object({
     modelName: z.string().describe('Name of the model to look up (can be partial match)'),
   }),
   execute: async ({ modelName }) => {
     try {
       const supabase = await createAdminClient()
-      
+
       // Fuzzy match model name
       const { data: models } = await supabase
         .from('models')
         .select('*')
         .ilike('name', `%${modelName}%`)
         .limit(1)
-      
+
       if (!models || models.length === 0) {
         return { error: `No model found matching "${modelName}"` }
       }
-      
+
       const model = models[0]
-      
+
       // Get social stats
       const { data: socialStats } = await supabase
         .from('social_stats')
@@ -104,7 +105,7 @@ export const getModelStats = tool({
         .eq('model_id', model.id)
         .order('date', { ascending: false })
         .limit(4)
-      
+
       // Get recent transactions
       const { data: recentTransactions } = await supabase
         .from('transactions')
@@ -112,9 +113,10 @@ export const getModelStats = tool({
         .eq('model_id', model.id)
         .order('created_at', { ascending: false })
         .limit(10)
-      
-      const last30DaysRevenue = recentTransactions?.reduce((sum, t) => sum + (t.amount || 0), 0) || 0
-      
+
+      const last30DaysRevenue =
+        recentTransactions?.reduce((sum, t) => sum + (t.amount || 0), 0) || 0
+
       // Format social stats by platform
       const socialByPlatform: Record<string, { followers: number; views: number }> = {}
       socialStats?.forEach(stat => {
@@ -123,7 +125,7 @@ export const getModelStats = tool({
           views: stat.views || 0,
         }
       })
-      
+
       return {
         modelName: model.name,
         status: model.status,
@@ -134,11 +136,12 @@ export const getModelStats = tool({
         unreadMessages: model.unread_messages_count || 0,
         trackingLinks: model.tracking_links_count || 0,
         socialStats: socialByPlatform,
-        recentTransactions: recentTransactions?.slice(0, 5).map(t => ({
-          amount: `$${t.amount}`,
-          type: t.type,
-          date: new Date(t.created_at).toLocaleDateString(),
-        })) || [],
+        recentTransactions:
+          recentTransactions?.slice(0, 5).map(t => ({
+            amount: `$${t.amount}`,
+            type: t.type,
+            date: new Date(t.created_at).toLocaleDateString(),
+          })) || [],
       }
     } catch (error) {
       console.error('getModelStats error:', error)
@@ -152,58 +155,64 @@ export const getModelStats = tool({
  * Fetches current quest completion rates and team XP
  */
 export const checkQuestStatus = tool({
-  description: 'Check current quest completion rates, team XP, and productivity metrics. Use when asked about quests, tasks, productivity, or team performance.',
+  description:
+    'Check current quest completion rates, team XP, and productivity metrics. Use when asked about quests, tasks, productivity, or team performance.',
   parameters: z.object({}),
   execute: async () => {
     try {
       const supabase = await createAdminClient()
-      
+
       // Get all quests
       const { data: quests } = await supabase
         .from('quests')
         .select('*')
         .order('created_at', { ascending: false })
-      
+
       // Get team profiles with XP
       const { data: profiles } = await supabase
         .from('profiles')
         .select('username, role, xp_count, current_streak, league_rank')
         .not('role', 'is', null)
-      
+
       // Calculate quest stats
       const totalQuests = quests?.length || 0
       const completedQuests = quests?.filter(q => q.completed_at)?.length || 0
-      const completionRate = totalQuests > 0 ? ((completedQuests / totalQuests) * 100).toFixed(1) : 0
-      
+      const completionRate =
+        totalQuests > 0 ? ((completedQuests / totalQuests) * 100).toFixed(1) : 0
+
       // Daily quests
       const today = new Date().toISOString().split('T')[0]
       const dailyQuests = quests?.filter(q => q.is_daily) || []
-      const completedDailyQuests = dailyQuests.filter(q => 
-        q.completed_at && q.completed_at.startsWith(today)
+      const completedDailyQuests = dailyQuests.filter(
+        q => q.completed_at && q.completed_at.startsWith(today)
       ).length
-      
+
       // Team XP
       const totalTeamXP = profiles?.reduce((sum, p) => sum + (p.xp_count || 0), 0) || 0
-      const topPerformers = profiles
-        ?.sort((a, b) => (b.xp_count || 0) - (a.xp_count || 0))
-        .slice(0, 3)
-        .map(p => ({
-          name: p.username,
-          role: p.role,
-          xp: p.xp_count || 0,
-          streak: p.current_streak || 0,
-        })) || []
-      
+      const topPerformers =
+        profiles
+          ?.sort((a, b) => (b.xp_count || 0) - (a.xp_count || 0))
+          .slice(0, 3)
+          .map(p => ({
+            name: p.username,
+            role: p.role,
+            xp: p.xp_count || 0,
+            streak: p.current_streak || 0,
+          })) || []
+
       // Active quests
-      const activeQuests = quests
-        ?.filter(q => !q.completed_at)
-        .slice(0, 5)
-        .map(q => ({
-          title: q.title,
-          xpReward: q.xp_reward,
-          progress: q.current_progress ? `${q.current_progress}/${q.target_count}` : 'Not tracked',
-        })) || []
-      
+      const activeQuests =
+        quests
+          ?.filter(q => !q.completed_at)
+          .slice(0, 5)
+          .map(q => ({
+            title: q.title,
+            xpReward: q.xp_reward,
+            progress: q.current_progress
+              ? `${q.current_progress}/${q.target_count}`
+              : 'Not tracked',
+          })) || []
+
       return {
         questStats: {
           total: totalQuests,
@@ -230,7 +239,8 @@ export const checkQuestStatus = tool({
  * Fetches expense breakdown by category
  */
 export const getExpenseSummary = tool({
-  description: 'Get a breakdown of expenses by category. Use when asked about spending, costs, or where money is going.',
+  description:
+    'Get a breakdown of expenses by category. Use when asked about spending, costs, or where money is going.',
   parameters: z.object({
     startDate: z.string().optional().describe('Optional start date filter (YYYY-MM-DD)'),
     endDate: z.string().optional().describe('Optional end date filter (YYYY-MM-DD)'),
@@ -238,42 +248,50 @@ export const getExpenseSummary = tool({
   execute: async ({ startDate, endDate }) => {
     try {
       const supabase = await createAdminClient()
-      
+
       let query = supabase
         .from('expenses')
         .select('amount, category, description, date, is_recurring')
-      
+
       if (startDate) query = query.gte('date', startDate)
       if (endDate) query = query.lte('date', endDate)
-      
+
       const { data: expenses } = await query.order('date', { ascending: false })
-      
+
       // Group by category
       const byCategory: Record<string, number> = {}
       expenses?.forEach(e => {
         const cat = e.category || 'other'
         byCategory[cat] = (byCategory[cat] || 0) + (e.amount || 0)
       })
-      
+
       const totalExpenses = expenses?.reduce((sum, e) => sum + (e.amount || 0), 0) || 0
       const recurringExpenses = expenses?.filter(e => e.is_recurring)
       const recurringTotal = recurringExpenses?.reduce((sum, e) => sum + (e.amount || 0), 0) || 0
-      
+
       return {
         totalExpenses: `$${totalExpenses.toLocaleString()}`,
         recurringExpenses: `$${recurringTotal.toLocaleString()}`,
         expenseCount: expenses?.length || 0,
-        byCategory: Object.entries(byCategory).map(([category, amount]) => ({
-          category,
-          amount: `$${amount.toLocaleString()}`,
-          percentage: totalExpenses > 0 ? `${((amount / totalExpenses) * 100).toFixed(1)}%` : '0%',
-        })).sort((a, b) => parseFloat(b.amount.slice(1).replace(',', '')) - parseFloat(a.amount.slice(1).replace(',', ''))),
-        recentExpenses: expenses?.slice(0, 5).map(e => ({
-          description: e.description,
-          amount: `$${e.amount}`,
-          category: e.category,
-          date: e.date,
-        })) || [],
+        byCategory: Object.entries(byCategory)
+          .map(([category, amount]) => ({
+            category,
+            amount: `$${amount.toLocaleString()}`,
+            percentage:
+              totalExpenses > 0 ? `${((amount / totalExpenses) * 100).toFixed(1)}%` : '0%',
+          }))
+          .sort(
+            (a, b) =>
+              parseFloat(b.amount.slice(1).replace(',', '')) -
+              parseFloat(a.amount.slice(1).replace(',', ''))
+          ),
+        recentExpenses:
+          expenses?.slice(0, 5).map(e => ({
+            description: e.description,
+            amount: `$${e.amount}`,
+            category: e.category,
+            date: e.date,
+          })) || [],
       }
     } catch (error) {
       console.error('getExpenseSummary error:', error)
@@ -287,54 +305,57 @@ export const getExpenseSummary = tool({
  * Fetches payroll and commission data
  */
 export const getPayrollOverview = tool({
-  description: 'Get payroll information including team salaries, commissions, and recent payouts. Use when asked about payroll, salaries, commissions, or team compensation.',
+  description:
+    'Get payroll information including team salaries, commissions, and recent payouts. Use when asked about payroll, salaries, commissions, or team compensation.',
   parameters: z.object({}),
   execute: async () => {
     try {
       const supabase = await createAdminClient()
-      
+
       // Get team with salary info
       const { data: profiles } = await supabase
         .from('profiles')
         .select('username, role, base_salary, commission_rate, payment_method')
         .not('role', 'is', null)
-      
+
       // Get recent payouts
       const { data: payouts } = await supabase
         .from('payouts')
         .select('*, recipient:profiles(username, role)')
         .order('created_at', { ascending: false })
         .limit(10)
-      
+
       const totalBaseSalaries = profiles?.reduce((sum, p) => sum + (p.base_salary || 0), 0) || 0
       const paidPayouts = payouts?.filter(p => p.status === 'paid') || []
       const pendingPayouts = payouts?.filter(p => p.status !== 'paid') || []
-      
+
       const totalPaid = paidPayouts.reduce((sum, p) => sum + (p.amount_total || 0), 0)
       const totalPending = pendingPayouts.reduce((sum, p) => sum + (p.amount_total || 0), 0)
-      
+
       return {
         teamSize: profiles?.length || 0,
         monthlyBaseSalaries: `$${totalBaseSalaries.toLocaleString()}`,
-        teamMembers: profiles?.map(p => ({
-          name: p.username,
-          role: p.role,
-          baseSalary: `$${(p.base_salary || 0).toLocaleString()}`,
-          commissionRate: `${((p.commission_rate || 0) * 100).toFixed(1)}%`,
-          paymentMethod: p.payment_method || 'Not set',
-        })) || [],
+        teamMembers:
+          profiles?.map(p => ({
+            name: p.username,
+            role: p.role,
+            baseSalary: `$${(p.base_salary || 0).toLocaleString()}`,
+            commissionRate: `${((p.commission_rate || 0) * 100).toFixed(1)}%`,
+            paymentMethod: p.payment_method || 'Not set',
+          })) || [],
         payoutStats: {
           totalPaid: `$${totalPaid.toLocaleString()}`,
           totalPending: `$${totalPending.toLocaleString()}`,
           paidCount: paidPayouts.length,
           pendingCount: pendingPayouts.length,
         },
-        recentPayouts: payouts?.slice(0, 5).map(p => ({
-          recipient: p.recipient?.username || 'Unknown',
-          amount: `$${(p.amount_total || 0).toLocaleString()}`,
-          status: p.status,
-          period: `${p.period_start} to ${p.period_end}`,
-        })) || [],
+        recentPayouts:
+          payouts?.slice(0, 5).map(p => ({
+            recipient: p.recipient?.username || 'Unknown',
+            amount: `$${(p.amount_total || 0).toLocaleString()}`,
+            status: p.status,
+            period: `${p.period_start} to ${p.period_end}`,
+          })) || [],
       }
     } catch (error) {
       console.error('getPayrollOverview error:', error)
@@ -348,28 +369,29 @@ export const getPayrollOverview = tool({
  * Uses Firecrawl to fetch and parse web content
  */
 export const scrapeWeb = tool({
-  description: 'Scrape a website to read its content. Use this to check Instagram profiles, TikTok pages, competitor sites, or read any public web page. ALWAYS use this when the user provides a URL or asks about a public social profile.',
+  description:
+    'Scrape a website to read its content. Use this to check Instagram profiles, TikTok pages, competitor sites, or read any public web page. ALWAYS use this when the user provides a URL or asks about a public social profile.',
   parameters: z.object({
     url: z.string().url().describe('The full URL to scrape (e.g., https://instagram.com/username)'),
   }),
   execute: async ({ url }) => {
     try {
       const apiKey = process.env.FIRECRAWL_API_KEY
-      
+
       if (!apiKey) {
-        return { 
+        return {
           error: 'Web scraping not configured. FIRECRAWL_API_KEY is missing.',
-          suggestion: 'Get a free key at firecrawl.dev'
+          suggestion: 'Get a free key at firecrawl.dev',
         }
       }
-      
+
       console.log(`[Alfred] Scraping: ${url}`)
-      
+
       const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
+          Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
           url: url,
@@ -378,11 +400,11 @@ export const scrapeWeb = tool({
           timeout: 30000,
         }),
       })
-      
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
         console.error('[Alfred] Firecrawl error:', response.status, errorData)
-        
+
         if (response.status === 402) {
           return { error: 'Firecrawl credits exhausted. Please check your account.' }
         }
@@ -392,25 +414,26 @@ export const scrapeWeb = tool({
         if (response.status === 404) {
           return { error: 'Page not found. Check if the URL is correct.' }
         }
-        
+
         return { error: `Failed to scrape page: ${response.status}` }
       }
-      
+
       const data = await response.json()
-      
+
       if (!data.success) {
         return { error: data.error || 'Failed to scrape page' }
       }
-      
+
       // Extract useful info
       const markdown = data.data?.markdown || ''
       const metadata = data.data?.metadata || {}
-      
+
       // Truncate if too long (Groq context limit)
-      const truncatedMarkdown = markdown.length > 8000 
-        ? markdown.substring(0, 8000) + '\n\n... (content truncated for brevity)'
-        : markdown
-      
+      const truncatedMarkdown =
+        markdown.length > 8000
+          ? markdown.substring(0, 8000) + '\n\n... (content truncated for brevity)'
+          : markdown
+
       return {
         url: url,
         title: metadata.title || 'Unknown',
@@ -421,9 +444,9 @@ export const scrapeWeb = tool({
       }
     } catch (error) {
       console.error('[Alfred] scrapeWeb error:', error)
-      return { 
+      return {
         error: 'Failed to access the website. It may be down or blocking requests.',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        details: error instanceof Error ? error.message : 'Unknown error',
       }
     }
   },
@@ -434,7 +457,8 @@ export const scrapeWeb = tool({
  * Specialized tool for social media profile analysis
  */
 export const analyzeSocialProfile = tool({
-  description: 'Analyze a social media profile (Instagram, TikTok, X/Twitter) and extract key metrics like followers, bio, and recent activity. Use when asked to research a competitor or check a social profile.',
+  description:
+    'Analyze a social media profile (Instagram, TikTok, X/Twitter) and extract key metrics like followers, bio, and recent activity. Use when asked to research a competitor or check a social profile.',
   parameters: z.object({
     platform: z.enum(['instagram', 'tiktok', 'twitter', 'x']).describe('The social media platform'),
     username: z.string().describe('The username/handle (without @ symbol)'),
@@ -442,14 +466,14 @@ export const analyzeSocialProfile = tool({
   execute: async ({ platform, username }) => {
     try {
       const apiKey = process.env.FIRECRAWL_API_KEY
-      
+
       if (!apiKey) {
-        return { 
+        return {
           error: 'Web scraping not configured.',
-          suggestion: 'Get a free key at firecrawl.dev'
+          suggestion: 'Get a free key at firecrawl.dev',
         }
       }
-      
+
       // Build platform URL
       const platformUrls: Record<string, string> = {
         instagram: `https://www.instagram.com/${username}/`,
@@ -457,19 +481,19 @@ export const analyzeSocialProfile = tool({
         twitter: `https://twitter.com/${username}`,
         x: `https://x.com/${username}`,
       }
-      
+
       const url = platformUrls[platform]
       if (!url) {
         return { error: `Unknown platform: ${platform}` }
       }
-      
+
       console.log(`[Alfred] Analyzing ${platform} profile: @${username}`)
-      
+
       const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
+          Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
           url: url,
@@ -478,29 +502,33 @@ export const analyzeSocialProfile = tool({
           timeout: 30000,
         }),
       })
-      
+
       if (!response.ok) {
         if (response.status === 404) {
           return { error: `Profile @${username} not found on ${platform}` }
         }
         return { error: `Failed to access ${platform} profile` }
       }
-      
+
       const data = await response.json()
-      
+
       if (!data.success) {
         return { error: `Could not scrape ${platform}. The platform may be blocking access.` }
       }
-      
+
       const markdown = data.data?.markdown || ''
       const metadata = data.data?.metadata || {}
-      
+
       // Extract key info from profile pages
       // This is a basic extraction - platform-specific parsing would improve results
-      const followerMatch = markdown.match(/(\d+(?:,\d{3})*(?:\.\d+)?[KMB]?)\s*(?:followers|Followers)/i)
-      const followingMatch = markdown.match(/(\d+(?:,\d{3})*(?:\.\d+)?[KMB]?)\s*(?:following|Following)/i)
+      const followerMatch = markdown.match(
+        /(\d+(?:,\d{3})*(?:\.\d+)?[KMB]?)\s*(?:followers|Followers)/i
+      )
+      const followingMatch = markdown.match(
+        /(\d+(?:,\d{3})*(?:\.\d+)?[KMB]?)\s*(?:following|Following)/i
+      )
       const postsMatch = markdown.match(/(\d+(?:,\d{3})*)\s*(?:posts|Posts)/i)
-      
+
       return {
         platform,
         username: `@${username}`,
@@ -525,47 +553,51 @@ export const analyzeSocialProfile = tool({
  * Fetches competitor and slave account data
  */
 export const getWatchedAccounts = tool({
-  description: 'Get competitor and slave account tracking data. Use when asked about competitors, slave accounts, ghost network, or tracked profiles.',
+  description:
+    'Get competitor and slave account tracking data. Use when asked about competitors, slave accounts, ghost network, or tracked profiles.',
   parameters: z.object({
-    accountType: z.enum(['all', 'competitor', 'slave', 'backup', 'reference']).optional().describe('Filter by account type'),
+    accountType: z
+      .enum(['all', 'competitor', 'slave', 'backup', 'reference'])
+      .optional()
+      .describe('Filter by account type'),
   }),
   execute: async ({ accountType }) => {
     try {
       const supabase = await createAdminClient()
-      
+
       let query = supabase
         .from('watched_accounts')
         .select('*')
         .eq('is_active', true)
         .order('last_scanned_at', { ascending: false })
-      
+
       if (accountType && accountType !== 'all') {
         query = query.eq('account_type', accountType)
       }
-      
+
       const { data: accounts } = await query.limit(20)
-      
+
       if (!accounts || accounts.length === 0) {
-        return { 
+        return {
           message: 'No watched accounts found.',
-          suggestion: 'Add competitors or slave accounts via Ghost Tracker page.'
+          suggestion: 'Add competitors or slave accounts via Ghost Tracker page.',
         }
       }
-      
+
       // Calculate totals
       const competitors = accounts.filter(a => a.account_type === 'competitor')
       const slaves = accounts.filter(a => a.account_type === 'slave')
-      
+
       const totalSlaveFollowers = slaves.reduce((sum, a) => {
         const stats = a.last_stats as Record<string, unknown> | null
         return sum + (Number(stats?.followers) || 0)
       }, 0)
-      
+
       const totalCompetitorFollowers = competitors.reduce((sum, a) => {
         const stats = a.last_stats as Record<string, unknown> | null
         return sum + (Number(stats?.followers) || 0)
       }, 0)
-      
+
       return {
         summary: {
           totalWatched: accounts.length,
@@ -582,7 +614,9 @@ export const getWatchedAccounts = tool({
             type: a.account_type,
             followers: stats?.followers || 'Unknown',
             posts: stats?.postsCount || 'Unknown',
-            lastScanned: a.last_scanned_at ? new Date(a.last_scanned_at).toLocaleDateString() : 'Never',
+            lastScanned: a.last_scanned_at
+              ? new Date(a.last_scanned_at).toLocaleDateString()
+              : 'Never',
             notes: a.notes || null,
           }
         }),
@@ -599,9 +633,13 @@ export const getWatchedAccounts = tool({
  * Advanced KPI analysis with actionable insights
  */
 export const analyzeBusinessHealth = tool({
-  description: 'Analyze agency business health including conversion rates, funnel metrics, CTR, ARPU, and generate actionable insights. Use when asked about business performance, why revenue is down, conversion issues, or overall health.',
+  description:
+    'Analyze agency business health including conversion rates, funnel metrics, CTR, ARPU, and generate actionable insights. Use when asked about business performance, why revenue is down, conversion issues, or overall health.',
   parameters: z.object({
-    dateRange: z.enum(['7d', '30d', '90d']).optional().describe('Time period to analyze (default: 30d)'),
+    dateRange: z
+      .enum(['7d', '30d', '90d'])
+      .optional()
+      .describe('Time period to analyze (default: 30d)'),
   }),
   execute: async ({ dateRange = '30d' }) => {
     try {
@@ -627,12 +665,24 @@ export const analyzeBusinessHealth = tool({
       const startDate = new Date(now.getTime() - days * 24 * 60 * 60 * 1000)
 
       // Fetch all data
-      const [modelsResult, expensesResult, socialStatsResult, watchedAccountsResult] = await Promise.all([
-        supabase.from('models').select('total_revenue, subscribers_count, followers_count, tracking_links_count'),
-        supabase.from('expenses').select('amount').gte('date', startDate.toISOString().split('T')[0]),
-        supabase.from('social_stats').select('platform, followers, views, likes, comments, shares').gte('date', startDate.toISOString().split('T')[0]),
-        supabase.from('watched_accounts').select('account_type, last_stats').eq('is_active', true),
-      ])
+      const [modelsResult, expensesResult, socialStatsResult, watchedAccountsResult] =
+        await Promise.all([
+          supabase
+            .from('models')
+            .select('total_revenue, subscribers_count, followers_count, tracking_links_count'),
+          supabase
+            .from('expenses')
+            .select('amount')
+            .gte('date', startDate.toISOString().split('T')[0]),
+          supabase
+            .from('social_stats')
+            .select('platform, followers, views, likes, comments, shares')
+            .gte('date', startDate.toISOString().split('T')[0]),
+          supabase
+            .from('watched_accounts')
+            .select('account_type, last_stats')
+            .eq('is_active', true),
+        ])
 
       const models = modelsResult.data || []
       const expenses = expensesResult.data || []
@@ -661,7 +711,8 @@ export const analyzeBusinessHealth = tool({
         return sum + (stats?.followers || 0)
       }, 0)
       const mainReach = models.reduce((sum, m) => sum + (m.followers_count || 0), 0)
-      const ghostTrafficShare = (slaveReach + mainReach) > 0 ? (slaveReach / (slaveReach + mainReach)) * 100 : 0
+      const ghostTrafficShare =
+        slaveReach + mainReach > 0 ? (slaveReach / (slaveReach + mainReach)) * 100 : 0
 
       // Generate insights
       const issues: string[] = []
@@ -702,9 +753,8 @@ export const analyzeBusinessHealth = tool({
           mainReach: mainReach.toLocaleString(),
           ghostTrafficShare: `${ghostTrafficShare.toFixed(1)}%`,
         },
-        healthSummary: issues.length === 0 
-          ? 'All metrics are healthy'
-          : `Found ${issues.length} issue(s)`,
+        healthSummary:
+          issues.length === 0 ? 'All metrics are healthy' : `Found ${issues.length} issue(s)`,
         issues,
         recommendations,
       }
@@ -720,10 +770,14 @@ export const analyzeBusinessHealth = tool({
  * Fetches scheduled content tasks
  */
 export const getUpcomingPosts = tool({
-  description: 'Get upcoming scheduled posts and content tasks. Use when asked about content schedule, upcoming posts, or what needs to be posted.',
+  description:
+    'Get upcoming scheduled posts and content tasks. Use when asked about content schedule, upcoming posts, or what needs to be posted.',
   parameters: z.object({
     hours: z.number().optional().describe('Number of hours to look ahead (default: 24)'),
-    platform: z.enum(['instagram', 'fanvue', 'tiktok', 'youtube', 'x', 'all']).optional().describe('Filter by platform'),
+    platform: z
+      .enum(['instagram', 'fanvue', 'tiktok', 'youtube', 'x', 'all'])
+      .optional()
+      .describe('Filter by platform'),
   }),
   execute: async ({ hours = 24, platform = 'all' }) => {
     try {
@@ -776,10 +830,14 @@ export const getUpcomingPosts = tool({
  * Mark a scheduled post as posted
  */
 export const logPostCompletion = tool({
-  description: 'Mark a scheduled post as completed/posted. Use when user says they posted something or wants to mark content as done.',
+  description:
+    'Mark a scheduled post as completed/posted. Use when user says they posted something or wants to mark content as done.',
   parameters: z.object({
     searchTerm: z.string().describe('Title or description to search for the post'),
-    platform: z.enum(['instagram', 'fanvue', 'tiktok', 'youtube', 'x']).optional().describe('Platform to filter'),
+    platform: z
+      .enum(['instagram', 'fanvue', 'tiktok', 'youtube', 'x'])
+      .optional()
+      .describe('Platform to filter'),
   }),
   execute: async ({ searchTerm, platform }) => {
     try {
@@ -858,7 +916,8 @@ export const logPostCompletion = tool({
  * Check for posts that were scheduled but not posted
  */
 export const getMissedPosts = tool({
-  description: 'Get posts that were scheduled but missed (not posted on time). Use when asked about missed content or schedule issues.',
+  description:
+    'Get posts that were scheduled but missed (not posted on time). Use when asked about missed content or schedule issues.',
   parameters: z.object({}),
   execute: async () => {
     try {
@@ -923,11 +982,14 @@ export const getMissedPosts = tool({
  * Update CRM data for a fan
  */
 export const updateFanAttribute = tool({
-  description: 'Update a fan\'s CRM attribute (name, age, job, city, interests/fetish). Use when the chatter learns new info about a fan.',
+  description:
+    "Update a fan's CRM attribute (name, age, job, city, interests/fetish). Use when the chatter learns new info about a fan.",
   parameters: z.object({
-    fanId: z.string().describe('The fan\'s external ID'),
+    fanId: z.string().describe("The fan's external ID"),
     modelId: z.string().uuid().describe('The model ID'),
-    attribute: z.enum(['name', 'age', 'job', 'city', 'fetish']).describe('Which attribute to update'),
+    attribute: z
+      .enum(['name', 'age', 'job', 'city', 'fetish'])
+      .describe('Which attribute to update'),
     value: z.string().describe('The new value'),
   }),
   execute: async ({ fanId, modelId, attribute, value }) => {
@@ -946,18 +1008,19 @@ export const updateFanAttribute = tool({
       }
 
       // Upsert the attribute
-      const { error } = await supabase
-        .from('fan_insights')
-        .upsert({
+      const { error } = await supabase.from('fan_insights').upsert(
+        {
           agency_id: model.agency_id,
           model_id: modelId,
           fan_id: fanId,
           custom_attributes: { [attribute]: value },
           updated_at: new Date().toISOString(),
-        }, { 
+        },
+        {
           onConflict: 'model_id,fan_id',
           ignoreDuplicates: false,
-        })
+        }
+      )
 
       if (error) {
         return { success: false, error: error.message }
@@ -979,9 +1042,10 @@ export const updateFanAttribute = tool({
  * Get a quick summary of a fan for chatters
  */
 export const getFanBrief = tool({
-  description: 'Get a quick briefing about a fan including spend, attributes, and notes. Use when opening a chat or asked about a specific fan.',
+  description:
+    'Get a quick briefing about a fan including spend, attributes, and notes. Use when opening a chat or asked about a specific fan.',
   parameters: z.object({
-    fanId: z.string().describe('The fan\'s external ID'),
+    fanId: z.string().describe("The fan's external ID"),
     modelId: z.string().uuid().describe('The model ID'),
   }),
   execute: async ({ fanId, modelId }) => {
@@ -1022,7 +1086,9 @@ export const getFanBrief = tool({
         tags: fan.tags?.join(', ') || 'No tags',
         notes: fan.notes || 'No notes',
         ppvUnlockRate: `${ppvRate}%`,
-        lastActive: fan.last_active_at ? new Date(fan.last_active_at).toLocaleDateString() : 'Unknown',
+        lastActive: fan.last_active_at
+          ? new Date(fan.last_active_at).toLocaleDateString()
+          : 'Unknown',
         brief: `${whaleEmoji} ${attrs.name || 'This fan'} has spent $${fan.total_spend || 0}. ${attrsList ? `Profile: ${attrsList}.` : ''} ${fan.notes ? `Note: ${fan.notes}` : ''}`,
       }
     } catch (error) {
@@ -1037,7 +1103,8 @@ export const getFanBrief = tool({
  * Get the highest spending fans
  */
 export const getTopFans = tool({
-  description: 'Get the top spending fans (whales) for a model or the entire agency. Use when asked about best customers or whales.',
+  description:
+    'Get the top spending fans (whales) for a model or the entire agency. Use when asked about best customers or whales.',
   parameters: z.object({
     modelId: z.string().uuid().optional().describe('Optional: filter by model'),
     limit: z.number().optional().describe('Number of fans to return (default: 10)'),
@@ -1087,7 +1154,8 @@ export const getTopFans = tool({
  * Check who is working, late, or missed shifts
  */
 export const getTeamAttendance = tool({
-  description: 'Get current team attendance status, who is online, late, or missed their shift. Use when asked about team status, who is working, or attendance.',
+  description:
+    'Get current team attendance status, who is online, late, or missed their shift. Use when asked about team status, who is working, or attendance.',
   parameters: z.object({
     date: z.string().optional().describe('Date to check (YYYY-MM-DD), defaults to today'),
   }),
@@ -1118,16 +1186,27 @@ export const getTeamAttendance = tool({
       const now = new Date()
 
       // Categorize team members
-      const working = activeTimesheets?.map(t => ({
-        name: (t.employee as { username?: string } | null)?.username || 'Unknown',
-        role: (t.employee as { role?: string } | null)?.role,
-        clockedInAt: new Date(t.clock_in).toLocaleTimeString(),
-        isLate: t.is_late,
-        lateMinutes: t.late_minutes || 0,
-      })) || []
+      const working =
+        activeTimesheets?.map(t => ({
+          name: (t.employee as { username?: string } | null)?.username || 'Unknown',
+          role: (t.employee as { role?: string } | null)?.role,
+          clockedInAt: new Date(t.clock_in).toLocaleTimeString(),
+          isLate: t.is_late,
+          lateMinutes: t.late_minutes || 0,
+        })) || []
 
-      const scheduled: Array<{ name: string; role: string | null; shiftStart: string; status: string }> = []
-      const late: Array<{ name: string; role: string | null; shiftStart: string; minutesLate: number }> = []
+      const scheduled: Array<{
+        name: string
+        role: string | null
+        shiftStart: string
+        status: string
+      }> = []
+      const late: Array<{
+        name: string
+        role: string | null
+        shiftStart: string
+        minutesLate: number
+      }> = []
       const completed: Array<{ name: string; role: string | null; hoursWorked: string }> = []
 
       shifts?.forEach(shift => {
@@ -1137,7 +1216,8 @@ export const getTeamAttendance = tool({
 
         if (shift.status === 'completed') {
           const shiftEnd = new Date(shift.end_time)
-          const hours = Math.round((shiftEnd.getTime() - shiftStart.getTime()) / (1000 * 60 * 60) * 10) / 10
+          const hours =
+            Math.round(((shiftEnd.getTime() - shiftStart.getTime()) / (1000 * 60 * 60)) * 10) / 10
           completed.push({
             name: employee?.username || 'Unknown',
             role: employee?.role || null,
@@ -1187,7 +1267,8 @@ export const getTeamAttendance = tool({
  * Get upcoming shifts for the team
  */
 export const getShiftSchedule = tool({
-  description: 'Get the shift schedule for the team. Use when asked about who is working, upcoming shifts, or the schedule.',
+  description:
+    'Get the shift schedule for the team. Use when asked about who is working, upcoming shifts, or the schedule.',
   parameters: z.object({
     days: z.number().optional().describe('Number of days to look ahead (default: 7)'),
     employeeName: z.string().optional().describe('Optional: filter by employee name'),
@@ -1199,15 +1280,13 @@ export const getShiftSchedule = tool({
       const now = new Date()
       const futureDate = new Date(now.getTime() + days * 24 * 60 * 60 * 1000)
 
-      let query = supabase
+      const { data: shifts } = await supabase
         .from('shifts')
         .select('*, employee:profiles(username, role)')
         .gte('start_time', now.toISOString())
         .lte('start_time', futureDate.toISOString())
         .in('status', ['scheduled', 'in_progress'])
         .order('start_time', { ascending: true })
-
-      const { data: shifts } = await query
 
       if (!shifts || shifts.length === 0) {
         return {
@@ -1228,7 +1307,11 @@ export const getShiftSchedule = tool({
       // Group by day
       const byDay: Record<string, typeof filteredShifts> = {}
       filteredShifts.forEach(shift => {
-        const day = new Date(shift.start_time).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+        const day = new Date(shift.start_time).toLocaleDateString('en-US', {
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+        })
         if (!byDay[day]) byDay[day] = []
         byDay[day].push(shift)
       })
@@ -1262,12 +1345,16 @@ export const getShiftSchedule = tool({
  * Create a smart redirect link
  */
 export const createTrackingLink = tool({
-  description: 'Create a smart redirect/tracking link with optional breakout. Use when asked to create a deep link, short link, or tracking link.',
+  description:
+    'Create a smart redirect/tracking link with optional breakout. Use when asked to create a deep link, short link, or tracking link.',
   parameters: z.object({
     slug: z.string().describe('Short slug for the link (e.g., "shower" for /s/shower)'),
     name: z.string().optional().describe('Internal name for reference'),
     target_url: z.string().url().describe('The destination URL'),
-    breakout: z.enum(['smart', 'force', 'none']).optional().describe('Breakout mode: smart (detect in-app), force (always), none (direct)'),
+    breakout: z
+      .enum(['smart', 'force', 'none'])
+      .optional()
+      .describe('Breakout mode: smart (detect in-app), force (always), none (direct)'),
   }),
   execute: async ({ slug, name, target_url, breakout = 'smart' }) => {
     try {
@@ -1335,16 +1422,27 @@ export const createTrackingLink = tool({
  * Analyze link and button click performance
  */
 export const getLinkPerformance = tool({
-  description: 'Get performance stats for tracking links and bio page buttons. Use when asked about link performance, CTR, which button is winning, or click stats.',
+  description:
+    'Get performance stats for tracking links and bio page buttons. Use when asked about link performance, CTR, which button is winning, or click stats.',
   parameters: z.object({
-    type: z.enum(['all', 'bio_pages', 'redirect_links']).optional().describe('Type of links to analyze'),
+    type: z
+      .enum(['all', 'bio_pages', 'redirect_links'])
+      .optional()
+      .describe('Type of links to analyze'),
   }),
   execute: async ({ type = 'all' }) => {
     try {
       const supabase = await createAdminClient()
 
       const results: {
-        bioPages?: Array<{ title: string; slug: string; visits: number; clicks: number; ctr: string; topButton?: string }>
+        bioPages?: Array<{
+          title: string
+          slug: string
+          visits: number
+          clicks: number
+          ctr: string
+          topButton?: string
+        }>
         redirectLinks?: Array<{ name: string; slug: string; clicks: number; target: string }>
         summary?: { totalClicks: number; topPerformer: string }
       } = {}
@@ -1353,32 +1451,38 @@ export const getLinkPerformance = tool({
       if (type === 'all' || type === 'bio_pages') {
         const { data: pages } = await supabase
           .from('bio_pages')
-          .select(`
+          .select(
+            `
             id, title, slug, total_visits, total_clicks,
             blocks:bio_blocks(id, content, click_count)
-          `)
+          `
+          )
           .order('total_clicks', { ascending: false })
           .limit(10)
 
-        results.bioPages = pages?.map(p => {
-          const blocks = (p.blocks || []) as Array<{ id: string; content: { label?: string }; click_count: number }>
-          const topButton = blocks
-            .filter(b => b.click_count > 0)
-            .sort((a, b) => (b.click_count || 0) - (a.click_count || 0))[0]
+        results.bioPages =
+          pages?.map(p => {
+            const blocks = (p.blocks || []) as Array<{
+              id: string
+              content: { label?: string }
+              click_count: number
+            }>
+            const topButton = blocks
+              .filter(b => b.click_count > 0)
+              .sort((a, b) => (b.click_count || 0) - (a.click_count || 0))[0]
 
-          const ctr = p.total_visits > 0 
-            ? ((p.total_clicks / p.total_visits) * 100).toFixed(1)
-            : '0'
+            const ctr =
+              p.total_visits > 0 ? ((p.total_clicks / p.total_visits) * 100).toFixed(1) : '0'
 
-          return {
-            title: p.title,
-            slug: `/u/${p.slug}`,
-            visits: p.total_visits || 0,
-            clicks: p.total_clicks || 0,
-            ctr: `${ctr}%`,
-            topButton: topButton?.content?.label || undefined,
-          }
-        }) || []
+            return {
+              title: p.title,
+              slug: `/u/${p.slug}`,
+              visits: p.total_visits || 0,
+              clicks: p.total_clicks || 0,
+              ctr: `${ctr}%`,
+              topButton: topButton?.content?.label || undefined,
+            }
+          }) || []
       }
 
       // Get redirect links
@@ -1390,12 +1494,13 @@ export const getLinkPerformance = tool({
           .order('click_count', { ascending: false })
           .limit(10)
 
-        results.redirectLinks = links?.map(l => ({
-          name: l.name || l.slug,
-          slug: `/s/${l.slug}`,
-          clicks: l.click_count || 0,
-          target: l.target_url,
-        })) || []
+        results.redirectLinks =
+          links?.map(l => ({
+            name: l.name || l.slug,
+            slug: `/s/${l.slug}`,
+            clicks: l.click_count || 0,
+            target: l.target_url,
+          })) || []
       }
 
       // Calculate summary
@@ -1425,7 +1530,8 @@ export const getLinkPerformance = tool({
  * Get detailed stats for a specific bio page
  */
 export const getBioPageStats = tool({
-  description: 'Get detailed analytics for a bio page including button clicks and traffic sources. Use when asked about a specific bio page performance.',
+  description:
+    'Get detailed analytics for a bio page including button clicks and traffic sources. Use when asked about a specific bio page performance.',
   parameters: z.object({
     slug: z.string().describe('The bio page slug (e.g., "lana")'),
   }),
@@ -1436,10 +1542,12 @@ export const getBioPageStats = tool({
       // Get page with blocks
       const { data: page, error } = await supabase
         .from('bio_pages')
-        .select(`
+        .select(
+          `
           id, title, slug, status, total_visits, total_clicks,
           blocks:bio_blocks(id, type, content, click_count)
-        `)
+        `
+        )
         .eq('slug', slug)
         .single()
 
@@ -1457,7 +1565,12 @@ export const getBioPageStats = tool({
         .limit(100)
 
       // Calculate stats
-      const blocks = (page.blocks || []) as Array<{ id: string; type: string; content: { label?: string }; click_count: number }>
+      const blocks = (page.blocks || []) as Array<{
+        id: string
+        type: string
+        content: { label?: string }
+        click_count: number
+      }>
       const buttons = blocks
         .filter(b => b.type === 'button')
         .sort((a, b) => (b.click_count || 0) - (a.click_count || 0))
@@ -1479,9 +1592,8 @@ export const getBioPageStats = tool({
         }
       })
 
-      const ctr = page.total_visits > 0 
-        ? ((page.total_clicks / page.total_visits) * 100).toFixed(1)
-        : '0'
+      const ctr =
+        page.total_visits > 0 ? ((page.total_clicks / page.total_visits) * 100).toFixed(1) : '0'
 
       return {
         page: {
@@ -1504,10 +1616,10 @@ export const getBioPageStats = tool({
           sources: inAppSources,
         },
         insights: [
-          buttons[0]?.click_count > 0 
+          buttons[0]?.click_count > 0
             ? `Top button: "${buttons[0]?.content?.label}" with ${buttons[0]?.click_count} clicks`
             : 'No button clicks yet',
-          inAppCount > events?.length! * 0.5 
+          events && events.length > 0 && inAppCount > events.length * 0.5
             ? '⚠️ High in-app browser traffic - breakout is important!'
             : 'Traffic sources look healthy',
         ],
@@ -1524,7 +1636,8 @@ export const getBioPageStats = tool({
  * Check system health and connectivity
  */
 export const runSystemDiagnostics = tool({
-  description: 'Run a full system health check including database, storage, and external services. Use when asked about system status, health check, or if everything is working.',
+  description:
+    'Run a full system health check including database, storage, and external services. Use when asked about system status, health check, or if everything is working.',
   parameters: z.object({}),
   execute: async () => {
     try {
@@ -1549,16 +1662,16 @@ export const runSystemDiagnostics = tool({
           results.services.database = { status: '❌ Error', error: error.message }
           results.overall = 'critical'
         } else {
-          results.services.database = { 
-            status: latency < 100 ? '✅ Excellent' : latency < 300 ? '⚠️ Slow' : '❌ Very Slow', 
-            latency 
+          results.services.database = {
+            status: latency < 100 ? '✅ Excellent' : latency < 300 ? '⚠️ Slow' : '❌ Very Slow',
+            latency,
           }
           if (latency > 300) results.overall = 'degraded'
         }
       } catch (error) {
-        results.services.database = { 
-          status: '❌ Critical Error', 
-          error: error instanceof Error ? error.message : 'Unknown error' 
+        results.services.database = {
+          status: '❌ Critical Error',
+          error: error instanceof Error ? error.message : 'Unknown error',
         }
         results.overall = 'critical'
       }
@@ -1577,9 +1690,9 @@ export const runSystemDiagnostics = tool({
 
           if (response.ok) {
             const data = await response.json()
-            results.services.telegram = { 
-              status: '✅ Connected', 
-              error: `Bot: @${data.result?.username || 'unknown'}` 
+            results.services.telegram = {
+              status: '✅ Connected',
+              error: `Bot: @${data.result?.username || 'unknown'}`,
             }
           } else {
             results.services.telegram = { status: '❌ Connection Failed' }
@@ -1587,9 +1700,9 @@ export const runSystemDiagnostics = tool({
           }
         }
       } catch (error) {
-        results.services.telegram = { 
-          status: '❌ Error', 
-          error: error instanceof Error ? error.message : 'Unknown' 
+        results.services.telegram = {
+          status: '❌ Error',
+          error: error instanceof Error ? error.message : 'Unknown',
         }
       }
 
@@ -1616,24 +1729,24 @@ export const runSystemDiagnostics = tool({
           results.overall = 'degraded'
         } else {
           const agencyBucket = buckets?.find(b => b.name === 'agency_assets')
-          results.services.storage = { 
+          results.services.storage = {
             status: agencyBucket ? '✅ Ready' : '⚠️ Bucket Missing',
-            error: agencyBucket ? `${buckets?.length} buckets` : undefined
+            error: agencyBucket ? `${buckets?.length} buckets` : undefined,
           }
           if (!agencyBucket) results.overall = 'degraded'
         }
       } catch (error) {
-        results.services.storage = { 
-          status: '❌ Error', 
-          error: error instanceof Error ? error.message : 'Unknown' 
+        results.services.storage = {
+          status: '❌ Error',
+          error: error instanceof Error ? error.message : 'Unknown',
         }
       }
 
       // 5. Firecrawl Web Scraping Check
       try {
         const firecrawlKey = process.env.FIRECRAWL_API_KEY
-        results.services.firecrawl = { 
-          status: firecrawlKey ? '✅ Configured' : '⚠️ Not Configured' 
+        results.services.firecrawl = {
+          status: firecrawlKey ? '✅ Configured' : '⚠️ Not Configured',
         }
       } catch (error) {
         results.services.firecrawl = { status: '❌ Error' }
@@ -1665,11 +1778,11 @@ export const runSystemDiagnostics = tool({
       ]
 
       const missingEnvVars = requiredEnvVars.filter(v => !process.env[v])
-      
+
       if (missingEnvVars.length > 0) {
-        results.services.environment = { 
-          status: '❌ Critical', 
-          error: `Missing: ${missingEnvVars.join(', ')}` 
+        results.services.environment = {
+          status: '❌ Critical',
+          error: `Missing: ${missingEnvVars.join(', ')}`,
         }
         results.overall = 'critical'
       } else {
@@ -1677,33 +1790,37 @@ export const runSystemDiagnostics = tool({
       }
 
       // Generate summary
-      const healthyCount = Object.values(results.services).filter(s => s.status.includes('✅')).length
+      const healthyCount = Object.values(results.services).filter(s =>
+        s.status.includes('✅')
+      ).length
       const totalCount = Object.keys(results.services).length
-      
-      const summary = results.overall === 'healthy'
-        ? `✅ **All Systems Nominal** (${healthyCount}/${totalCount} services healthy)`
-        : results.overall === 'degraded'
-        ? `⚠️ **System Degraded** (${healthyCount}/${totalCount} services healthy)`
-        : `🔴 **Critical Issues Detected** (${healthyCount}/${totalCount} services healthy)`
+
+      const summary =
+        results.overall === 'healthy'
+          ? `✅ **All Systems Nominal** (${healthyCount}/${totalCount} services healthy)`
+          : results.overall === 'degraded'
+            ? `⚠️ **System Degraded** (${healthyCount}/${totalCount} services healthy)`
+            : `🔴 **Critical Issues Detected** (${healthyCount}/${totalCount} services healthy)`
 
       return {
         summary,
         overall: results.overall,
         timestamp: results.timestamp,
         services: results.services,
-        recommendation: results.overall === 'critical'
-          ? 'Immediate attention required. Check error logs and environment variables.'
-          : results.overall === 'degraded'
-          ? 'Some services need attention. Review warnings and configure missing services.'
-          : 'System is running smoothly. Ready for production.',
+        recommendation:
+          results.overall === 'critical'
+            ? 'Immediate attention required. Check error logs and environment variables.'
+            : results.overall === 'degraded'
+              ? 'Some services need attention. Review warnings and configure missing services.'
+              : 'System is running smoothly. Ready for production.',
       }
     } catch (error) {
       console.error('runSystemDiagnostics error:', error)
-      return { 
+      return {
         summary: '🔴 **Diagnostic Failed**',
         overall: 'critical',
         error: 'Failed to run system diagnostics',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        details: error instanceof Error ? error.message : 'Unknown error',
       }
     }
   },
@@ -1714,40 +1831,45 @@ export const runSystemDiagnostics = tool({
  * Calculate estimated paycheck for a staff member
  */
 export const getPayrollEstimate = tool({
-  description: 'Calculate estimated paycheck for a staff member based on hours worked and sales generated. Use when asked about payroll, what someone owes, or payment estimates.',
+  description:
+    'Calculate estimated paycheck for a staff member based on hours worked and sales generated. Use when asked about payroll, what someone owes, or payment estimates.',
   parameters: z.object({
     staffName: z.string().describe('Name of the staff member (can be partial match)'),
-    startDate: z.string().optional().describe('Start date for calculation (defaults to 30 days ago)'),
+    startDate: z
+      .string()
+      .optional()
+      .describe('Start date for calculation (defaults to 30 days ago)'),
     endDate: z.string().optional().describe('End date for calculation (defaults to today)'),
   }),
   execute: async ({ staffName, startDate, endDate }) => {
     try {
       const supabase = await createAdminClient()
-      
+
       // Default date range: last 30 days
       const end = endDate || new Date().toISOString().split('T')[0]
-      const start = startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-      
+      const start =
+        startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+
       // Find staff member
       const { data: profiles } = await supabase
         .from('profiles')
         .select('id, username, role')
         .ilike('username', `%${staffName}%`)
         .limit(1)
-      
+
       if (!profiles || profiles.length === 0) {
         return { error: `No staff member found matching "${staffName}"` }
       }
-      
+
       const profile = profiles[0]
-      
+
       // Get payout settings
       const { data: settings } = await supabase
         .from('payout_settings')
         .select('*')
         .eq('profile_id', profile.id)
         .single()
-      
+
       if (!settings) {
         return {
           staff_name: profile.username,
@@ -1756,11 +1878,11 @@ export const getPayrollEstimate = tool({
           recommendation: 'Configure their pay model in the Payroll settings.',
         }
       }
-      
+
       // Calculate hours worked
       let hoursWorked = 0
       let hourlyPay = 0
-      
+
       if (settings.pay_model === 'hourly' || settings.pay_model === 'hybrid') {
         const { data: timesheets } = await supabase
           .from('timesheets')
@@ -1769,7 +1891,7 @@ export const getPayrollEstimate = tool({
           .gte('clock_in', start)
           .lte('clock_in', end)
           .not('clock_out', 'is', null)
-        
+
         if (timesheets && timesheets.length > 0) {
           hoursWorked = timesheets.reduce((total, timesheet) => {
             const clockIn = new Date(timesheet.clock_in).getTime()
@@ -1777,15 +1899,15 @@ export const getPayrollEstimate = tool({
             const duration = (clockOut - clockIn) / (1000 * 60 * 60)
             return total + duration
           }, 0)
-          
+
           hourlyPay = hoursWorked * (settings.hourly_rate || 0)
         }
       }
-      
+
       // Calculate sales/commission
       let salesGenerated = 0
       let commissionPay = 0
-      
+
       if (settings.pay_model === 'commission' || settings.pay_model === 'hybrid') {
         const { data: fanInsights } = await supabase
           .from('fan_insights')
@@ -1793,18 +1915,18 @@ export const getPayrollEstimate = tool({
           .eq('chatter_id', profile.id)
           .gte('last_message_at', start)
           .lte('last_message_at', end)
-        
+
         if (fanInsights && fanInsights.length > 0) {
           salesGenerated = fanInsights.reduce((total, insight) => {
             return total + (insight.total_spent || 0)
           }, 0)
         }
-        
+
         commissionPay = salesGenerated * (settings.commission_percent || 0)
       }
-      
+
       const totalEstimate = hourlyPay + commissionPay
-      
+
       return {
         staff_name: profile.username,
         role: profile.role,
@@ -1817,11 +1939,12 @@ export const getPayrollEstimate = tool({
         commission_rate: `${(settings.commission_percent * 100).toFixed(1)}%`,
         commission_pay: `$${Math.round(commissionPay * 100) / 100}`,
         estimated_total: `$${Math.round(totalEstimate * 100) / 100}`,
-        breakdown: settings.pay_model === 'hybrid'
-          ? `${profile.username} worked ${hoursWorked.toFixed(1)} hours ($${hourlyPay.toFixed(2)}) and generated $${salesGenerated.toFixed(2)} in sales ($${commissionPay.toFixed(2)} commission).`
-          : settings.pay_model === 'hourly'
-          ? `${profile.username} worked ${hoursWorked.toFixed(1)} hours at $${settings.hourly_rate}/hr.`
-          : `${profile.username} generated $${salesGenerated.toFixed(2)} in sales with ${(settings.commission_percent * 100).toFixed(1)}% commission.`,
+        breakdown:
+          settings.pay_model === 'hybrid'
+            ? `${profile.username} worked ${hoursWorked.toFixed(1)} hours ($${hourlyPay.toFixed(2)}) and generated $${salesGenerated.toFixed(2)} in sales ($${commissionPay.toFixed(2)} commission).`
+            : settings.pay_model === 'hourly'
+              ? `${profile.username} worked ${hoursWorked.toFixed(1)} hours at $${settings.hourly_rate}/hr.`
+              : `${profile.username} generated $${salesGenerated.toFixed(2)} in sales with ${(settings.commission_percent * 100).toFixed(1)}% commission.`,
       }
     } catch (error) {
       console.error('getPayrollEstimate error:', error)
@@ -1835,7 +1958,8 @@ export const getPayrollEstimate = tool({
  * Returns the high-level product roadmap for OnyxOS (for public/landing page use)
  */
 export const getPublicRoadmap = tool({
-  description: 'Get the public product roadmap for OnyxOS. Use this when asked about upcoming features, product plans, or what\'s next for the platform.',
+  description:
+    "Get the public product roadmap for OnyxOS. Use this when asked about upcoming features, product plans, or what's next for the platform.",
   parameters: z.object({}),
   execute: async () => {
     return {
@@ -1851,7 +1975,7 @@ export const getPublicRoadmap = tool({
             'Advanced CRM with fan tracking',
             'Alfred AI assistant with ReAct capabilities',
             'Content vault and mass messaging',
-          ]
+          ],
         },
         {
           phase: 'Q2 2026 - Intelligence',
@@ -1862,7 +1986,7 @@ export const getPublicRoadmap = tool({
             'Team management with shift tracking',
             'Quest engine and gamification',
             'Telegram bot integration',
-          ]
+          ],
         },
         {
           phase: 'Q3 2026 - Automation',
@@ -1873,7 +1997,7 @@ export const getPublicRoadmap = tool({
             'Competitor intelligence and tracking',
             'Advanced email/SMS campaigns',
             'Custom workflow builder',
-          ]
+          ],
         },
         {
           phase: 'Q4 2026 - Scale',
@@ -1884,8 +2008,8 @@ export const getPublicRoadmap = tool({
             'Advanced revenue forecasting',
             'API access for custom integrations',
             'Mobile app (iOS/Android)',
-          ]
-        }
+          ],
+        },
       ],
       nextMilestone: 'Launch of AI Chat Automation (Q3 2026)',
       requestAccess: 'https://onyxos.io/login',
@@ -1898,27 +2022,31 @@ export const getPublicRoadmap = tool({
  * Search the internal playbook/wiki for answers
  */
 export const searchKnowledgeBase = tool({
-  description: 'Search the internal knowledge base/playbook for SOPs, policies, training materials, and documentation. Use when asked about refund policy, procedures, how things work, or company rules.',
+  description:
+    'Search the internal knowledge base/playbook for SOPs, policies, training materials, and documentation. Use when asked about refund policy, procedures, how things work, or company rules.',
   parameters: z.object({
     query: z.string().describe('The search query - what the user is looking for'),
-    category: z.enum(['sop', 'training', 'sales', 'technical', 'general']).optional().describe('Optional category filter'),
+    category: z
+      .enum(['sop', 'training', 'sales', 'technical', 'general'])
+      .optional()
+      .describe('Optional category filter'),
   }),
   execute: async ({ query, category }) => {
     try {
       const supabase = await createAdminClient()
-      
+
       let dbQuery = supabase
         .from('knowledge_base')
         .select('id, title, content, category, excerpt')
         .or(`title.ilike.%${query}%,content.ilike.%${query}%`)
         .limit(5)
-      
+
       if (category) {
         dbQuery = dbQuery.eq('category', category)
       }
-      
+
       const { data: articles } = await dbQuery
-      
+
       if (!articles || articles.length === 0) {
         return {
           found: false,
@@ -1926,7 +2054,7 @@ export const searchKnowledgeBase = tool({
           suggestion: 'Ask an admin to add this to the knowledge base.',
         }
       }
-      
+
       // Return the most relevant articles
       const results = articles.map(article => ({
         title: article.title,
@@ -1934,7 +2062,7 @@ export const searchKnowledgeBase = tool({
         excerpt: article.excerpt || article.content?.substring(0, 300),
         content: article.content?.substring(0, 1000), // Limit content length
       }))
-      
+
       return {
         found: true,
         count: results.length,
@@ -1953,28 +2081,31 @@ export const searchKnowledgeBase = tool({
  * Save a message as a reusable chat script
  */
 export const addWinningScript = tool({
-  description: 'Save a chat message or response as a reusable script in the Script Arsenal. Use when the user wants to save a good response as a template for future use.',
+  description:
+    'Save a chat message or response as a reusable script in the Script Arsenal. Use when the user wants to save a good response as a template for future use.',
   parameters: z.object({
     title: z.string().describe('Title for the script (e.g., "The Missing You Opener")'),
     content: z.string().describe('The actual script text/message to save'),
-    category: z.enum(['opener', 'closer', 'upsell', 'objection', 'ppv', 'custom']).default('custom').describe('Category for the script'),
-    tags: z.array(z.string()).optional().describe('Optional tags like "whale", "valentines", "spicy"'),
+    category: z
+      .enum(['opener', 'closer', 'upsell', 'objection', 'ppv', 'custom'])
+      .default('custom')
+      .describe('Category for the script'),
+    tags: z
+      .array(z.string())
+      .optional()
+      .describe('Optional tags like "whale", "valentines", "spicy"'),
   }),
   execute: async ({ title, content, category, tags }) => {
     try {
       const supabase = await createAdminClient()
-      
+
       // Get the first agency (for now - ideally we'd have user context)
-      const { data: agency } = await supabase
-        .from('agencies')
-        .select('id')
-        .limit(1)
-        .single()
-      
+      const { data: agency } = await supabase.from('agencies').select('id').limit(1).single()
+
       if (!agency) {
         return { error: 'No agency found. Cannot save script.' }
       }
-      
+
       const { data: script, error } = await supabase
         .from('chat_scripts')
         .insert({
@@ -1986,9 +2117,9 @@ export const addWinningScript = tool({
         })
         .select()
         .single()
-      
+
       if (error) throw error
-      
+
       return {
         success: true,
         message: `✅ Script saved to the Arsenal!`,
@@ -2012,11 +2143,21 @@ export const addWinningScript = tool({
  * Generate a new sales script using AI
  */
 export const draftSalesScript = tool({
-  description: 'Generate a new sales script or chat message based on a scenario or theme. Use when the user asks you to write a script, opener, closer, or any chat message.',
+  description:
+    'Generate a new sales script or chat message based on a scenario or theme. Use when the user asks you to write a script, opener, closer, or any chat message.',
   parameters: z.object({
-    type: z.enum(['opener', 'closer', 'upsell', 'objection', 'ppv', 'custom']).describe('Type of script to generate'),
-    theme: z.string().describe('Theme or scenario for the script (e.g., "Valentine\'s Day", "morning check-in", "whale hunting")'),
-    tone: z.enum(['flirty', 'sweet', 'spicy', 'bratty', 'caring', 'urgent', 'playful']).default('flirty').describe('Desired tone of the message'),
+    type: z
+      .enum(['opener', 'closer', 'upsell', 'objection', 'ppv', 'custom'])
+      .describe('Type of script to generate'),
+    theme: z
+      .string()
+      .describe(
+        'Theme or scenario for the script (e.g., "Valentine\'s Day", "morning check-in", "whale hunting")'
+      ),
+    tone: z
+      .enum(['flirty', 'sweet', 'spicy', 'bratty', 'caring', 'urgent', 'playful'])
+      .default('flirty')
+      .describe('Desired tone of the message'),
     includeEmoji: z.boolean().default(true).describe('Whether to include emojis'),
   }),
   execute: async ({ type, theme, tone, includeEmoji }) => {
@@ -2024,40 +2165,38 @@ export const draftSalesScript = tool({
     const templates: Record<string, string[]> = {
       opener: [
         "Hey baby, I was just thinking about you 💭 How's your {time_of_day} going?",
-        "Good {time_of_day} handsome 😘 I had the most vivid dream about you last night...",
-        "Hiii 🥺 I missed talking to you... What are you up to today?",
+        'Good {time_of_day} handsome 😘 I had the most vivid dream about you last night...',
+        'Hiii 🥺 I missed talking to you... What are you up to today?',
       ],
       closer: [
-        "I have something special I made just for you... want to see? 🔥",
+        'I have something special I made just for you... want to see? 🔥',
         "I know you've been waiting for this... are you ready? 💋",
-        "Before you go... I prepared a little surprise 😏",
+        'Before you go... I prepared a little surprise 😏',
       ],
       upsell: [
-        "That was just a preview baby... the full thing is even better 🔥 Want it?",
+        'That was just a preview baby... the full thing is even better 🔥 Want it?',
         "I have so much more to show you... if you're interested 👀",
         "You've been so good to me lately... I want to reward you with something extra special 💝",
       ],
       objection: [
         "I totally understand! Take your time baby, I'll be here when you're ready 💕",
-        "No pressure at all! Just wanted to share because I trust you 🥺",
-        "Of course! Let me know if you change your mind. I made this thinking of you specifically 😘",
+        'No pressure at all! Just wanted to share because I trust you 🥺',
+        'Of course! Let me know if you change your mind. I made this thinking of you specifically 😘',
       ],
       ppv: [
         "I just finished shooting something new... and I'm nervous to show you 🙈 But I think you'll love it...",
-        "Special content alert! 🚨 I made this just for my favorites... want exclusive access?",
-        "POV: You unlocked the content I was too shy to post publicly 🔐💋",
+        'Special content alert! 🚨 I made this just for my favorites... want exclusive access?',
+        'POV: You unlocked the content I was too shy to post publicly 🔐💋',
       ],
-      custom: [
-        "Hey you 💕 Just wanted to check in and see how you're doing!",
-      ],
+      custom: ["Hey you 💕 Just wanted to check in and see how you're doing!"],
     }
-    
+
     const scriptOptions = templates[type] || templates.custom
     const baseScript = scriptOptions[Math.floor(Math.random() * scriptOptions.length)]
-    
+
     // Customize based on theme
     let finalScript = baseScript
-    
+
     if (theme.toLowerCase().includes('valentine')) {
       finalScript = finalScript.replace('baby', 'my valentine')
     }
@@ -2068,11 +2207,14 @@ export const draftSalesScript = tool({
     } else {
       finalScript = finalScript.replace('{time_of_day}', 'day')
     }
-    
+
     if (!includeEmoji) {
-      finalScript = finalScript.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '')
+      finalScript = finalScript.replace(
+        /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu,
+        ''
+      )
     }
-    
+
     return {
       type,
       theme,

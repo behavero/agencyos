@@ -3,7 +3,11 @@ import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { z } from 'zod'
 
 const CreatePageSchema = z.object({
-  slug: z.string().min(2).max(50).regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
+  slug: z
+    .string()
+    .min(2)
+    .max(50)
+    .regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
   title: z.string().min(1).max(100),
   model_id: z.string().uuid().optional(),
   description: z.string().max(500).optional(),
@@ -13,10 +17,12 @@ const CreatePageSchema = z.object({
  * GET /api/bio/pages
  * List all bio pages for the agency
  */
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -35,11 +41,13 @@ export async function GET(request: NextRequest) {
     const adminClient = await createAdminClient()
     const { data: pages, error } = await adminClient
       .from('bio_pages')
-      .select(`
+      .select(
+        `
         *,
         model:models(id, name, avatar_url),
         blocks:bio_blocks(count)
-      `)
+      `
+      )
       .eq('agency_id', profile.agency_id)
       .order('created_at', { ascending: false })
 
@@ -62,7 +70,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -98,10 +108,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (existing) {
-      return NextResponse.json(
-        { error: 'Slug already taken' },
-        { status: 409 }
-      )
+      return NextResponse.json({ error: 'Slug already taken' }, { status: 409 })
     }
 
     // Create the page
@@ -115,10 +122,12 @@ export async function POST(request: NextRequest) {
         description: validation.data.description || null,
         status: 'draft',
       })
-      .select(`
+      .select(
+        `
         *,
         model:models(id, name, avatar_url)
-      `)
+      `
+      )
       .single()
 
     if (error) {

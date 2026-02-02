@@ -7,28 +7,22 @@ import { createFanvueClient } from '@/lib/fanvue/client'
  * Send messages to multiple fans at once using Fanvue's list-based targeting
  */
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const body = await request.json()
-  const { 
-    text, 
-    mediaUuids, 
+  const {
+    text,
+    mediaUuids,
     price,
     // List-based targeting (Fanvue API v2025-06-26)
-    smartListIds,      // e.g., ['subscribers', 'followers']
-    customListUuids,   // UUIDs of custom lists
+    smartListIds, // e.g., ['subscribers', 'followers']
+    customListUuids, // UUIDs of custom lists
     excludeSmartListIds,
     excludeCustomListUuids,
   } = body
 
   if (!text && !mediaUuids?.length) {
-    return NextResponse.json(
-      { error: 'Either text or mediaUuids is required' },
-      { status: 400 }
-    )
+    return NextResponse.json({ error: 'Either text or mediaUuids is required' }, { status: 400 })
   }
 
   if (!smartListIds?.length && !customListUuids?.length) {
@@ -40,14 +34,16 @@ export async function POST(
 
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }
 
     const adminClient = createAdminClient()
-    
+
     // Get creator's tokens
     const { data: model } = await adminClient
       .from('models')
@@ -111,12 +107,12 @@ export async function POST(
       message: `Message sent to ${result.recipientCount} fans`,
       ...result,
     })
-
-  } catch (error: any) {
+  } catch (error) {
     console.error('[Mass Message API] Error:', error)
-    
+
     // Handle rate limiting
-    if (error.statusCode === 429) {
+    const statusCode = (error as { statusCode?: number })?.statusCode
+    if (statusCode === 429) {
       return NextResponse.json(
         {
           error: 'Rate limit exceeded',
