@@ -595,6 +595,127 @@ export const getWatchedAccounts = tool({
 })
 
 /**
+ * Tool: Analyze Business Health
+ * Advanced KPI analysis with actionable insights
+ */
+export const analyzeBusinessHealth = tool({
+  description: 'Analyze agency business health including conversion rates, funnel metrics, CTR, ARPU, and generate actionable insights. Use when asked about business performance, why revenue is down, conversion issues, or overall health.',
+  parameters: z.object({
+    dateRange: z.enum(['7d', '30d', '90d']).optional().describe('Time period to analyze (default: 30d)'),
+  }),
+  execute: async ({ dateRange = '30d' }) => {
+    try {
+      const supabase = await createAdminClient()
+
+      // Get agency data
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('agency_id')
+        .limit(1)
+        .single()
+
+      if (!profiles?.agency_id) {
+        return { error: 'No agency found' }
+      }
+
+      const agencyId = profiles.agency_id
+
+      // Calculate date range
+      const now = new Date()
+      const daysMap = { '7d': 7, '30d': 30, '90d': 90 }
+      const days = daysMap[dateRange]
+      const startDate = new Date(now.getTime() - days * 24 * 60 * 60 * 1000)
+
+      // Fetch all data
+      const [modelsResult, expensesResult, socialStatsResult, watchedAccountsResult] = await Promise.all([
+        supabase.from('models').select('total_revenue, subscribers_count, followers_count, tracking_links_count'),
+        supabase.from('expenses').select('amount').gte('date', startDate.toISOString().split('T')[0]),
+        supabase.from('social_stats').select('platform, followers, views, likes, comments, shares').gte('date', startDate.toISOString().split('T')[0]),
+        supabase.from('watched_accounts').select('account_type, last_stats').eq('is_active', true),
+      ])
+
+      const models = modelsResult.data || []
+      const expenses = expensesResult.data || []
+      const socialStats = socialStatsResult.data || []
+      const watchedAccounts = watchedAccountsResult.data || []
+
+      // Calculate KPIs
+      const totalRevenue = models.reduce((sum, m) => sum + (m.total_revenue || 0), 0)
+      const totalExpenses = expenses.reduce((sum, e) => sum + (e.amount || 0), 0)
+      const netProfit = totalRevenue - totalExpenses
+      const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0
+
+      const activeSubscribers = models.reduce((sum, m) => sum + (m.subscribers_count || 0), 0)
+      const arpu = activeSubscribers > 0 ? totalRevenue / activeSubscribers : 0
+
+      // Instagram metrics
+      const igStats = socialStats.filter(s => s.platform === 'instagram')
+      const metaProfileViews = igStats.reduce((sum, s) => sum + (s.comments || 0), 0)
+      const metaWebsiteClicks = igStats.reduce((sum, s) => sum + (s.shares || 0), 0)
+      const bioCTR = metaProfileViews > 0 ? (metaWebsiteClicks / metaProfileViews) * 100 : 0
+
+      // Ghost network
+      const slaveAccounts = watchedAccounts.filter(a => a.account_type === 'slave')
+      const slaveReach = slaveAccounts.reduce((sum, a) => {
+        const stats = a.last_stats as { followers?: number } | null
+        return sum + (stats?.followers || 0)
+      }, 0)
+      const mainReach = models.reduce((sum, m) => sum + (m.followers_count || 0), 0)
+      const ghostTrafficShare = (slaveReach + mainReach) > 0 ? (slaveReach / (slaveReach + mainReach)) * 100 : 0
+
+      // Generate insights
+      const issues: string[] = []
+      const recommendations: string[] = []
+
+      if (bioCTR < 5) {
+        issues.push(`Bio CTR is critically low at ${bioCTR.toFixed(1)}%`)
+        recommendations.push('Audit bio link, update CTA, consider changing Linktree/Beacons')
+      }
+      if (profitMargin < 20) {
+        issues.push(`Profit margin is low at ${profitMargin.toFixed(1)}%`)
+        recommendations.push('Review expenses, increase prices, or reduce costs')
+      }
+      if (ghostTrafficShare < 30) {
+        issues.push(`Ghost network only drives ${ghostTrafficShare.toFixed(1)}% of reach`)
+        recommendations.push('Add more slave accounts to diversify traffic')
+      }
+      if (arpu < 15) {
+        issues.push(`ARPU is low at $${arpu.toFixed(2)}`)
+        recommendations.push('Consider PPV content strategy or upsells')
+      }
+
+      return {
+        period: dateRange,
+        financials: {
+          totalRevenue: `$${totalRevenue.toLocaleString()}`,
+          totalExpenses: `$${totalExpenses.toLocaleString()}`,
+          netProfit: `$${netProfit.toLocaleString()}`,
+          profitMargin: `${profitMargin.toFixed(1)}%`,
+        },
+        conversion: {
+          bioCTR: `${bioCTR.toFixed(1)}%`,
+          activeSubscribers,
+          arpu: `$${arpu.toFixed(2)}`,
+        },
+        network: {
+          slaveReach: slaveReach.toLocaleString(),
+          mainReach: mainReach.toLocaleString(),
+          ghostTrafficShare: `${ghostTrafficShare.toFixed(1)}%`,
+        },
+        healthSummary: issues.length === 0 
+          ? 'All metrics are healthy'
+          : `Found ${issues.length} issue(s)`,
+        issues,
+        recommendations,
+      }
+    } catch (error) {
+      console.error('analyzeBusinessHealth error:', error)
+      return { error: 'Failed to analyze business health' }
+    }
+  },
+})
+
+/**
  * Export all tools as a single object for use in streamText
  */
 export const alfredTools = {
@@ -606,4 +727,5 @@ export const alfredTools = {
   scrape_web: scrapeWeb,
   analyze_social_profile: analyzeSocialProfile,
   get_watched_accounts: getWatchedAccounts,
+  analyze_business_health: analyzeBusinessHealth,
 }

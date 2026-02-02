@@ -19,6 +19,7 @@ import {
   Megaphone,
   Banknote,
   Ghost,
+  BarChart3,
 } from 'lucide-react'
 
 const navigation = [
@@ -26,6 +27,7 @@ const navigation = [
     title: 'Overview',
     items: [
       { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+      { name: 'Analytics', href: '/dashboard/analytics', icon: BarChart3 },
       { name: 'Messages', href: '/dashboard/messages', icon: MessageSquare },
       { name: 'Alfred AI', href: '/dashboard/alfred', icon: Bot },
     ],
