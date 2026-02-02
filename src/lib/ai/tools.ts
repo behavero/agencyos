@@ -919,6 +919,170 @@ export const getMissedPosts = tool({
 })
 
 /**
+ * Tool: Update Fan Attribute
+ * Update CRM data for a fan
+ */
+export const updateFanAttribute = tool({
+  description: 'Update a fan\'s CRM attribute (name, age, job, city, interests/fetish). Use when the chatter learns new info about a fan.',
+  parameters: z.object({
+    fanId: z.string().describe('The fan\'s external ID'),
+    modelId: z.string().uuid().describe('The model ID'),
+    attribute: z.enum(['name', 'age', 'job', 'city', 'fetish']).describe('Which attribute to update'),
+    value: z.string().describe('The new value'),
+  }),
+  execute: async ({ fanId, modelId, attribute, value }) => {
+    try {
+      const supabase = await createAdminClient()
+
+      // Get agency ID from model
+      const { data: model } = await supabase
+        .from('models')
+        .select('agency_id')
+        .eq('id', modelId)
+        .single()
+
+      if (!model) {
+        return { success: false, error: 'Model not found' }
+      }
+
+      // Upsert the attribute
+      const { error } = await supabase
+        .from('fan_insights')
+        .upsert({
+          agency_id: model.agency_id,
+          model_id: modelId,
+          fan_id: fanId,
+          custom_attributes: { [attribute]: value },
+          updated_at: new Date().toISOString(),
+        }, { 
+          onConflict: 'model_id,fan_id',
+          ignoreDuplicates: false,
+        })
+
+      if (error) {
+        return { success: false, error: error.message }
+      }
+
+      return {
+        success: true,
+        message: `Updated ${attribute} to "${value}" for fan ${fanId}`,
+      }
+    } catch (error) {
+      console.error('updateFanAttribute error:', error)
+      return { success: false, error: 'Failed to update fan attribute' }
+    }
+  },
+})
+
+/**
+ * Tool: Get Fan Brief
+ * Get a quick summary of a fan for chatters
+ */
+export const getFanBrief = tool({
+  description: 'Get a quick briefing about a fan including spend, attributes, and notes. Use when opening a chat or asked about a specific fan.',
+  parameters: z.object({
+    fanId: z.string().describe('The fan\'s external ID'),
+    modelId: z.string().uuid().describe('The model ID'),
+  }),
+  execute: async ({ fanId, modelId }) => {
+    try {
+      const supabase = await createAdminClient()
+
+      const { data: fan } = await supabase
+        .from('fan_insights')
+        .select('*')
+        .eq('fan_id', fanId)
+        .eq('model_id', modelId)
+        .single()
+
+      if (!fan) {
+        return {
+          isNew: true,
+          message: 'New fan - no data yet. Start building the profile!',
+        }
+      }
+
+      // Build the brief
+      const attrs = fan.custom_attributes || {}
+      const attrsList = Object.entries(attrs)
+        .filter(([_, v]) => v)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join(', ')
+
+      const whaleEmoji = fan.total_spend >= 500 ? '🐋' : fan.total_spend >= 100 ? '🐬' : '🐟'
+      const ppvRate = fan.ppv_sent > 0 ? Math.round((fan.ppv_unlocked / fan.ppv_sent) * 100) : 0
+
+      return {
+        isNew: false,
+        fanId,
+        name: attrs.name || fan.username || 'Unknown',
+        totalSpend: `$${(fan.total_spend || 0).toLocaleString()}`,
+        whaleEmoji,
+        attributes: attrsList || 'No attributes recorded',
+        tags: fan.tags?.join(', ') || 'No tags',
+        notes: fan.notes || 'No notes',
+        ppvUnlockRate: `${ppvRate}%`,
+        lastActive: fan.last_active_at ? new Date(fan.last_active_at).toLocaleDateString() : 'Unknown',
+        brief: `${whaleEmoji} ${attrs.name || 'This fan'} has spent $${fan.total_spend || 0}. ${attrsList ? `Profile: ${attrsList}.` : ''} ${fan.notes ? `Note: ${fan.notes}` : ''}`,
+      }
+    } catch (error) {
+      console.error('getFanBrief error:', error)
+      return { error: 'Failed to get fan brief' }
+    }
+  },
+})
+
+/**
+ * Tool: Get Top Fans
+ * Get the highest spending fans
+ */
+export const getTopFans = tool({
+  description: 'Get the top spending fans (whales) for a model or the entire agency. Use when asked about best customers or whales.',
+  parameters: z.object({
+    modelId: z.string().uuid().optional().describe('Optional: filter by model'),
+    limit: z.number().optional().describe('Number of fans to return (default: 10)'),
+  }),
+  execute: async ({ modelId, limit = 10 }) => {
+    try {
+      const supabase = await createAdminClient()
+
+      let query = supabase
+        .from('fan_insights')
+        .select('*, model:models(name)')
+        .order('total_spend', { ascending: false })
+        .limit(limit)
+
+      if (modelId) {
+        query = query.eq('model_id', modelId)
+      }
+
+      const { data: fans } = await query
+
+      if (!fans || fans.length === 0) {
+        return { message: 'No fans found', fans: [] }
+      }
+
+      const totalSpend = fans.reduce((sum, f) => sum + (f.total_spend || 0), 0)
+
+      return {
+        summary: `Top ${fans.length} fans have spent $${totalSpend.toLocaleString()} total`,
+        fans: fans.map((f, i) => ({
+          rank: i + 1,
+          name: f.custom_attributes?.name || f.username || f.fan_id,
+          model: (f.model as { name?: string } | null)?.name || 'Unknown',
+          totalSpend: `$${(f.total_spend || 0).toLocaleString()}`,
+          ppvRate: f.ppv_sent > 0 ? `${Math.round((f.ppv_unlocked / f.ppv_sent) * 100)}%` : 'N/A',
+          tags: f.tags?.join(', ') || 'None',
+        })),
+      }
+    } catch (error) {
+      console.error('getTopFans error:', error)
+      return { error: 'Failed to get top fans' }
+    }
+  },
+})
+
+/**
  * Export all tools as a single object for use in streamText
  */
 export const alfredTools = {
@@ -934,4 +1098,7 @@ export const alfredTools = {
   get_upcoming_posts: getUpcomingPosts,
   log_post_completion: logPostCompletion,
   get_missed_posts: getMissedPosts,
+  update_fan_attribute: updateFanAttribute,
+  get_fan_brief: getFanBrief,
+  get_top_fans: getTopFans,
 }
