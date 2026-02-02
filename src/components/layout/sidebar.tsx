@@ -47,41 +47,101 @@ const fullNavigation: NavigationSection[] = [
     title: 'Overview',
     items: [
       { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, permission: 'showDashboard' },
-      { name: 'Analytics', href: '/dashboard/analytics', icon: BarChart3, permission: 'showAnalytics' },
-      { name: 'Messages', href: '/dashboard/messages', icon: MessageSquare, permission: 'showMessages' },
+      {
+        name: 'Analytics',
+        href: '/dashboard/analytics',
+        icon: BarChart3,
+        permission: 'showAnalytics',
+      },
+      {
+        name: 'Messages',
+        href: '/dashboard/messages',
+        icon: MessageSquare,
+        permission: 'showMessages',
+      },
       { name: 'Alfred AI', href: '/dashboard/alfred', icon: Bot, permission: 'showAlfred' },
     ],
   },
   {
     title: 'Management',
     items: [
-      { name: 'Creators', href: '/dashboard/creator-management', icon: Crown, permission: 'showCreators' },
+      {
+        name: 'Creators',
+        href: '/dashboard/creator-management',
+        icon: Crown,
+        permission: 'showCreators',
+      },
       { name: 'CRM', href: '/dashboard/crm', icon: Briefcase, permission: 'showCRM' },
-      { name: 'Ghost Tracker', href: '/dashboard/competitors', icon: Ghost, permission: 'showGhostTracker' },
+      {
+        name: 'Ghost Tracker',
+        href: '/dashboard/competitors',
+        icon: Ghost,
+        permission: 'showGhostTracker',
+      },
       { name: 'Quests', href: '/dashboard/quests', icon: Target, permission: 'showQuests' },
       { name: 'Content', href: '/dashboard/content', icon: Sparkles, permission: 'showContent' },
-      { name: 'Calendar', href: '/dashboard/content/calendar', icon: Calendar, permission: 'showCalendar' },
+      {
+        name: 'Calendar',
+        href: '/dashboard/content/calendar',
+        icon: Calendar,
+        permission: 'showCalendar',
+      },
       { name: 'Onyx Link', href: '/dashboard/content/bio', icon: Link2, permission: 'showVault' },
       { name: 'Vault', href: '/dashboard/content/vault', icon: Image, permission: 'showVault' },
-      { name: 'Campaigns', href: '/dashboard/messages/campaigns', icon: Megaphone, permission: 'showCampaigns' },
-      { name: 'Academy', href: '/dashboard/academy', icon: GraduationCap, permission: 'showDashboard' },
-      { name: 'Scripts', href: '/dashboard/academy/scripts', icon: ScrollText, permission: 'showDashboard' },
+      {
+        name: 'Marketing',
+        href: '/dashboard/marketing',
+        icon: Megaphone,
+        permission: 'showCampaigns',
+      },
+      {
+        name: 'Academy',
+        href: '/dashboard/academy',
+        icon: GraduationCap,
+        permission: 'showDashboard',
+      },
+      {
+        name: 'Scripts',
+        href: '/dashboard/academy/scripts',
+        icon: ScrollText,
+        permission: 'showDashboard',
+      },
     ],
   },
   {
     title: 'Finance',
     items: [
-      { name: 'Expenses', href: '/dashboard/expenses', icon: CreditCard, permission: 'showExpenses' },
-      { name: 'Payroll', href: '/dashboard/finance/payroll', icon: Banknote, permission: 'showPayroll' },
+      {
+        name: 'Expenses',
+        href: '/dashboard/expenses',
+        icon: CreditCard,
+        permission: 'showExpenses',
+      },
+      {
+        name: 'Payroll',
+        href: '/dashboard/finance/payroll',
+        icon: Banknote,
+        permission: 'showPayroll',
+      },
     ],
   },
   {
     title: 'Settings',
     items: [
       { name: 'Team', href: '/dashboard/team', icon: Users, permission: 'showTeam' },
-      { name: 'Planning', href: '/dashboard/team/planning', icon: CalendarClock, permission: 'showTeam' },
+      {
+        name: 'Planning',
+        href: '/dashboard/team/planning',
+        icon: CalendarClock,
+        permission: 'showTeam',
+      },
       { name: 'Invite', href: '/dashboard/team/invite', icon: UserPlus, permission: 'showTeam' },
-      { name: 'Agency HQ', href: '/dashboard/agency-settings', icon: Building2, permission: 'showAgencySettings' },
+      {
+        name: 'Agency HQ',
+        href: '/dashboard/agency-settings',
+        icon: Building2,
+        permission: 'showAgencySettings',
+      },
     ],
   },
 ]
@@ -152,16 +212,17 @@ export function Sidebar() {
             </div>
           </div>
         ) : (
-          filteredNavigation.map((section) => (
+          filteredNavigation.map(section => (
             <div key={section.title} className="px-3 mb-6">
               <h3 className="px-3 mb-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 {section.title}
               </h3>
               <ul className="space-y-1">
-                {section.items.map((item) => {
-                  const isActive = pathname === item.href || 
+                {section.items.map(item => {
+                  const isActive =
+                    pathname === item.href ||
                     (item.href !== '/dashboard' && pathname.startsWith(item.href))
-                  
+
                   return (
                     <li key={item.name}>
                       <Link
@@ -171,10 +232,7 @@ export function Sidebar() {
                           isActive && 'bg-sidebar-accent text-sidebar-primary'
                         )}
                       >
-                        <item.icon className={cn(
-                          "w-5 h-5",
-                          isActive && "text-sidebar-primary"
-                        )} />
+                        <item.icon className={cn('w-5 h-5', isActive && 'text-sidebar-primary')} />
                         {item.name}
                         {isActive && (
                           <span className="ml-auto w-1.5 h-1.5 rounded-full bg-sidebar-primary" />

@@ -2439,6 +2439,205 @@ export const getUserQuestProgress = tool({
 })
 
 /**
+ * Tool: Launch Mass DM Campaign
+ * Create and launch a marketing campaign to a targeted segment
+ */
+export const launchMassDM = tool({
+  description:
+    'Launch a mass DM marketing campaign to a segment of fans. Use when asked to "send blast", "launch campaign", "mass message", or similar. Returns estimated reach and revenue potential.',
+  parameters: z.object({
+    modelId: z.string().uuid().describe('ID of the model sending the campaign'),
+    campaignName: z.string().describe('Name for the campaign (e.g., "Valentine\'s PPV Blast")'),
+    message: z.string().describe('Message to send to fans'),
+    price: z.number().min(0).optional().describe('PPV price if sending paid content'),
+    segmentCriteria: z
+      .object({
+        status: z.enum(['active', 'expired', 'all']).optional(),
+        total_spend_min: z.number().optional(),
+        total_spend_max: z.number().optional(),
+        days_since_last_activity_min: z.number().optional(),
+        is_vip: z.boolean().optional(),
+      })
+      .describe('Criteria for targeting fans (e.g., {"status": "active", "total_spend_min": 500})'),
+  }),
+  execute: async ({ modelId, campaignName, message, price, segmentCriteria }) => {
+    try {
+      const supabase = await createAdminClient()
+
+      // Preview segment first
+      let query = supabase.from('fan_insights').select('fan_id').eq('model_id', modelId)
+
+      if (segmentCriteria.status === 'active') {
+        query = query.eq('is_subscribed', true)
+      } else if (segmentCriteria.status === 'expired') {
+        query = query.eq('is_subscribed', false)
+      }
+
+      if (segmentCriteria.total_spend_min) {
+        query = query.gte('total_spend', segmentCriteria.total_spend_min)
+      }
+
+      if (segmentCriteria.total_spend_max) {
+        query = query.lte('total_spend', segmentCriteria.total_spend_max)
+      }
+
+      if (segmentCriteria.is_vip !== undefined) {
+        query = query.eq('is_vip', segmentCriteria.is_vip)
+      }
+
+      const { data: fans, error: fansError } = await query
+
+      if (fansError) {
+        return { error: `Failed to fetch fans: ${fansError.message}` }
+      }
+
+      const fanCount = fans?.length || 0
+
+      if (fanCount === 0) {
+        return {
+          error: 'No fans match the criteria. Try adjusting the segment filters.',
+          estimatedReach: 0,
+        }
+      }
+
+      // Get agency_id from model
+      const { data: model } = await supabase
+        .from('models')
+        .select('agency_id')
+        .eq('id', modelId)
+        .single()
+
+      if (!model) {
+        return { error: 'Model not found' }
+      }
+
+      // Create draft campaign (user must confirm in UI)
+      const { data: campaign, error: campaignError } = await supabase
+        .from('marketing_campaigns')
+        .insert({
+          agency_id: model.agency_id,
+          model_id: modelId,
+          name: campaignName,
+          message_template: message,
+          price: price || 0,
+          status: 'draft',
+        })
+        .select()
+        .single()
+
+      if (campaignError) {
+        return { error: `Failed to create campaign: ${campaignError.message}` }
+      }
+
+      const estimatedRevenue = price
+        ? `$${(fanCount * price * 0.15).toFixed(0)} - $${(fanCount * price * 0.3).toFixed(0)}`
+        : 'N/A (no price set)'
+
+      return {
+        success: true,
+        campaignId: campaign.id,
+        campaignName: campaign.name,
+        estimatedReach: fanCount,
+        estimatedRevenue,
+        conversionRateAssumption: '15-30%',
+        status: 'draft',
+        message:
+          `✅ Campaign "${campaignName}" created!\n\n` +
+          `📊 Target Audience: ${fanCount.toLocaleString()} fans\n` +
+          `💰 Est. Revenue: ${estimatedRevenue}\n` +
+          `📝 Status: Draft (ready to launch)\n\n` +
+          `Visit the Marketing dashboard to review and launch the campaign.`,
+      }
+    } catch (error) {
+      console.error('launchMassDM error:', error)
+      return { error: 'Failed to launch mass DM campaign' }
+    }
+  },
+})
+
+/**
+ * Tool: Check Campaign Status
+ * Get current status and performance of a marketing campaign
+ */
+export const checkCampaignStatus = tool({
+  description:
+    'Check the status and performance of marketing campaigns. Use when asked "how is the blast doing", "campaign stats", "check campaign", or similar.',
+  parameters: z.object({
+    campaignId: z.string().uuid().optional().describe('Specific campaign ID to check'),
+    modelId: z.string().uuid().optional().describe('Model ID to filter campaigns'),
+  }),
+  execute: async ({ campaignId, modelId }) => {
+    try {
+      const supabase = await createAdminClient()
+
+      let query = supabase
+        .from('marketing_campaigns')
+        .select('*, model:models(id, name)')
+        .order('created_at', { ascending: false })
+
+      if (campaignId) {
+        query = query.eq('id', campaignId)
+      } else if (modelId) {
+        query = query.eq('model_id', modelId)
+      }
+
+      const { data: campaigns, error } = await query.limit(5)
+
+      if (error) {
+        return { error: `Failed to fetch campaigns: ${error.message}` }
+      }
+
+      if (!campaigns || campaigns.length === 0) {
+        return { message: 'No campaigns found.' }
+      }
+
+      const summary = campaigns.map(c => {
+        const stats = c.stats as { sent: number; opened: number; revenue: number; failed: number }
+        const total = stats.sent + stats.failed
+        const progress = total > 0 ? ((stats.sent / total) * 100).toFixed(1) : '0'
+
+        return {
+          id: c.id,
+          name: c.name,
+          model: (c.model as { name: string }).name,
+          status: c.status,
+          progress: `${stats.sent}/${total} sent (${progress}%)`,
+          revenue: `$${stats.revenue.toFixed(2)}`,
+          opened: stats.opened,
+          failed: stats.failed,
+          createdAt: c.created_at,
+        }
+      })
+
+      const activeCampaign = summary.find(c => c.status === 'running')
+
+      if (activeCampaign) {
+        return {
+          active: activeCampaign,
+          recent: summary.slice(0, 3),
+          message:
+            `📊 **Active Campaign: ${activeCampaign.name}**\n\n` +
+            `Progress: ${activeCampaign.progress}\n` +
+            `Revenue: ${activeCampaign.revenue}\n` +
+            `Opened: ${activeCampaign.opened}\n` +
+            `Failed: ${activeCampaign.failed}`,
+        }
+      }
+
+      return {
+        recent: summary,
+        message:
+          `No active campaigns running.\n\n**Recent Campaigns:**\n` +
+          summary.map(c => `- ${c.name}: ${c.status} (${c.revenue})`).join('\n'),
+      }
+    } catch (error) {
+      console.error('checkCampaignStatus error:', error)
+      return { error: 'Failed to check campaign status' }
+    }
+  },
+})
+
+/**
  * Export all tools as a single object for use in streamText
  */
 export const alfredTools = {
@@ -2471,4 +2670,6 @@ export const alfredTools = {
   create_flash_quest: createFlashQuestTool,
   get_leaderboard: getLeaderboardTool,
   get_quest_progress: getUserQuestProgress,
+  launch_mass_dm: launchMassDM,
+  check_campaign_status: checkCampaignStatus,
 }
