@@ -6,10 +6,7 @@ import { z } from 'zod'
 
 export const UUIDSchema = z.string().uuid('Invalid UUID format')
 
-export const DateSchema = z.string().refine(
-  (val) => !isNaN(Date.parse(val)),
-  'Invalid date format'
-)
+export const DateSchema = z.string().refine(val => !isNaN(Date.parse(val)), 'Invalid date format')
 
 export const PositiveNumberSchema = z.number().positive('Must be a positive number')
 
@@ -46,7 +43,8 @@ export const ExpenseUpdateSchema = ExpenseCreateSchema.partial()
 // ============================================
 
 export const MessageSendSchema = z.object({
-  content: z.string()
+  content: z
+    .string()
     .min(1, 'Message cannot be empty')
     .max(5000, 'Message too long (max 5000 characters)'),
   recipient_id: UUIDSchema.optional(),
@@ -55,17 +53,19 @@ export const MessageSendSchema = z.object({
 })
 
 export const MassMessageSchema = z.object({
-  content: z.string()
-    .min(1, 'Message cannot be empty')
-    .max(5000, 'Message too long'),
-  included_lists: z.object({
-    smart_list_uuids: z.array(UUIDSchema).optional(),
-    custom_list_uuids: z.array(UUIDSchema).optional(),
-  }).optional(),
-  excluded_lists: z.object({
-    smart_list_uuids: z.array(UUIDSchema).optional(),
-    custom_list_uuids: z.array(UUIDSchema).optional(),
-  }).optional(),
+  content: z.string().min(1, 'Message cannot be empty').max(5000, 'Message too long'),
+  included_lists: z
+    .object({
+      smart_list_uuids: z.array(UUIDSchema).optional(),
+      custom_list_uuids: z.array(UUIDSchema).optional(),
+    })
+    .optional(),
+  excluded_lists: z
+    .object({
+      smart_list_uuids: z.array(UUIDSchema).optional(),
+      custom_list_uuids: z.array(UUIDSchema).optional(),
+    })
+    .optional(),
   media_ids: z.array(z.string()).optional(),
   price: z.number().min(0).max(500).optional().nullable(),
   schedule_at: DateSchema.optional(),
@@ -76,11 +76,13 @@ export const MassMessageSchema = z.object({
 // ============================================
 
 export const AgencySettingsSchema = z.object({
-  name: z.string()
+  name: z
+    .string()
     .min(2, 'Agency name must be at least 2 characters')
     .max(100, 'Agency name too long'),
   tax_jurisdiction: z.enum(['RO', 'US', 'EE', 'FR']).optional(),
-  tax_rate: z.number()
+  tax_rate: z
+    .number()
     .min(0, 'Tax rate cannot be negative')
     .max(1, 'Tax rate cannot exceed 100%')
     .optional(),
@@ -127,7 +129,9 @@ export const QuestCreateSchema = z.object({
   task_type: z.string().min(1),
   xp_reward: z.number().int().positive().max(10000).optional().default(50),
   target_count: z.number().int().positive().optional(),
-  verification_type: z.enum(['MANUAL', 'API_MESSAGES', 'API_POSTS', 'API_REVENUE', 'API_SUBSCRIBERS']).optional(),
+  verification_type: z
+    .enum(['MANUAL', 'API_MESSAGES', 'API_POSTS', 'API_REVENUE', 'API_SUBSCRIBERS'])
+    .optional(),
   model_id: UUIDSchema.optional(),
   is_daily: z.boolean().optional().default(false),
 })
@@ -155,14 +159,11 @@ export const TrackingLinkCreateSchema = z.object({
 // VALIDATION HELPERS
 // ============================================
 
-export type ValidationResult<T> = 
+export type ValidationResult<T> =
   | { success: true; data: T }
   | { success: false; errors: z.ZodError }
 
-export function validateSchema<T>(
-  schema: z.ZodSchema<T>,
-  data: unknown
-): ValidationResult<T> {
+export function validateSchema<T>(schema: z.ZodSchema<T>, data: unknown): ValidationResult<T> {
   const result = schema.safeParse(data)
   if (result.success) {
     return { success: true, data: result.data }
@@ -171,9 +172,7 @@ export function validateSchema<T>(
 }
 
 export function formatZodErrors(error: z.ZodError): string {
-  return error.errors
-    .map((e) => `${e.path.join('.')}: ${e.message}`)
-    .join(', ')
+  return error.issues.map((e: z.ZodIssue) => `${e.path.join('.')}: ${e.message}`).join(', ')
 }
 
 /**
@@ -183,7 +182,7 @@ export function badRequestResponse(error: z.ZodError) {
   return new Response(
     JSON.stringify({
       error: 'Validation failed',
-      details: error.errors.map((e) => ({
+      details: error.issues.map((e: z.ZodIssue) => ({
         field: e.path.join('.'),
         message: e.message,
       })),
