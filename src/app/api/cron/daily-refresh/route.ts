@@ -102,11 +102,11 @@ export async function POST(request: NextRequest) {
           updateData.avatar_url = currentUser.avatarUrl
           updateData.bio = currentUser.bio
           // Use available counts from Fanvue API
-          updateData.subscribers_count = currentUser.fanCounts?.totalCount || 0
-          updateData.followers_count = currentUser.followingCount || 0
-          updateData.posts_count = currentUser.postsCount || 0
+          updateData.subscribers_count = currentUser.fanCounts?.subscribersCount || 0
+          updateData.followers_count = currentUser.fanCounts?.followersCount || 0
+          updateData.posts_count = 0 // Not available in API
           updateData.likes_count = currentUser.likesCount || 0
-          // Media counts may not be available in API response
+          // Media counts not available in API response
           updateData.image_count = 0
           updateData.video_count = 0
           updateData.audio_count = 0
