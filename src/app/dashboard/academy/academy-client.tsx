@@ -150,10 +150,10 @@ export default function AcademyClient({ isAdmin }: { isAdmin: boolean }) {
   const filteredArticles = articles
 
   return (
-    <div className="grid grid-cols-12 gap-6 min-h-[600px]">
+    <div className="grid grid-cols-12 gap-6 min-h-[600px] pb-20">
       {/* Sidebar */}
       <div className="col-span-12 lg:col-span-3">
-        <Card className="bg-zinc-900 border-zinc-800">
+        <Card className="bg-zinc-900 border-zinc-800 sticky top-20 h-[calc(100vh-8rem)] overflow-y-auto">
           <CardHeader className="pb-3">
             <CardTitle className="text-white text-lg">Categories</CardTitle>
           </CardHeader>

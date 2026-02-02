@@ -198,12 +198,20 @@ export default function ContentIntelClient({ contentData }: ContentIntelClientPr
             <ResponsiveContainer width="100%" height={250}>
               <BarChart data={performanceData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" />
-                <YAxis stroke="hsl(var(--muted-foreground))" />
+                <XAxis 
+                  dataKey="name" 
+                  stroke="#71717a" 
+                  tick={{ fill: '#e4e4e7', fontSize: 12 }}
+                />
+                <YAxis 
+                  stroke="#71717a" 
+                  tick={{ fill: '#e4e4e7', fontSize: 12 }}
+                />
                 <Tooltip 
                   contentStyle={{ 
-                    backgroundColor: 'hsl(var(--card))',
-                    border: '1px solid hsl(var(--border))',
+                    backgroundColor: '#18181b',
+                    border: '1px solid #27272a',
+                    color: '#fff',
                     borderRadius: '8px'
                   }}
                 />
@@ -236,7 +244,13 @@ export default function ContentIntelClient({ contentData }: ContentIntelClientPr
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
-                <Tooltip />
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: '#18181b',
+                    border: '1px solid #27272a',
+                    color: '#fff',
+                  }}
+                />
               </PieChart>
             </ResponsiveContainer>
           </CardContent>

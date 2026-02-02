@@ -20,8 +20,9 @@ export default async function PayrollPage() {
     .eq('id', user.id)
     .single()
   
-  if (!profile || !['owner', 'admin'].includes(profile.role)) {
-    redirect('/dashboard')
+  // Access Control: Only owners and admins can access payroll
+  if (!profile || !['owner', 'admin', 'grandmaster'].includes(profile.role)) {
+    redirect('/dashboard?error=payroll_access_denied')
   }
   
   return (

@@ -49,6 +49,17 @@ import {
 } from 'lucide-react'
 import { AggregatedSocialGrid } from '@/components/dashboard/social-grid'
 
+// Dark mode chart theme for Recharts
+const CHART_THEME = {
+  stroke: '#71717a', // zinc-500
+  tick: { fill: '#e4e4e7', fontSize: 12 }, // zinc-200
+  tooltip: {
+    backgroundColor: '#18181b', // zinc-900
+    border: '1px solid #27272a', // zinc-800
+    borderRadius: '8px',
+  }
+}
+
 type Profile = Database['public']['Tables']['profiles']['Row']
 type Agency = Database['public']['Tables']['agencies']['Row']
 type Model = Database['public']['Tables']['models']['Row']
@@ -308,11 +319,15 @@ export default function DashboardClient({ user, profile, agency, models, totalEx
                   axisLine={false}
                   tickMargin={8}
                   className="text-xs"
+                  stroke={CHART_THEME.stroke}
+                  tick={CHART_THEME.tick}
                 />
                 <YAxis 
                   tickLine={false} 
                   axisLine={false}
                   tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
+                  stroke={CHART_THEME.stroke}
+                  tick={CHART_THEME.tick}
                   className="text-xs"
                 />
                 <ChartTooltip content={<ChartTooltipContent />} />
@@ -353,11 +368,15 @@ export default function DashboardClient({ user, profile, agency, models, totalEx
                   tickLine={false} 
                   axisLine={false}
                   tickMargin={8}
+                  stroke={CHART_THEME.stroke}
+                  tick={CHART_THEME.tick}
                 />
                 <YAxis 
                   tickLine={false} 
                   axisLine={false}
                   tickFormatter={(value) => value.toLocaleString()}
+                  stroke={CHART_THEME.stroke}
+                  tick={CHART_THEME.tick}
                 />
                 <ChartTooltip content={<ChartTooltipContent />} />
                 <Line
@@ -401,11 +420,15 @@ export default function DashboardClient({ user, profile, agency, models, totalEx
                     tickLine={false} 
                     axisLine={false}
                     tickMargin={8}
+                    stroke={CHART_THEME.stroke}
+                    tick={CHART_THEME.tick}
                   />
                   <YAxis 
                     tickLine={false} 
                     axisLine={false}
                     tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
+                    stroke={CHART_THEME.stroke}
+                    tick={CHART_THEME.tick}
                   />
                   <ChartTooltip content={<ChartTooltipContent />} />
                   <Bar 

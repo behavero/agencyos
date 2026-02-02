@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { Bell, Search, Command } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -48,7 +49,7 @@ export function Header() {
         <Separator orientation="vertical" className="h-6" />
 
         {/* User */}
-        <div className="flex items-center gap-3">
+        <Link href="/dashboard/settings" className="flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer">
           <div className="hidden md:block text-right">
             <p className="text-sm font-medium text-foreground">Martin</p>
             <p className="text-xs text-muted-foreground">Grandmaster</p>
@@ -59,7 +60,7 @@ export function Header() {
               M
             </AvatarFallback>
           </Avatar>
-        </div>
+        </Link>
       </div>
     </header>
   )
