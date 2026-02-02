@@ -32,7 +32,13 @@ import {
   Plus,
   Eye,
   Users,
+  Link2,
+  CheckCircle,
+  ExternalLink,
 } from 'lucide-react'
+
+// Platforms that support OAuth connection
+const OAUTH_PLATFORMS = ['youtube'] as const
 
 // Platform configurations
 const PLATFORMS = [
@@ -92,6 +98,15 @@ interface SocialStat {
   date: string
 }
 
+interface SocialConnection {
+  id: string
+  platform: string
+  platform_username: string
+  is_active: boolean
+  last_sync_at: string | null
+  metadata: Record<string, unknown>
+}
+
 interface SocialGridProps {
   modelId: string
   modelName: string
@@ -101,7 +116,9 @@ export function SocialGrid({ modelId, modelName }: SocialGridProps) {
   const supabase = createClient()
   const [stats, setStats] = useState<Record<string, SocialStat | null>>({})
   const [previousStats, setPreviousStats] = useState<Record<string, SocialStat | null>>({})
+  const [connections, setConnections] = useState<Record<string, SocialConnection | null>>({})
   const [isLoading, setIsLoading] = useState(true)
+  const [isRefreshing, setIsRefreshing] = useState<string | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [selectedPlatform, setSelectedPlatform] = useState<string>('instagram')
   const [formData, setFormData] = useState({
@@ -110,7 +127,7 @@ export function SocialGrid({ modelId, modelName }: SocialGridProps) {
     likes: '',
   })
 
-  // Fetch stats
+  // Fetch stats and connections
   const fetchStats = async () => {
     setIsLoading(true)
     
@@ -131,18 +148,65 @@ export function SocialGrid({ modelId, modelName }: SocialGridProps) {
       .eq('model_id', modelId)
       .eq('date', yesterday)
 
+    // Fetch OAuth connections
+    const { data: connectionsData } = await supabase
+      .from('social_connections')
+      .select('*')
+      .eq('model_id', modelId)
+      .eq('is_active', true)
+
     // Map to platform-keyed objects
     const todayStats: Record<string, SocialStat | null> = {}
     const prevStats: Record<string, SocialStat | null> = {}
+    const conns: Record<string, SocialConnection | null> = {}
 
     PLATFORMS.forEach(p => {
       todayStats[p.id] = todayData?.find(s => s.platform === p.id) || null
       prevStats[p.id] = yesterdayData?.find(s => s.platform === p.id) || null
+      conns[p.id] = connectionsData?.find(c => c.platform === p.id) || null
     })
 
     setStats(todayStats)
     setPreviousStats(prevStats)
+    setConnections(conns)
     setIsLoading(false)
+  }
+
+  // Refresh YouTube stats from API
+  const handleRefreshYouTube = async (connectionId: string) => {
+    setIsRefreshing('youtube')
+    try {
+      const response = await fetch('/api/social/youtube/stats', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connectionId }),
+      })
+      
+      if (response.ok) {
+        toast.success('YouTube stats refreshed! 📺')
+        await fetchStats()
+      } else {
+        toast.error('Failed to refresh YouTube stats')
+      }
+    } catch (error) {
+      console.error(error)
+      toast.error('Failed to refresh stats')
+    } finally {
+      setIsRefreshing(null)
+    }
+  }
+
+  // Check if platform supports OAuth
+  const isOAuthPlatform = (platformId: string) => {
+    return OAUTH_PLATFORMS.includes(platformId as typeof OAUTH_PLATFORMS[number])
+  }
+
+  // Get OAuth login URL for a platform
+  const getOAuthUrl = (platformId: string) => {
+    if (platformId === 'youtube') {
+      return `/api/auth/social/youtube/login?modelId=${modelId}`
+    }
+    return null
   }
 
   useEffect(() => {
@@ -210,34 +274,54 @@ export function SocialGrid({ modelId, modelName }: SocialGridProps) {
           const Icon = platform.icon
           const stat = stats[platform.id]
           const prevStat = previousStats[platform.id]
+          const connection = connections[platform.id]
           const followersTrend = getTrend(stat?.followers || 0, prevStat?.followers || 0)
-          const viewsTrend = getTrend(stat?.views || 0, prevStat?.views || 0)
+          const isOAuth = isOAuthPlatform(platform.id)
+          const oauthUrl = getOAuthUrl(platform.id)
 
           return (
             <Card 
               key={platform.id}
               className={`bg-zinc-900 border-zinc-800 hover:border-zinc-600 transition-all cursor-pointer group`}
-              onClick={() => handleOpenDialog(platform.id)}
+              onClick={() => !isOAuth && handleOpenDialog(platform.id)}
             >
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                   <div className={`w-10 h-10 rounded-lg ${platform.bgColor} ${platform.borderColor} border flex items-center justify-center ${platform.textColor}`}>
                     <Icon />
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleOpenDialog(platform.id)
-                    }}
-                  >
-                    <Plus className="w-4 h-4" />
-                  </Button>
+                  {/* Show connection status for OAuth platforms */}
+                  {isOAuth && connection ? (
+                    <Badge variant="outline" className="text-xs text-green-400 border-green-500/30 gap-1">
+                      <CheckCircle className="w-3 h-3" />
+                      Connected
+                    </Badge>
+                  ) : isOAuth ? (
+                    <Badge variant="outline" className="text-xs text-zinc-400 border-zinc-600 gap-1">
+                      <Link2 className="w-3 h-3" />
+                      Not linked
+                    </Badge>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleOpenDialog(platform.id)
+                      }}
+                    >
+                      <Plus className="w-4 h-4" />
+                    </Button>
+                  )}
                 </div>
                 <CardTitle className="text-sm text-zinc-400 mt-2">
                   {platform.name}
+                  {connection && (
+                    <span className="block text-xs text-zinc-500 font-normal mt-0.5">
+                      @{connection.platform_username}
+                    </span>
+                  )}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -246,7 +330,93 @@ export function SocialGrid({ modelId, modelName }: SocialGridProps) {
                     <div className="h-8 bg-zinc-800 rounded animate-pulse" />
                     <div className="h-4 bg-zinc-800 rounded w-1/2 animate-pulse" />
                   </div>
+                ) : isOAuth && connection && stat ? (
+                  // Connected OAuth platform with stats
+                  <div className="space-y-3">
+                    {/* Followers/Subscribers */}
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Users className="w-4 h-4 text-zinc-500" />
+                        <span className="text-2xl font-bold text-white">
+                          {formatNumber(stat.followers)}
+                        </span>
+                      </div>
+                      {followersTrend.value !== 0 && (
+                        <Badge 
+                          variant="outline" 
+                          className={`mt-1 text-xs ${
+                            followersTrend.isPositive 
+                              ? 'text-green-400 border-green-500/30' 
+                              : 'text-red-400 border-red-500/30'
+                          }`}
+                        >
+                          {followersTrend.isPositive ? (
+                            <TrendingUp className="w-3 h-3 mr-1" />
+                          ) : (
+                            <TrendingDown className="w-3 h-3 mr-1" />
+                          )}
+                          {followersTrend.isPositive ? '+' : ''}{formatNumber(followersTrend.value)}
+                        </Badge>
+                      )}
+                    </div>
+
+                    {/* Views */}
+                    <div className="flex items-center gap-2 text-sm text-zinc-400">
+                      <Eye className="w-4 h-4" />
+                      <span>{formatNumber(stat.views)} total views</span>
+                    </div>
+
+                    {/* Refresh button */}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full text-xs gap-1"
+                      disabled={isRefreshing === platform.id}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleRefreshYouTube(connection.id)
+                      }}
+                    >
+                      <RefreshCw className={`w-3 h-3 ${isRefreshing === platform.id ? 'animate-spin' : ''}`} />
+                      {isRefreshing === platform.id ? 'Refreshing...' : 'Refresh Stats'}
+                    </Button>
+                  </div>
+                ) : isOAuth && connection ? (
+                  // Connected but no stats yet
+                  <div className="text-center py-2">
+                    <p className="text-sm text-zinc-500 mb-2">Loading stats...</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs gap-1"
+                      disabled={isRefreshing === platform.id}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleRefreshYouTube(connection.id)
+                      }}
+                    >
+                      <RefreshCw className={`w-3 h-3 ${isRefreshing === platform.id ? 'animate-spin' : ''}`} />
+                      Fetch Stats
+                    </Button>
+                  </div>
+                ) : isOAuth && oauthUrl ? (
+                  // OAuth platform not connected - show connect button
+                  <div className="text-center py-4">
+                    <p className="text-sm text-zinc-500 mb-3">Connect to track automatically</p>
+                    <Button
+                      asChild
+                      variant="outline"
+                      size="sm"
+                      className={`gap-2 ${platform.textColor} ${platform.borderColor} hover:bg-zinc-800`}
+                    >
+                      <a href={oauthUrl}>
+                        <ExternalLink className="w-4 h-4" />
+                        Connect {platform.name}
+                      </a>
+                    </Button>
+                  </div>
                 ) : stat ? (
+                  // Manual platform with stats
                   <div className="space-y-3">
                     {/* Followers */}
                     <div>
@@ -282,6 +452,7 @@ export function SocialGrid({ modelId, modelName }: SocialGridProps) {
                     </div>
                   </div>
                 ) : (
+                  // No stats - show add button for manual platforms
                   <div className="text-center py-4">
                     <p className="text-sm text-zinc-500 mb-2">No data yet</p>
                     <Button 
