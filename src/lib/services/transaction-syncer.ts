@@ -69,13 +69,13 @@ export async function syncModelTransactions(modelId: string): Promise<SyncResult
     let cursor: string | null = null
     let hasMore = true
     let pageCount = 0
-    const maxPages = 50 // Safety limit (100 per page = 5000 transactions max)
+    const maxPages = 100 // Safety limit (50 per page = 5000 transactions max)
 
     while (hasMore && pageCount < maxPages) {
       try {
         const response = await fanvueClient.getEarnings({
-          startDate: startDate.toISOString().split('T')[0],
-          size: 100,
+          startDate: startDate.toISOString(), // Full ISO datetime: 2020-01-01T00:00:00.000Z
+          size: 50, // Max allowed by Fanvue API (1-50)
           cursor: cursor || undefined,
         })
 
