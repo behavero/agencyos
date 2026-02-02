@@ -521,6 +521,80 @@ export const analyzeSocialProfile = tool({
 })
 
 /**
+ * Tool: Get Watched Accounts (Ghost Tracker)
+ * Fetches competitor and slave account data
+ */
+export const getWatchedAccounts = tool({
+  description: 'Get competitor and slave account tracking data. Use when asked about competitors, slave accounts, ghost network, or tracked profiles.',
+  parameters: z.object({
+    accountType: z.enum(['all', 'competitor', 'slave', 'backup', 'reference']).optional().describe('Filter by account type'),
+  }),
+  execute: async ({ accountType }) => {
+    try {
+      const supabase = await createAdminClient()
+      
+      let query = supabase
+        .from('watched_accounts')
+        .select('*')
+        .eq('is_active', true)
+        .order('last_scanned_at', { ascending: false })
+      
+      if (accountType && accountType !== 'all') {
+        query = query.eq('account_type', accountType)
+      }
+      
+      const { data: accounts } = await query.limit(20)
+      
+      if (!accounts || accounts.length === 0) {
+        return { 
+          message: 'No watched accounts found.',
+          suggestion: 'Add competitors or slave accounts via Ghost Tracker page.'
+        }
+      }
+      
+      // Calculate totals
+      const competitors = accounts.filter(a => a.account_type === 'competitor')
+      const slaves = accounts.filter(a => a.account_type === 'slave')
+      
+      const totalSlaveFollowers = slaves.reduce((sum, a) => {
+        const stats = a.last_stats as Record<string, unknown> | null
+        return sum + (Number(stats?.followers) || 0)
+      }, 0)
+      
+      const totalCompetitorFollowers = competitors.reduce((sum, a) => {
+        const stats = a.last_stats as Record<string, unknown> | null
+        return sum + (Number(stats?.followers) || 0)
+      }, 0)
+      
+      return {
+        summary: {
+          totalWatched: accounts.length,
+          competitors: competitors.length,
+          slaves: slaves.length,
+          slaveNetworkReach: totalSlaveFollowers.toLocaleString(),
+          competitorFollowers: totalCompetitorFollowers.toLocaleString(),
+        },
+        accounts: accounts.slice(0, 10).map(a => {
+          const stats = a.last_stats as Record<string, unknown> | null
+          return {
+            username: `@${a.username}`,
+            platform: a.platform,
+            type: a.account_type,
+            followers: stats?.followers || 'Unknown',
+            posts: stats?.postsCount || 'Unknown',
+            lastScanned: a.last_scanned_at ? new Date(a.last_scanned_at).toLocaleDateString() : 'Never',
+            notes: a.notes || null,
+          }
+        }),
+      }
+    } catch (error) {
+      console.error('getWatchedAccounts error:', error)
+      return { error: 'Failed to fetch watched accounts' }
+    }
+  },
+})
+
+/**
  * Export all tools as a single object for use in streamText
  */
 export const alfredTools = {
@@ -531,4 +605,5 @@ export const alfredTools = {
   get_payroll_overview: getPayrollOverview,
   scrape_web: scrapeWeb,
   analyze_social_profile: analyzeSocialProfile,
+  get_watched_accounts: getWatchedAccounts,
 }

@@ -18,6 +18,7 @@ import {
   Image,
   Megaphone,
   Banknote,
+  Ghost,
 } from 'lucide-react'
 
 const navigation = [
@@ -34,6 +35,7 @@ const navigation = [
     items: [
       { name: 'Creators', href: '/dashboard/creator-management', icon: Crown },
       { name: 'CRM', href: '/dashboard/crm', icon: Briefcase },
+      { name: 'Ghost Tracker', href: '/dashboard/competitors', icon: Ghost },
       { name: 'Quests', href: '/dashboard/quests', icon: Target },
       { name: 'Content', href: '/dashboard/content', icon: Sparkles },
       { name: 'Vault', href: '/dashboard/content/vault', icon: Image },
