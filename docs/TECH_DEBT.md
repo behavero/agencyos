@@ -8,23 +8,24 @@ This document tracks known issues that need to be addressed in future sprints.
 
 ### TypeScript Errors
 
-**Status:** ~60 errors (CI set to `continue-on-error: true`)
+**Status:** ✅ Lint passing (0 errors), ~40 type errors remaining (CI set to `continue-on-error: true`)
 
 **Root Causes:**
 
-1. **Zod v4 Breaking Changes**
+1. **Zod v4 Breaking Changes** ✅ FIXED
    - Files: Multiple API routes
    - Issue: `.errors` property no longer exists on `ZodError`
-   - Fix: Use `.format()` or `.flatten()` instead
+   - Fix: ✅ Updated all API routes to use `.format()`
+   - Also fixed: `z.record()` now requires key type: `z.record(z.string(), z.unknown())`
 
    ```typescript
    // Before (Zod v3)
    error.errors
+   z.record(z.unknown())
 
-   // After (Zod v4)
+   // After (Zod v4) ✅ FIXED
    error.format()
-   // or
-   error.flatten().fieldErrors
+   z.record(z.string(), z.unknown())
    ```
 
 2. **Vercel AI SDK Breaking Changes**
@@ -80,7 +81,7 @@ This document tracks known issues that need to be addressed in future sprints.
 
 ### Phase 1: Enable Strict CI
 
-1. [ ] Fix Zod v4 errors (30 min)
+1. [x] Fix Zod v4 errors (✅ Completed)
 2. [ ] Update Vercel AI SDK usage (1 hr)
 3. [ ] Add missing type annotations (30 min)
 4. [ ] Regenerate database types (5 min)
