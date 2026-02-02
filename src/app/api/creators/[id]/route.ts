@@ -37,12 +37,10 @@ export async function DELETE(
     }
 
     return NextResponse.json({ success: true })
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Delete Creator] Error:', error)
-    return NextResponse.json(
-      { error: error.message || 'Failed to delete creator' },
-      { status: 500 }
-    )
+    const errorMessage = error instanceof Error ? error.message : 'Failed to delete creator'
+    return NextResponse.json({ error: errorMessage }, { status: 500 })
   }
 }
 
@@ -89,11 +87,9 @@ export async function GET(
       ...model,
       stats,
     })
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Get Creator] Error:', error)
-    return NextResponse.json(
-      { error: error.message || 'Failed to get creator' },
-      { status: 500 }
-    )
+    const errorMessage = error instanceof Error ? error.message : 'Failed to get creator'
+    return NextResponse.json({ error: errorMessage }, { status: 500 })
   }
 }

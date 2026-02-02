@@ -10,6 +10,8 @@ import { Leaf, Loader2, CheckCircle2, XCircle } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import Link from 'next/link'
 
+export const dynamic = 'force-dynamic'
+
 export default function JoinPage() {
   const router = useRouter()
   const searchParams = useSearchParams()

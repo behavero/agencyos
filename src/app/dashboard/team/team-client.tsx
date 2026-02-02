@@ -100,13 +100,12 @@ export default function TeamClient({ teamMembers: initialMembers, agencyId }: Te
 
   const openSalaryEditor = (member: Profile) => {
     setSelectedMember(member)
-    // @ts-expect-error - These fields exist but aren't in the generated types yet
     setSalaryForm({
-      // @ts-expect-error
+      // @ts-expect-error - base_salary field exists in database but not in generated types
       base_salary: member.base_salary || 0,
-      // @ts-expect-error
+      // @ts-expect-error - commission_rate field exists in database but not in generated types
       commission_rate: (member.commission_rate || 0) * 100, // Convert to percentage for display
-      // @ts-expect-error
+      // @ts-expect-error - payment_method field exists in database but not in generated types
       payment_method: member.payment_method || 'bank_transfer',
     })
     setIsEditSalaryOpen(true)

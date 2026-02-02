@@ -101,14 +101,14 @@ export async function POST(
     const earningsStartDate = '2020-01-01T00:00:00Z' // Fanvue launched ~2021, so this captures everything
     const earningsEndDate = new Date().toISOString() // Now in ISO 8601 format
     
-    let allEarnings: any[] = []
+    let allEarnings: Record<string, unknown>[] = []
     let earningsCursor: string | null = null
     let earningsPageCount = 0
     const MAX_EARNINGS_PAGES = 200 // Increased limit for accounts with many transactions
 
     try {
       do {
-        const params: any = { 
+        const params: Record<string, string | number> = { 
           startDate: earningsStartDate,
           endDate: earningsEndDate,
           size: 50, // Max allowed by API (1-50)
@@ -134,9 +134,10 @@ export async function POST(
       } while (earningsCursor && earningsPageCount < MAX_EARNINGS_PAGES)
       
       console.log(`[Stats API] Fetched ${allEarnings.length} total earnings transactions across ${earningsPageCount} pages`)
-    } catch (e: any) {
-      console.error('[Stats API] Earnings error:', e.message)
-      console.error('[Stats API] Earnings error details:', e.statusCode, e.response)
+    } catch (e: unknown) {
+      const error = e as { message?: string; statusCode?: number; response?: unknown }
+      console.error('[Stats API] Earnings error:', error.message)
+      console.error('[Stats API] Earnings error details:', error.statusCode, error.response)
     }
 
     // Extract values from user info (most reliable source)
@@ -149,7 +150,7 @@ export async function POST(
     let totalRevenue = 0
     if (allEarnings.length > 0) {
       // Sum up gross earnings from all transactions (amounts are in cents)
-      const totalCents = allEarnings.reduce((sum: number, item: any) => sum + (item.gross || 0), 0)
+      const totalCents = allEarnings.reduce((sum: number, item: Record<string, unknown>) => sum + ((item.gross as number) || 0), 0)
       // Convert cents to dollars
       totalRevenue = totalCents / 100
       console.log('[Stats API] Earnings: Found', allEarnings.length, 'transactions, total cents:', totalCents, 'dollars:', totalRevenue)
@@ -219,11 +220,9 @@ export async function POST(
       }
     })
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Stats API] Error:', error)
-    return NextResponse.json(
-      { error: error.message || 'Failed to fetch stats' },
-      { status: 500 }
-    )
+    const errorMessage = error instanceof Error ? error.message : 'Failed to fetch stats'
+    return NextResponse.json({ error: errorMessage }, { status: 500 })
   }
 }

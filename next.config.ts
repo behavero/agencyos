@@ -3,6 +3,9 @@ import type { NextConfig } from 'next'
 const nextConfig: NextConfig = {
   /* config options here */
 
+  // Output mode - standalone for serverless deployment
+  output: 'standalone',
+
   // Security headers
   async headers() {
     return [

@@ -2,7 +2,7 @@ import React from 'react'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/server'
-import { renderToStream } from '@react-pdf/renderer'
+import { renderToStream, type DocumentProps } from '@react-pdf/renderer'
 import { StatementPDF } from '@/components/finance/statement-pdf'
 
 /**
@@ -105,7 +105,7 @@ export async function GET(
 
     // Generate PDF
     const pdfStream = await renderToStream(
-      React.createElement(StatementPDF, { paycheck, period, runId })
+      React.createElement(StatementPDF, { paycheck, period, runId }) as unknown as React.ReactElement<DocumentProps>
     )
 
     // Convert stream to buffer
