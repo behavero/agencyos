@@ -59,6 +59,7 @@ import {
   Globe,
 } from 'lucide-react'
 import { AggregatedSocialGrid } from '@/components/dashboard/social-grid'
+import { BestSellersWidget } from '@/components/dashboard/best-sellers-widget'
 
 // Dark mode chart theme for Recharts
 const CHART_THEME = {
@@ -599,6 +600,25 @@ export default function DashboardClient({
                 </div>
               </CardContent>
             </Card>
+          </div>
+
+          {/* Best Sellers Widget Row */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">
+              {/* Placeholder for future widget - Alfred's Daily Brief */}
+              <Card className="glass h-full">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">🤖 Alfred's Daily Brief</CardTitle>
+                  <CardDescription>AI-powered insights and recommendations</CardDescription>
+                </CardHeader>
+                <CardContent className="py-8 text-center text-muted-foreground">
+                  <p className="text-sm">Coming soon: AI-powered daily briefings</p>
+                </CardContent>
+              </Card>
+            </div>
+            <div>
+              <BestSellersWidget />
+            </div>
           </div>
 
           {/* Models Grid */}

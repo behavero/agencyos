@@ -40,8 +40,12 @@ import {
   List,
   Eye,
   Lock,
+  TrendingUp,
+  Flame,
+  RefreshCcw,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { getPerformanceColor } from '@/lib/services/asset-attribution'
 
 interface ContentAsset {
   id: string
@@ -58,6 +62,14 @@ interface ContentAsset {
   model_id: string | null
   models?: { id: string; name: string } | null
   created_at: string
+  // Phase 50: Performance metrics
+  performance?: {
+    total_revenue: number
+    conversion_rate: number
+    times_sent: number
+    times_unlocked: number
+    performance_rating: string
+  }
 }
 
 interface Model {
@@ -81,6 +93,8 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [searchQuery, setSearchQuery] = useState('')
   const [filterType, setFilterType] = useState<string>('all')
+  const [sortBy, setSortBy] = useState<string>('recent')
+  const [isCalculatingROI, setIsCalculatingROI] = useState(false)
 
   const [editForm, setEditForm] = useState<{
     title: string
@@ -132,9 +146,9 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
         }
 
         // Get public URL
-        const { data: { publicUrl } } = supabase.storage
-          .from('agency-assets')
-          .getPublicUrl(fileName)
+        const {
+          data: { publicUrl },
+        } = supabase.storage.from('agency-assets').getPublicUrl(fileName)
 
         // Insert into content_assets table
         const { data: asset, error: insertError } = await supabase
@@ -212,7 +226,10 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
         description: editForm.description,
         price: editForm.price,
         content_type: editForm.content_type,
-        tags: editForm.tags.split(',').map(t => t.trim()).filter(Boolean),
+        tags: editForm.tags
+          .split(',')
+          .map(t => t.trim())
+          .filter(Boolean),
         model_id: editForm.model_id || null,
         updated_at: new Date().toISOString(),
       })
@@ -232,7 +249,10 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
               description: editForm.description,
               price: editForm.price,
               content_type: editForm.content_type as any,
-              tags: editForm.tags.split(',').map(t => t.trim()).filter(Boolean),
+              tags: editForm.tags
+                .split(',')
+                .map(t => t.trim())
+                .filter(Boolean),
               model_id: editForm.model_id || null,
             }
           : a
@@ -250,16 +270,11 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
     // Delete from storage
     const fileName = asset.url.split('/').pop()
     if (fileName) {
-      await supabase.storage
-        .from('agency-assets')
-        .remove([`${agencyId}/${fileName}`])
+      await supabase.storage.from('agency-assets').remove([`${agencyId}/${fileName}`])
     }
 
     // Delete from database
-    const { error } = await supabase
-      .from('content_assets')
-      .delete()
-      .eq('id', asset.id)
+    const { error } = await supabase.from('content_assets').delete().eq('id', asset.id)
 
     if (error) {
       toast.error('Failed to delete asset')
@@ -270,23 +285,93 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
     toast.success('Asset deleted')
   }
 
-  // Filter assets
-  const filteredAssets = assets.filter(asset => {
-    const matchesSearch = 
-      asset.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      asset.file_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      asset.tags?.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()))
-    
-    const matchesFilter = filterType === 'all' || asset.file_type === filterType
+  // Phase 50: Calculate ROI for assets
+  const handleCalculateROI = async () => {
+    setIsCalculatingROI(true)
+    try {
+      const response = await fetch('/api/vault/calculate-roi', {
+        method: 'POST',
+      })
+      const result = await response.json()
 
-    return matchesSearch && matchesFilter
-  })
+      if (result.success) {
+        toast.success(`Calculated ROI for ${result.assetsUpdated} assets`)
+        // Refresh performance data
+        await refreshPerformanceData()
+      } else {
+        toast.error(result.error || 'Failed to calculate ROI')
+      }
+    } catch (error) {
+      toast.error('Failed to calculate ROI')
+    } finally {
+      setIsCalculatingROI(false)
+    }
+  }
+
+  // Fetch performance data for all assets
+  const refreshPerformanceData = async () => {
+    try {
+      const response = await fetch(`/api/vault/performance?sortBy=${sortBy}`)
+      const result = await response.json()
+
+      if (result.success && result.data) {
+        // Merge performance data with assets
+        setAssets(prev =>
+          prev.map(asset => {
+            const perf = result.data.find((p: any) => p.assetId === asset.id)
+            if (perf) {
+              return {
+                ...asset,
+                performance: {
+                  total_revenue: perf.totalRevenue,
+                  conversion_rate: perf.conversionRate,
+                  times_sent: perf.timesSent,
+                  times_unlocked: perf.timesUnlocked,
+                  performance_rating: perf.performanceRating,
+                },
+              }
+            }
+            return asset
+          })
+        )
+      }
+    } catch (error) {
+      console.error('Failed to fetch performance data:', error)
+    }
+  }
+
+  // Filter and sort assets
+  const filteredAssets = assets
+    .filter(asset => {
+      const matchesSearch =
+        asset.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        asset.file_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        asset.tags?.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()))
+
+      const matchesFilter = filterType === 'all' || asset.file_type === filterType
+
+      return matchesSearch && matchesFilter
+    })
+    .sort((a, b) => {
+      switch (sortBy) {
+        case 'revenue':
+          return (b.performance?.total_revenue || 0) - (a.performance?.total_revenue || 0)
+        case 'conversion':
+          return (b.performance?.conversion_rate || 0) - (a.performance?.conversion_rate || 0)
+        case 'recent':
+        default:
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      }
+    })
 
   const getFileIcon = (type: string) => {
     switch (type) {
-      case 'video': return <Video className="w-5 h-5" />
-      case 'audio': return <Music className="w-5 h-5" />
-      default: return <ImageIcon className="w-5 h-5" />
+      case 'video':
+        return <Video className="w-5 h-5" />
+      case 'audio':
+        return <Music className="w-5 h-5" />
+      default:
+        return <ImageIcon className="w-5 h-5" />
     }
   }
 
@@ -308,10 +393,12 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
       </div>
 
       {/* Upload Zone */}
-      <Card className={cn(
-        "border-2 border-dashed transition-colors",
-        isDragging ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
-      )}>
+      <Card
+        className={cn(
+          'border-2 border-dashed transition-colors',
+          isDragging ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
+        )}
+      >
         <CardContent className="py-8">
           <div
             onDragOver={handleDragOver}
@@ -344,7 +431,7 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
               multiple
               accept="image/*,video/*,audio/*"
               className="hidden"
-              onChange={(e) => handleFileUpload(e.target.files)}
+              onChange={e => handleFileUpload(e.target.files)}
             />
           </div>
         </CardContent>
@@ -357,7 +444,7 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
           <Input
             placeholder="Search assets..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={e => setSearchQuery(e.target.value)}
             className="pl-9"
           />
         </div>
@@ -373,6 +460,36 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
             <SelectItem value="audio">Audio</SelectItem>
           </SelectContent>
         </Select>
+        <Select value={sortBy} onValueChange={setSortBy}>
+          <SelectTrigger className="w-40">
+            <TrendingUp className="w-4 h-4 mr-2" />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="recent">Most Recent</SelectItem>
+            <SelectItem value="revenue">
+              <div className="flex items-center gap-2">
+                <DollarSign className="w-3 h-3" />
+                Revenue
+              </div>
+            </SelectItem>
+            <SelectItem value="conversion">
+              <div className="flex items-center gap-2">
+                <Flame className="w-3 h-3" />
+                Conversion
+              </div>
+            </SelectItem>
+          </SelectContent>
+        </Select>
+        <Button
+          variant="outline"
+          onClick={handleCalculateROI}
+          disabled={isCalculatingROI}
+          className="gap-2"
+        >
+          <RefreshCcw className={cn('w-4 h-4', isCalculatingROI && 'animate-spin')} />
+          {isCalculatingROI ? 'Calculating...' : 'Calculate ROI'}
+        </Button>
         <div className="flex border rounded-lg">
           <Button
             variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
@@ -397,20 +514,20 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
           <CardContent className="py-16 text-center">
             <ImageIcon className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
             <h3 className="text-lg font-medium mb-2">No assets yet</h3>
-            <p className="text-muted-foreground">
-              Upload your first content to get started
-            </p>
+            <p className="text-muted-foreground">Upload your first content to get started</p>
           </CardContent>
         </Card>
       ) : (
-        <div className={cn(
-          viewMode === 'grid' 
-            ? "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4"
-            : "space-y-2"
-        )}>
-          {filteredAssets.map((asset) => (
-            <Card 
-              key={asset.id} 
+        <div
+          className={cn(
+            viewMode === 'grid'
+              ? 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4'
+              : 'space-y-2'
+          )}
+        >
+          {filteredAssets.map(asset => (
+            <Card
+              key={asset.id}
               className="group overflow-hidden hover:border-primary/30 transition-colors cursor-pointer"
               onClick={() => openEditDialog(asset)}
             >
@@ -429,8 +546,33 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
                         {getFileIcon(asset.file_type)}
                       </div>
                     )}
-                    
+
                     {/* Overlays */}
+                    <div className="absolute top-2 left-2 flex flex-col gap-1">
+                      {asset.performance && asset.performance.total_revenue > 0 && (
+                        <Badge className="bg-emerald-500/90 hover:bg-emerald-500">
+                          <DollarSign className="w-3 h-3 mr-0.5" />$
+                          {asset.performance.total_revenue.toFixed(0)}
+                        </Badge>
+                      )}
+                      {asset.performance && asset.performance.conversion_rate > 0 && (
+                        <Badge
+                          className={cn(
+                            'text-white',
+                            asset.performance.conversion_rate >= 50
+                              ? 'bg-red-500/90 hover:bg-red-500'
+                              : asset.performance.conversion_rate >= 20
+                                ? 'bg-green-500/90 hover:bg-green-500'
+                                : asset.performance.conversion_rate >= 10
+                                  ? 'bg-yellow-500/90 hover:bg-yellow-500'
+                                  : 'bg-gray-500/90 hover:bg-gray-500'
+                          )}
+                        >
+                          {asset.performance.conversion_rate >= 50 && '🔥 '}
+                          {asset.performance.conversion_rate.toFixed(0)}%
+                        </Badge>
+                      )}
+                    </div>
                     <div className="absolute top-2 right-2 flex flex-col gap-1">
                       {asset.price > 0 && (
                         <Badge className="bg-green-500/90 hover:bg-green-500">
@@ -448,19 +590,45 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
 
                     {/* Hover actions */}
                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                      <Button size="icon" variant="secondary" onClick={(e) => { e.stopPropagation(); openEditDialog(asset) }}>
+                      <Button
+                        size="icon"
+                        variant="secondary"
+                        onClick={e => {
+                          e.stopPropagation()
+                          openEditDialog(asset)
+                        }}
+                      >
                         <Edit className="w-4 h-4" />
                       </Button>
-                      <Button size="icon" variant="destructive" onClick={(e) => { e.stopPropagation(); handleDelete(asset) }}>
+                      <Button
+                        size="icon"
+                        variant="destructive"
+                        onClick={e => {
+                          e.stopPropagation()
+                          handleDelete(asset)
+                        }}
+                      >
                         <Trash2 className="w-4 h-4" />
                       </Button>
                     </div>
                   </div>
                   <CardContent className="p-3">
                     <p className="font-medium text-sm truncate">{asset.title || asset.file_name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Used {asset.usage_count}x
-                    </p>
+                    <div className="flex items-center justify-between mt-1">
+                      <p className="text-xs text-muted-foreground">
+                        {asset.performance ? (
+                          <>
+                            {asset.performance.times_sent}sent / {asset.performance.times_unlocked}
+                            sold
+                          </>
+                        ) : (
+                          <>Used {asset.usage_count}x</>
+                        )}
+                      </p>
+                      {asset.performance && asset.performance.performance_rating && (
+                        <span className="text-xs">{asset.performance.performance_rating}</span>
+                      )}
+                    </div>
                   </CardContent>
                 </>
               ) : (
@@ -475,16 +643,20 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
                   <div className="flex-1 min-w-0">
                     <p className="font-medium truncate">{asset.title || asset.file_name}</p>
                     <p className="text-sm text-muted-foreground">
-                      {asset.file_type} • Used {asset.usage_count}x
+                      {asset.file_type} •{' '}
+                      {asset.performance ? (
+                        <>
+                          ${asset.performance.total_revenue.toFixed(0)} revenue •{' '}
+                          {asset.performance.conversion_rate.toFixed(1)}% conversion
+                        </>
+                      ) : (
+                        <>Used {asset.usage_count}x</>
+                      )}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    {asset.price > 0 && (
-                      <Badge className="bg-green-500/90">${asset.price}</Badge>
-                    )}
-                    {asset.content_type === 'ppv' && (
-                      <Badge variant="secondary">PPV</Badge>
-                    )}
+                    {asset.price > 0 && <Badge className="bg-green-500/90">${asset.price}</Badge>}
+                    {asset.content_type === 'ppv' && <Badge variant="secondary">PPV</Badge>}
                   </div>
                 </CardContent>
               )}
@@ -498,9 +670,7 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit Asset</DialogTitle>
-            <DialogDescription>
-              Update the metadata and pricing for this content
-            </DialogDescription>
+            <DialogDescription>Update the metadata and pricing for this content</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
@@ -508,11 +678,7 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
             {selectedAsset && (
               <div className="aspect-video rounded-lg bg-muted overflow-hidden">
                 {selectedAsset.file_type === 'image' ? (
-                  <img
-                    src={selectedAsset.url}
-                    alt=""
-                    className="w-full h-full object-contain"
-                  />
+                  <img src={selectedAsset.url} alt="" className="w-full h-full object-contain" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center">
                     {getFileIcon(selectedAsset.file_type)}
@@ -526,7 +692,7 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
               <Label>Title</Label>
               <Input
                 value={editForm.title}
-                onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                onChange={e => setEditForm({ ...editForm, title: e.target.value })}
                 placeholder="Asset title"
               />
             </div>
@@ -535,7 +701,7 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
               <Label>Description</Label>
               <Textarea
                 value={editForm.description}
-                onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                onChange={e => setEditForm({ ...editForm, description: e.target.value })}
                 placeholder="Optional description"
                 rows={2}
               />
@@ -549,14 +715,16 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
                   min="0"
                   step="0.01"
                   value={editForm.price}
-                  onChange={(e) => setEditForm({ ...editForm, price: parseFloat(e.target.value) || 0 })}
+                  onChange={e =>
+                    setEditForm({ ...editForm, price: parseFloat(e.target.value) || 0 })
+                  }
                 />
               </div>
               <div className="space-y-2">
                 <Label>Content Type</Label>
                 <Select
                   value={editForm.content_type}
-                  onValueChange={(v) => setEditForm({ ...editForm, content_type: v as any })}
+                  onValueChange={v => setEditForm({ ...editForm, content_type: v as any })}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -575,15 +743,17 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
               <Label>Model</Label>
               <Select
                 value={editForm.model_id}
-                onValueChange={(v) => setEditForm({ ...editForm, model_id: v })}
+                onValueChange={v => setEditForm({ ...editForm, model_id: v })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select model..." />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">No model</SelectItem>
-                  {models.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                  {models.map(m => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.name}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -593,7 +763,7 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
               <Label>Tags (comma-separated)</Label>
               <Input
                 value={editForm.tags}
-                onChange={(e) => setEditForm({ ...editForm, tags: e.target.value })}
+                onChange={e => setEditForm({ ...editForm, tags: e.target.value })}
                 placeholder="sexy, gym, selfie"
               />
             </div>

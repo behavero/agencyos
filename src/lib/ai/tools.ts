@@ -2585,6 +2585,136 @@ export const launchMassDM = tool({
 })
 
 /**
+ * Tool: Find Best Content
+ * Phase 50 - Recommend high-performing content assets based on ROI and conversion rates
+ */
+export const findBestContentTool = tool({
+  description:
+    'Find the best performing content assets to send to fans. Use when asked "what should I send", "best content", "high converting content", "top sellers", "what to send to a whale", or similar content recommendation queries.',
+  parameters: z.object({
+    limit: z.number().default(5).describe('Number of top assets to return'),
+    minConversionRate: z
+      .number()
+      .optional()
+      .describe('Minimum conversion rate percentage (e.g., 20 for 20%)'),
+    fanType: z
+      .enum(['whale', 'regular', 'new'])
+      .optional()
+      .describe(
+        'Type of fan: whale (high spender), regular (normal subscriber), new (recently subscribed)'
+      ),
+  }),
+  execute: async ({ limit, minConversionRate, fanType }) => {
+    try {
+      const supabase = createAdminClient()
+
+      // Get agency ID (assume first agency for now)
+      const { data: agencies } = await supabase.from('agencies').select('id').limit(1)
+      if (!agencies || agencies.length === 0) {
+        return { error: 'No agency found' }
+      }
+
+      const agencyId = agencies[0].id
+
+      // Import asset attribution service
+      const { getAssetPerformance } = await import('@/lib/services/asset-attribution')
+
+      // Fetch asset performance with filters
+      const assets = await getAssetPerformance(agencyId, {
+        sortBy: 'revenue',
+        limit: limit * 2, // Get more to filter
+        minConversion: minConversionRate,
+      })
+
+      if (assets.length === 0) {
+        return {
+          message:
+            'No content performance data yet. Upload assets to the Vault and start sending them to track performance!',
+          tip: 'Try sending some PPV content to build your performance database.',
+        }
+      }
+
+      // Filter based on fan type
+      let filtered = assets
+      if (fanType === 'whale') {
+        // Recommend high-value content for whales (>$50 or high conversion)
+        filtered = assets.filter(a => a.totalRevenue > 50 || a.conversionRate > 30)
+      } else if (fanType === 'new') {
+        // Recommend lower-risk content for new subscribers
+        filtered = assets.filter(a => a.conversionRate > 15 && a.totalRevenue < 100)
+      }
+
+      const topAssets = filtered.slice(0, limit)
+
+      if (topAssets.length === 0) {
+        return {
+          message: `No content found matching "${fanType}" fan criteria. Showing top ${limit} overall:`,
+          assets: assets.slice(0, limit).map(a => ({
+            fileName: a.fileName,
+            revenue: `$${a.totalRevenue.toFixed(0)}`,
+            conversionRate: `${a.conversionRate.toFixed(1)}%`,
+            rating: a.performanceRating,
+            timesSent: a.timesSent,
+            timesUnlocked: a.timesUnlocked,
+            recommendation: getRating(a.conversionRate),
+          })),
+        }
+      }
+
+      return {
+        fanType: fanType || 'all',
+        topPerformer: {
+          fileName: topAssets[0].fileName,
+          revenue: `$${topAssets[0].totalRevenue.toFixed(0)}`,
+          conversionRate: `${topAssets[0].conversionRate.toFixed(1)}%`,
+          rating: topAssets[0].performanceRating,
+          tip: getRecommendation(topAssets[0].conversionRate, fanType),
+        },
+        alternativeOptions: topAssets.slice(1).map(a => ({
+          fileName: a.fileName,
+          revenue: `$${a.totalRevenue.toFixed(0)}`,
+          conversionRate: `${a.conversionRate.toFixed(1)}%`,
+          rating: a.performanceRating,
+        })),
+        insights: [
+          `Top content has ${topAssets[0].conversionRate.toFixed(1)}% conversion rate`,
+          `Average revenue per unlock: $${(topAssets[0].totalRevenue / topAssets[0].timesUnlocked).toFixed(0)}`,
+          `Sent ${topAssets[0].timesSent} times, unlocked ${topAssets[0].timesUnlocked} times`,
+        ],
+      }
+    } catch (error) {
+      console.error('findBestContentTool error:', error)
+      return { error: 'Failed to fetch content performance data' }
+    }
+  },
+})
+
+// Helper functions for content recommendations
+function getRating(conversionRate: number): string {
+  if (conversionRate >= 50) return '🔥 Extremely Hot - Send this!'
+  if (conversionRate >= 30) return '✅ High Performer - Great choice'
+  if (conversionRate >= 15) return '⚡ Good - Solid option'
+  if (conversionRate >= 5) return '⚠️ Moderate - Consider alternatives'
+  return '❌ Low Performer - Use with caution'
+}
+
+function getRecommendation(conversionRate: number, fanType?: string): string {
+  if (fanType === 'whale' && conversionRate >= 30) {
+    return 'Perfect for whales! High conversion rate and proven revenue generator.'
+  }
+  if (fanType === 'new' && conversionRate >= 20 && conversionRate < 40) {
+    return 'Good starter content for new subs - not too aggressive but still converts well.'
+  }
+  if (conversionRate >= 50) {
+    return 'This is your money-maker! Send to high-value fans immediately.'
+  }
+  if (conversionRate >= 30) {
+    return 'Strong performer. Recommended for most fan types.'
+  }
+  return 'Decent option, but watch for better alternatives.'
+}
+
+/**
  * Tool: Check Campaign Status
  * Get current status and performance of a marketing campaign
  */
@@ -2701,4 +2831,5 @@ export const alfredTools = {
   get_quest_progress: getUserQuestProgress,
   launch_mass_dm: launchMassDM,
   check_campaign_status: checkCampaignStatus,
+  find_best_content: findBestContentTool,
 }
