@@ -1,10 +1,11 @@
 /**
  * DEBUG PROBE - Raw Fanvue API Response
- * Phase 54C - Test Model Tokens + API Access
+ * Phase 54C - Test Model Tokens + API Access (with Rate Limiting)
  */
 
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
+import { fetchWithRateLimit, getRateLimitInfo } from '@/lib/fanvue/rate-limiter'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -51,16 +52,22 @@ export async function GET() {
     url.searchParams.set('endDate', endDate.toISOString())
     url.searchParams.set('size', '50') // Max allowed per Fanvue docs
 
-    const apiResponse = await fetch(url.toString(), {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'X-Fanvue-API-Version': '2025-06-26',
-        'Content-Type': 'application/json',
+    // Use rate-limit-aware fetch with automatic retry
+    const apiResponse = await fetchWithRateLimit(
+      url.toString(),
+      {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'X-Fanvue-API-Version': '2025-06-26',
+          'Content-Type': 'application/json',
+        },
       },
-    })
+      3 // Max 3 retries on 429
+    )
 
     const status = apiResponse.status
+    const rateLimitInfo = getRateLimitInfo(apiResponse)
     const rawData = await apiResponse.json().catch(() => ({
       error: 'Failed to parse JSON response',
     }))
@@ -77,6 +84,17 @@ export async function GET() {
           token_preview: `${token.substring(0, 20)}...`,
           token_length: token.length,
         },
+        rate_limit: rateLimitInfo
+          ? {
+              limit: rateLimitInfo.limit,
+              remaining: rateLimitInfo.remaining,
+              reset_timestamp: rateLimitInfo.reset,
+              reset_date: new Date(rateLimitInfo.reset * 1000).toISOString(),
+              usage_percentage: Math.round(
+                ((rateLimitInfo.limit - rateLimitInfo.remaining) / rateLimitInfo.limit) * 100
+              ),
+            }
+          : null,
         api_test: {
           status: status === 200 ? 'SUCCESS' : 'FAILED',
           http_status: status,

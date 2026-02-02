@@ -2,7 +2,11 @@
  * Fanvue API Client
  * Comprehensive client for all Fanvue API endpoints
  * Based on https://api.fanvue.com/docs
+ *
+ * Includes automatic rate limit handling with exponential backoff
  */
+
+import { fetchWithRateLimit } from './rate-limiter'
 
 const FANVUE_API_BASE = 'https://api.fanvue.com'
 const FANVUE_API_VERSION = '2025-06-26'
@@ -25,21 +29,23 @@ export class FanvueClient {
     this.accessToken = accessToken
   }
 
-  private async request<T>(
-    endpoint: string,
-    options: RequestInit = {}
-  ): Promise<T> {
+  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const url = `${FANVUE_API_BASE}${endpoint}`
-    
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        'Authorization': `Bearer ${this.accessToken}`,
-        'X-Fanvue-API-Version': FANVUE_API_VERSION,
-        'Content-Type': 'application/json',
-        ...options.headers,
+
+    // Use rate-limit-aware fetch with automatic retry
+    const response = await fetchWithRateLimit(
+      url,
+      {
+        ...options,
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          'X-Fanvue-API-Version': FANVUE_API_VERSION,
+          'Content-Type': 'application/json',
+          ...options.headers,
+        },
       },
-    })
+      3 // Max 3 retries on rate limit
+    )
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}))
@@ -82,19 +88,24 @@ export class FanvueClient {
   }
 
   // ==================== INSIGHTS ====================
-  async getEarnings(params?: { startDate?: string; endDate?: string; size?: number; cursor?: string }) {
+  async getEarnings(params?: {
+    startDate?: string
+    endDate?: string
+    size?: number
+    cursor?: string
+  }) {
     const queryParams = new URLSearchParams()
     if (params?.startDate) queryParams.set('startDate', params.startDate)
     if (params?.endDate) queryParams.set('endDate', params.endDate)
     if (params?.size) queryParams.set('size', String(params.size))
     if (params?.cursor) queryParams.set('cursor', params.cursor)
-    
+
     const query = queryParams.toString() ? `?${queryParams.toString()}` : ''
     return this.request<{
       data: Array<{
         date: string
-        gross: number  // In cents
-        net: number    // In cents
+        gross: number // In cents
+        net: number // In cents
         currency: string | null
         source: string
         user: { uuid: string; handle: string; displayName: string } | null
@@ -112,7 +123,9 @@ export class FanvueClient {
   }
 
   async getTopFans(params?: { page?: number; size?: number }) {
-    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    const query = params
+      ? `?${new URLSearchParams(params as Record<string, string>).toString()}`
+      : ''
     return this.request<{
       data: Array<{
         uuid: string
@@ -162,8 +175,14 @@ export class FanvueClient {
   }
 
   // ==================== POSTS ====================
-  async getPosts(params?: { page?: number; size?: number; type?: 'image' | 'video' | 'audio' | 'text' }) {
-    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+  async getPosts(params?: {
+    page?: number
+    size?: number
+    type?: 'image' | 'video' | 'audio' | 'text'
+  }) {
+    const query = params
+      ? `?${new URLSearchParams(params as Record<string, string>).toString()}`
+      : ''
     return this.request<{
       data: Array<{
         uuid: string
@@ -191,7 +210,12 @@ export class FanvueClient {
     }>(`/posts/${postUuid}`)
   }
 
-  async createPost(data: { content: string; mediaIds?: string[]; price?: number; scheduleAt?: string }) {
+  async createPost(data: {
+    content: string
+    mediaIds?: string[]
+    price?: number
+    scheduleAt?: string
+  }) {
     return this.request<{ uuid: string }>('/posts', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -203,15 +227,24 @@ export class FanvueClient {
   }
 
   async getPostTips(postUuid: string, params?: { page?: number; size?: number }) {
-    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    const query = params
+      ? `?${new URLSearchParams(params as Record<string, string>).toString()}`
+      : ''
     return this.request<{
-      data: Array<{ uuid: string; amount: number; createdAt: string; user: { displayName: string } }>
+      data: Array<{
+        uuid: string
+        amount: number
+        createdAt: string
+        user: { displayName: string }
+      }>
       totalCount: number
     }>(`/posts/${postUuid}/tips${query}`)
   }
 
   async getPostLikes(postUuid: string, params?: { page?: number; size?: number }) {
-    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    const query = params
+      ? `?${new URLSearchParams(params as Record<string, string>).toString()}`
+      : ''
     return this.request<{
       data: Array<{ uuid: string; displayName: string; avatarUrl?: string }>
       totalCount: number
@@ -219,16 +252,25 @@ export class FanvueClient {
   }
 
   async getPostComments(postUuid: string, params?: { page?: number; size?: number }) {
-    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    const query = params
+      ? `?${new URLSearchParams(params as Record<string, string>).toString()}`
+      : ''
     return this.request<{
-      data: Array<{ uuid: string; content: string; createdAt: string; user: { displayName: string } }>
+      data: Array<{
+        uuid: string
+        content: string
+        createdAt: string
+        user: { displayName: string }
+      }>
       totalCount: number
     }>(`/posts/${postUuid}/comments${query}`)
   }
 
   // ==================== MEDIA ====================
   async getMedia(params?: { page?: number; size?: number; type?: 'image' | 'video' | 'audio' }) {
-    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    const query = params
+      ? `?${new URLSearchParams(params as Record<string, string>).toString()}`
+      : ''
     return this.request<{
       data: Array<{
         uuid: string
@@ -252,7 +294,7 @@ export class FanvueClient {
   }
 
   // ==================== CHATS ====================
-  async getChats(params?: { 
+  async getChats(params?: {
     page?: number
     size?: number
     filter?: string[]
@@ -261,7 +303,9 @@ export class FanvueClient {
     customListId?: string
     smartListIds?: string[]
   }) {
-    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    const query = params
+      ? `?${new URLSearchParams(params as Record<string, string>).toString()}`
+      : ''
     return this.request<{
       data: Array<{
         createdAt: string
@@ -269,7 +313,7 @@ export class FanvueClient {
         isRead: boolean
         isMuted: boolean
         unreadMessagesCount: number
-        user: { 
+        user: {
           uuid: string
           handle: string
           displayName: string
@@ -293,7 +337,7 @@ export class FanvueClient {
   }
 
   async getUnreadCount() {
-    return this.request<{ 
+    return this.request<{
       unreadChatsCount: number
       unreadMessagesCount: number
       unreadNotifications: {
@@ -315,15 +359,23 @@ export class FanvueClient {
     })
   }
 
-  async updateChat(userUuid: string, data: { isRead?: boolean; isMuted?: boolean; nickname?: string }) {
+  async updateChat(
+    userUuid: string,
+    data: { isRead?: boolean; isMuted?: boolean; nickname?: string }
+  ) {
     return this.request(`/chats/${userUuid}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
     })
   }
 
-  async getChatMedia(userUuid: string, params?: { cursor?: string; mediaType?: string; limit?: number }) {
-    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+  async getChatMedia(
+    userUuid: string,
+    params?: { cursor?: string; mediaType?: string; limit?: number }
+  ) {
+    const query = params
+      ? `?${new URLSearchParams(params as Record<string, string>).toString()}`
+      : ''
     return this.request<{
       data: Array<{
         uuid: string
@@ -340,15 +392,20 @@ export class FanvueClient {
   }
 
   async getBatchStatuses(userUuids: string[]) {
-    return this.request<Record<string, { isOnline: boolean; lastSeenAt: string | null }>>('/chats/statuses', {
-      method: 'POST',
-      body: JSON.stringify({ userUuids }),
-    })
+    return this.request<Record<string, { isOnline: boolean; lastSeenAt: string | null }>>(
+      '/chats/statuses',
+      {
+        method: 'POST',
+        body: JSON.stringify({ userUuids }),
+      }
+    )
   }
 
   // ==================== MESSAGES ====================
   async getMessages(userUuid: string, params?: { page?: number; size?: number }) {
-    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    const query = params
+      ? `?${new URLSearchParams(params as Record<string, string>).toString()}`
+      : ''
     return this.request<{
       data: Array<{
         uuid: string
@@ -366,7 +423,15 @@ export class FanvueClient {
     }>(`/chats/${userUuid}/messages${query}`)
   }
 
-  async sendMessage(userUuid: string, data: { text?: string | null; mediaUuids?: string[]; price?: number | null; templateUuid?: string | null }) {
+  async sendMessage(
+    userUuid: string,
+    data: {
+      text?: string | null
+      mediaUuids?: string[]
+      price?: number | null
+      templateUuid?: string | null
+    }
+  ) {
     return this.request<{ messageUuid: string }>(`/chats/${userUuid}/message`, {
       method: 'POST',
       body: JSON.stringify(data),
@@ -377,7 +442,7 @@ export class FanvueClient {
     return this.request(`/chats/${userUuid}/messages/${messageUuid}`, { method: 'DELETE' })
   }
 
-  async sendMassMessage(data: { 
+  async sendMassMessage(data: {
     text?: string
     mediaUuids?: string[]
     price?: number | null
@@ -390,15 +455,20 @@ export class FanvueClient {
       customListUuids?: string[]
     }
   }) {
-    return this.request<{ id: string; recipientCount: number; createdAt: string }>('/chats/mass-messages', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    })
+    return this.request<{ id: string; recipientCount: number; createdAt: string }>(
+      '/chats/mass-messages',
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }
+    )
   }
 
   // ==================== CHAT TEMPLATES ====================
   async getTemplates(params?: { page?: number; size?: number }) {
-    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    const query = params
+      ? `?${new URLSearchParams(params as Record<string, string>).toString()}`
+      : ''
     return this.request<{
       data: Array<{ uuid: string; name: string; content: string }>
       totalCount: number
@@ -414,7 +484,9 @@ export class FanvueClient {
 
   // ==================== SMART LISTS ====================
   async getSmartLists(params?: { page?: number; size?: number }) {
-    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    const query = params
+      ? `?${new URLSearchParams(params as Record<string, string>).toString()}`
+      : ''
     return this.request<{
       data: Array<{ uuid: string; name: string; memberCount: number }>
       totalCount: number
@@ -422,7 +494,9 @@ export class FanvueClient {
   }
 
   async getSmartListMembers(listUuid: string, params?: { page?: number; size?: number }) {
-    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    const query = params
+      ? `?${new URLSearchParams(params as Record<string, string>).toString()}`
+      : ''
     return this.request<{
       data: Array<{ uuid: string; displayName: string }>
       totalCount: number
@@ -431,7 +505,9 @@ export class FanvueClient {
 
   // ==================== CUSTOM LISTS ====================
   async getCustomLists(params?: { page?: number; size?: number }) {
-    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    const query = params
+      ? `?${new URLSearchParams(params as Record<string, string>).toString()}`
+      : ''
     return this.request<{
       data: Array<{ uuid: string; name: string; memberCount: number }>
       totalCount: number
@@ -446,7 +522,9 @@ export class FanvueClient {
   }
 
   async getCustomListMembers(listUuid: string, params?: { page?: number; size?: number }) {
-    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    const query = params
+      ? `?${new URLSearchParams(params as Record<string, string>).toString()}`
+      : ''
     return this.request<{
       data: Array<{ uuid: string; displayName: string }>
       totalCount: number
@@ -490,7 +568,9 @@ export class FanvueClient {
   }
 
   async getVaultFolderMedia(folderName: string, params?: { page?: number; size?: number }) {
-    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    const query = params
+      ? `?${new URLSearchParams(params as Record<string, string>).toString()}`
+      : ''
     return this.request<{
       data: Array<{ uuid: string; name: string | null; createdAt: string; mediaType: string }>
       pagination: { page: number; size: number; hasMore: boolean }
@@ -498,10 +578,13 @@ export class FanvueClient {
   }
 
   async addMediaToVaultFolder(folderName: string, mediaUuids: string[]) {
-    return this.request<{ addedCount: number }>(`/vault/folders/${encodeURIComponent(folderName)}/media`, {
-      method: 'POST',
-      body: JSON.stringify({ mediaUuids }),
-    })
+    return this.request<{ addedCount: number }>(
+      `/vault/folders/${encodeURIComponent(folderName)}/media`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ mediaUuids }),
+      }
+    )
   }
 
   async removeMediaFromVaultFolder(folderName: string, mediaUuid: string) {
@@ -512,7 +595,9 @@ export class FanvueClient {
 
   // ==================== TRACKING LINKS ====================
   async getTrackingLinks(params?: { limit?: number; cursor?: string }) {
-    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    const query = params
+      ? `?${new URLSearchParams(params as Record<string, string>).toString()}`
+      : ''
     return this.request<{
       data: Array<{
         uuid: string
@@ -539,7 +624,9 @@ export class FanvueClient {
 
   // ==================== AGENCY ENDPOINTS ====================
   async getAgencyCreators(params?: { page?: number; size?: number }) {
-    const query = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ''
+    const query = params
+      ? `?${new URLSearchParams(params as Record<string, string>).toString()}`
+      : ''
     return this.request<{
       data: Array<{
         uuid: string
