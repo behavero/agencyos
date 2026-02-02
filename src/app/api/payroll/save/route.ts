@@ -5,8 +5,10 @@ export async function POST(request: Request) {
   try {
     const supabase = await createClient()
     const adminClient = await createAdminClient()
-    
-    const { data: { user } } = await supabase.auth.getUser()
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -25,7 +27,11 @@ export async function POST(request: Request) {
       .eq('id', user.id)
       .single()
 
-    if (profile?.agency_id !== agencyId) {
+    if (!profile) {
+      return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
+    }
+
+    if (profile.agency_id !== agencyId) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
@@ -75,9 +81,6 @@ export async function POST(request: Request) {
     })
   } catch (error) {
     console.error('Payroll save error:', error)
-    return NextResponse.json(
-      { error: 'Failed to save payroll' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to save payroll' }, { status: 500 })
   }
 }

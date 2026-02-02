@@ -72,8 +72,8 @@ export async function GET(request: NextRequest) {
 
         // Send message to fan
         await fanvueClient.sendMessage(msg.fan_id, {
-          message,
-          mediaId: media_id,
+          text: message,
+          mediaUuids: media_id ? [media_id] : undefined,
           price,
         })
 

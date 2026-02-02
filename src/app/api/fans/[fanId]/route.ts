@@ -4,7 +4,7 @@ import { z } from 'zod'
 
 // Schema for updating fan insights
 const FanUpdateSchema = z.object({
-  custom_attributes: z.record(z.any()).optional(),
+  custom_attributes: z.record(z.string(), z.unknown()).optional(),
   notes: z.string().max(5000).optional(),
   tags: z.array(z.string()).optional(),
   is_blocked: z.boolean().optional(),

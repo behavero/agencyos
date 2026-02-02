@@ -18,54 +18,53 @@ const KnowledgeBaseSchema = z.object({
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    
-    const { data: { user } } = await supabase.auth.getUser()
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    
+
     const { data: profile } = await supabase
       .from('profiles')
       .select('agency_id, role')
       .eq('id', user.id)
       .single()
-    
+
     if (!profile) {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
     }
-    
+
     const searchParams = request.nextUrl.searchParams
     const category = searchParams.get('category')
     const search = searchParams.get('search')
-    
+
     const adminSupabase = await createAdminClient()
-    
+
     let query = adminSupabase
       .from('knowledge_base')
       .select('*')
       .eq('agency_id', profile.agency_id)
       .contains('visible_to', [profile.role])
       .order('updated_at', { ascending: false })
-    
+
     if (category) {
       query = query.eq('category', category)
     }
-    
+
     if (search) {
       query = query.or(`title.ilike.%${search}%,content.ilike.%${search}%`)
     }
-    
+
     const { data: articles, error } = await query
-    
+
     if (error) throw error
-    
+
     return NextResponse.json({ articles })
   } catch (error) {
     console.error('GET /api/knowledge-base error:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch articles' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to fetch articles' }, { status: 500 })
   }
 }
 
@@ -76,25 +75,27 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    
-    const { data: { user } } = await supabase.auth.getUser()
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    
+
     const { data: profile } = await supabase
       .from('profiles')
       .select('agency_id, role')
       .eq('id', user.id)
       .single()
-    
+
     if (!profile || !['owner', 'admin', 'grandmaster'].includes(profile.role)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    
+
     const body = await request.json()
     const validated = KnowledgeBaseSchema.parse(body)
-    
+
     // Generate slug from title
     const slug = validated.title
       .toLowerCase()
@@ -102,9 +103,9 @@ export async function POST(request: NextRequest) {
       .replace(/\s+/g, '-')
       .replace(/-+/g, '-')
       .trim()
-    
+
     const adminSupabase = await createAdminClient()
-    
+
     const { data: article, error } = await adminSupabase
       .from('knowledge_base')
       .insert({
@@ -121,22 +122,19 @@ export async function POST(request: NextRequest) {
       })
       .select()
       .single()
-    
+
     if (error) throw error
-    
+
     return NextResponse.json({ article })
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        { error: 'Invalid request data', details: error.errors },
+        { error: 'Invalid request data', details: error.flatten().fieldErrors },
         { status: 400 }
       )
     }
-    
+
     console.error('POST /api/knowledge-base error:', error)
-    return NextResponse.json(
-      { error: 'Failed to create article' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to create article' }, { status: 500 })
   }
 }
