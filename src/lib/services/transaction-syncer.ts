@@ -112,6 +112,14 @@ export async function syncModelTransactions(modelId: string): Promise<SyncResult
       else if (source.includes('message') || source.includes('ppv')) category = 'message'
       else if (source.includes('post') || source.includes('unlock')) category = 'post'
 
+      // Parse the date properly - Fanvue returns dates in ISO format (YYYY-MM-DD)
+      // Ensure we create a proper timestamp for accurate charting
+      const createdAtDate = new Date(earning.date)
+      // If date is invalid, use current time as fallback
+      const fanvueCreatedAt = isNaN(createdAtDate.getTime())
+        ? new Date().toISOString()
+        : createdAtDate.toISOString()
+
       return {
         agency_id: model.agency_id,
         model_id: model.id,
@@ -122,7 +130,7 @@ export async function syncModelTransactions(modelId: string): Promise<SyncResult
         currency: earning.currency || 'USD',
         category,
         description: earning.source,
-        fanvue_created_at: earning.date,
+        fanvue_created_at: fanvueCreatedAt,
         synced_at: new Date().toISOString(),
       }
     })

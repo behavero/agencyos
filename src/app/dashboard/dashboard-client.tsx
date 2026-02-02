@@ -41,6 +41,9 @@ import type {
   DashboardKPIs,
   ExpenseHistoryPoint,
 } from '@/types/dashboard'
+import type { ChartDataPoint, KPIMetrics, CategoryBreakdown } from '@/lib/services/analytics-engine'
+import { RevenueChart } from '@/components/dashboard/charts/revenue-chart'
+import { EarningsBreakdown } from '@/components/dashboard/finance/earnings-breakdown'
 import {
   TrendingUp,
   TrendingDown,
@@ -99,6 +102,9 @@ interface DashboardClientProps {
     fees: number
     transactions: Array<{ category: string; amount: number; count: number }>
   }>
+  fanvueChartData: ChartDataPoint[]
+  fanvueKPIMetrics: KPIMetrics
+  fanvueCategoryBreakdown: CategoryBreakdown[]
 }
 
 // Chart configs - Lime Theme
@@ -145,6 +151,11 @@ export default function DashboardClient({
   modelPerformance,
   dashboardKPIs,
   expenseHistory,
+  earningsByType,
+  monthlyEarningsList,
+  fanvueChartData,
+  fanvueKPIMetrics,
+  fanvueCategoryBreakdown,
 }: DashboardClientProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -720,6 +731,106 @@ export default function DashboardClient({
 
         {/* Fanvue & Finance Tab */}
         <TabsContent value="fanvue" className="space-y-6 mt-0">
+          {/* Advanced Fanvue Analytics - Revenue Chart & Breakdown */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+            {/* Revenue Over Time Chart (Takes 4 columns) */}
+            <Card className="col-span-4 glass border-primary/20">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5 text-primary" />
+                  Revenue Over Time
+                </CardTitle>
+                <CardDescription>
+                  Last 30 days • {fanvueKPIMetrics.transactionCount.toLocaleString()} transactions
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pl-2">
+                <RevenueChart data={fanvueChartData} />
+              </CardContent>
+            </Card>
+
+            {/* Earnings Breakdown (Takes 3 columns) - Fanvue Style */}
+            <Card className="col-span-3 glass border-green-500/20">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Receipt className="h-5 w-5 text-green-400" />
+                  Earnings by Type
+                </CardTitle>
+                <CardDescription>Revenue breakdown with transaction counts</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <EarningsBreakdown data={fanvueCategoryBreakdown} currency={agency?.currency} />
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* KPI Cards Row */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <Card className="glass border-primary/20">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+                <DollarSign className="h-4 w-4 text-primary" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-primary">
+                  {formatCurrency(fanvueKPIMetrics.totalRevenue)}
+                </div>
+                <div className="flex items-center gap-1 mt-1">
+                  {fanvueKPIMetrics.revenueGrowth >= 0 ? (
+                    <ArrowUpRight className="h-3 w-3 text-green-400" />
+                  ) : (
+                    <ArrowDownRight className="h-3 w-3 text-red-400" />
+                  )}
+                  <span
+                    className={`text-xs ${fanvueKPIMetrics.revenueGrowth >= 0 ? 'text-green-400' : 'text-red-400'}`}
+                  >
+                    {fanvueKPIMetrics.revenueGrowth >= 0 ? '+' : ''}
+                    {fanvueKPIMetrics.revenueGrowth}% vs previous period
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="glass border-green-500/20">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Net Revenue</CardTitle>
+                <DollarSign className="h-4 w-4 text-green-400" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-green-400">
+                  {formatCurrency(fanvueKPIMetrics.netRevenue)}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">After platform fees</p>
+              </CardContent>
+            </Card>
+
+            <Card className="glass border-violet-500/20">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">ARPU</CardTitle>
+                <Users className="h-4 w-4 text-violet-400" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-violet-400">
+                  {formatCurrency(fanvueKPIMetrics.arpu)}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Average revenue per user</p>
+              </CardContent>
+            </Card>
+
+            <Card className="glass border-cyan-500/20">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Avg Tip</CardTitle>
+                <DollarSign className="h-4 w-4 text-cyan-400" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-cyan-400">
+                  {formatCurrency(fanvueKPIMetrics.tipAverage)}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Per tip transaction</p>
+              </CardContent>
+            </Card>
+          </div>
+
           {/* Conversion Stats Row */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Card className="glass border-teal-500/20">

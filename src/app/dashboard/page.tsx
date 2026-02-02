@@ -56,6 +56,10 @@ export default async function DashboardPage() {
   // Fetch real-time analytics data (Phase 48)
   const agencyId = profile?.agency_id || ''
 
+  // Import analytics engine for Fanvue tab
+  const { getChartData, getKPIMetrics, getCategoryBreakdown } =
+    await import('@/lib/services/analytics-engine')
+
   const [
     revenueHistory,
     revenueBreakdown,
@@ -67,6 +71,9 @@ export default async function DashboardPage() {
     expenseHistory,
     earningsByType,
     monthlyEarningsList,
+    fanvueChartData,
+    fanvueKPIMetrics,
+    fanvueCategoryBreakdown,
   ] = await Promise.all([
     DashboardAnalytics.getRevenueHistory(agencyId, 30),
     DashboardAnalytics.getRevenueBreakdown(agencyId, 30),
@@ -78,6 +85,9 @@ export default async function DashboardPage() {
     DashboardAnalytics.getExpenseHistory(agencyId, 6),
     DashboardAnalytics.getEarningsByType(agencyId),
     DashboardAnalytics.getMonthlyEarningsList(agencyId, 12),
+    getChartData(agencyId, { timeRange: '30d' }),
+    getKPIMetrics(agencyId, { timeRange: '30d' }),
+    getCategoryBreakdown(agencyId, { timeRange: '30d' }),
   ])
 
   // DEBUG: Log dashboard data (Phase 51D - Data Pipeline Verification)
@@ -111,6 +121,9 @@ export default async function DashboardPage() {
             expenseHistory={expenseHistory}
             earningsByType={earningsByType}
             monthlyEarningsList={monthlyEarningsList}
+            fanvueChartData={fanvueChartData}
+            fanvueKPIMetrics={fanvueKPIMetrics}
+            fanvueCategoryBreakdown={fanvueCategoryBreakdown}
           />
         </main>
       </div>
