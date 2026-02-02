@@ -5,10 +5,12 @@ import { ExpenseCreateSchema, badRequestResponse } from '@/lib/validation/schema
 /**
  * GET /api/expenses - List all expenses for user's agency
  */
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   const supabase = await createClient()
-  
-  const { data: { user } } = await supabase.auth.getUser()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -27,10 +29,12 @@ export async function GET(request: NextRequest) {
   // Fetch expenses
   const { data: expenses, error } = await supabase
     .from('expenses')
-    .select(`
+    .select(
+      `
       *,
       models(id, name)
-    `)
+    `
+    )
     .eq('agency_id', profile.agency_id)
     .order('created_at', { ascending: false })
 
@@ -46,8 +50,10 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
-  
-  const { data: { user } } = await supabase.auth.getUser()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

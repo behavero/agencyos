@@ -13,7 +13,7 @@ const CreatePayoutRunSchema = z.object({
  * GET /api/payroll/runs
  * List all payout runs for the agency
  */
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     const supabase = await createClient()
 

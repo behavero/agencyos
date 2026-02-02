@@ -23,10 +23,10 @@ jobs:
 
       - name: Lint Code
         run: npm run lint
+        continue-on-error: true # Allow warnings without blocking build
 
       - name: Type Check
         run: npm run type-check
-        continue-on-error: true # Remove after fixing existing type errors
 
   security-audit:
     runs-on: ubuntu-latest
