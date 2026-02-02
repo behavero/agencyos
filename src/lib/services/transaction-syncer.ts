@@ -23,7 +23,7 @@ export interface SyncResult {
  * Fetches earnings data from Fanvue API and stores in fanvue_transactions table
  */
 export async function syncModelTransactions(modelId: string): Promise<SyncResult> {
-  const supabase = await createAdminClient()
+  const supabase = createAdminClient()
 
   try {
     // Get model details
@@ -184,7 +184,7 @@ export async function syncModelTransactions(modelId: string): Promise<SyncResult
  * Sync transactions for all models in an agency
  */
 export async function syncAgencyTransactions(agencyId: string): Promise<SyncResult> {
-  const supabase = await createAdminClient()
+  const supabase = createAdminClient()
 
   // Get all active models
   const { data: models, error } = await supabase
@@ -223,7 +223,7 @@ export async function syncAllTransactions(): Promise<{
   transactionsSynced: number
   errors: string[]
 }> {
-  const supabase = await createAdminClient()
+  const supabase = createAdminClient()
 
   // Get all agencies
   const { data: agencies, error } = await supabase.from('agencies').select('id')
