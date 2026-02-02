@@ -1,4 +1,3 @@
-// @ts-nocheck - AI SDK v6 tool() function signature changed, needs refactor
 import { tool } from 'ai'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/server'
@@ -12,58 +11,87 @@ import { createAdminClient } from '@/lib/supabase/server'
 
 /**
  * Tool: Get Agency Financials
- * Fetches revenue, expenses, and net profit for a date range
+ * Fetches detailed revenue breakdown, expenses, and KPIs using the analytics engine
  */
 export const getAgencyFinancials = tool({
   description:
-    'Get total revenue, expenses, and net profit for the agency within a specific date range. Use this when asked about financials, revenue, expenses, profit, or money.',
+    'Get detailed revenue breakdown by category (messages, tips, subscriptions, posts), expenses, and financial KPIs for the agency. Use this when asked about financials, revenue, earnings, profit, or money.',
   parameters: z.object({
-    startDate: z.string().describe('Start date in ISO format (YYYY-MM-DD)'),
-    endDate: z.string().describe('End date in ISO format (YYYY-MM-DD)'),
+    timeRange: z
+      .enum(['7d', '30d', '90d', '1y', 'all'])
+      .default('30d')
+      .describe('Time range for the financial report'),
+    modelId: z.string().optional().describe('Optional: Filter by specific model ID'),
   }),
-  execute: async ({ startDate, endDate }) => {
+  execute: async ({ timeRange, modelId }) => {
     try {
-      const supabase = await createAdminClient()
+      const supabase = createAdminClient()
 
-      // Get total revenue from transactions
-      const { data: transactions } = await supabase
-        .from('transactions')
-        .select('amount')
-        .gte('created_at', startDate)
-        .lte('created_at', endDate)
+      // Get agency ID (assume first agency for now)
+      const { data: agencies } = await supabase.from('agencies').select('id').limit(1)
+      if (!agencies || agencies.length === 0) {
+        return { error: 'No agency found' }
+      }
 
-      const totalRevenue = transactions?.reduce((sum, t) => sum + (t.amount || 0), 0) || 0
+      const agencyId = agencies[0].id
 
-      // Get total expenses
+      // Import analytics functions
+      const { getKPIMetrics, getCategoryBreakdown } =
+        await import('@/lib/services/analytics-engine')
+
+      // Get KPIs and category breakdown
+      const [kpis, breakdown] = await Promise.all([
+        getKPIMetrics(agencyId, { timeRange, modelId }),
+        getCategoryBreakdown(agencyId, { timeRange, modelId }),
+      ])
+
+      // Get expenses for the same period
+      const daysMap = { '7d': 7, '30d': 30, '90d': 90, '1y': 365, all: 9999 }
+      const days = daysMap[timeRange]
+      const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+
       const { data: expenses } = await supabase
         .from('expenses')
         .select('amount')
-        .gte('date', startDate)
-        .lte('date', endDate)
+        .gte('date', startDate.toISOString())
 
       const totalExpenses = expenses?.reduce((sum, e) => sum + (e.amount || 0), 0) || 0
 
-      // Get model revenues
-      const { data: models } = await supabase.from('models').select('name, total_revenue')
+      const netProfit = kpis.totalRevenue - totalExpenses
+      const profitMargin =
+        kpis.totalRevenue > 0 ? ((netProfit / kpis.totalRevenue) * 100).toFixed(1) : 0
 
-      const modelBreakdown =
-        models?.map(m => ({
-          name: m.name,
-          revenue: m.total_revenue || 0,
-        })) || []
-
-      const netProfit = totalRevenue - totalExpenses
-      const profitMargin = totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : 0
+      // Format breakdown for easy reading
+      const earningsByType = breakdown.reduce(
+        (acc, item) => {
+          acc[item.category.toLowerCase()] = {
+            amount: item.amount,
+            percentage: item.percentage,
+            transactions: item.transactionCount,
+          }
+          return acc
+        },
+        {} as Record<string, { amount: number; percentage: number; transactions: number }>
+      )
 
       return {
-        period: { startDate, endDate },
-        totalRevenue: `$${totalRevenue.toLocaleString()}`,
-        totalExpenses: `$${totalExpenses.toLocaleString()}`,
-        netProfit: `$${netProfit.toLocaleString()}`,
-        profitMargin: `${profitMargin}%`,
-        modelBreakdown,
-        transactionCount: transactions?.length || 0,
-        expenseCount: expenses?.length || 0,
+        period: timeRange,
+        summary: {
+          totalRevenue: `$${kpis.totalRevenue.toLocaleString()}`,
+          netRevenue: `$${kpis.netRevenue.toLocaleString()}`,
+          totalExpenses: `$${totalExpenses.toLocaleString()}`,
+          netProfit: `$${netProfit.toLocaleString()}`,
+          profitMargin: `${profitMargin}%`,
+          revenueGrowth: `${kpis.revenueGrowth >= 0 ? '+' : ''}${kpis.revenueGrowth}%`,
+        },
+        kpis: {
+          arpu: `$${kpis.arpu}`,
+          avgTipAmount: `$${kpis.tipAverage}`,
+          totalTransactions: kpis.transactionCount,
+        },
+        earningsByType,
+        topCategory: breakdown[0]?.category || 'N/A',
+        topCategoryAmount: breakdown[0] ? `$${breakdown[0].amount.toLocaleString()}` : '$0',
       }
     } catch (error) {
       console.error('getAgencyFinancials error:', error)
@@ -657,7 +685,7 @@ export const analyzeBusinessHealth = tool({
         return { error: 'No agency found' }
       }
 
-      const agencyId = profiles.agency_id
+      const _agencyId = profiles.agency_id // Reserved for future agency filtering
 
       // Calculate date range
       const now = new Date()
