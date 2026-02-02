@@ -31,6 +31,16 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import type { User } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
+import type {
+  RevenueDataPoint,
+  RevenueBreakdownItem,
+  ConversionStats,
+  TrafficSource,
+  SubscriberGrowthPoint,
+  ModelPerformanceItem,
+  DashboardKPIs,
+  ExpenseHistoryPoint,
+} from '@/types/dashboard'
 import {
   TrendingUp,
   TrendingDown,
@@ -64,65 +74,6 @@ const CHART_THEME = {
 type Profile = Database['public']['Tables']['profiles']['Row']
 type Agency = Database['public']['Tables']['agencies']['Row']
 type Model = Database['public']['Tables']['models']['Row']
-
-interface RevenueDataPoint {
-  date: string
-  subscriptions: number
-  tips: number
-  messages: number
-  ppv: number
-  total: number
-}
-
-interface RevenueBreakdownItem {
-  name: string
-  value: number
-}
-
-interface ConversionStats {
-  clickToSubscriberRate: number
-  messageConversionRate: number
-  ppvConversionRate: number
-  avgRevenuePerSubscriber: number
-  trend: number
-}
-
-interface TrafficSource {
-  name: string
-  value: number
-}
-
-interface SubscriberGrowthPoint {
-  date: string
-  subscribers: number
-  followers: number
-}
-
-interface ModelPerformanceItem {
-  id: string
-  name: string
-  fullName: string
-  revenue: number
-  subscribers: number
-  followers: number
-  posts: number
-}
-
-interface DashboardKPIs {
-  totalRevenue: number
-  monthlyRevenue: number
-  totalSubscribers: number
-  totalFollowers: number
-  unreadMessages: number
-  monthlyExpenses: number
-  netProfit: number
-  activeModels: number
-}
-
-interface ExpenseHistoryPoint {
-  month: string
-  expenses: number
-}
 
 interface DashboardClientProps {
   user: User

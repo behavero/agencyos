@@ -1,12 +1,23 @@
 /**
  * Dashboard Analytics Service
  * Phase 48 - Real-Time Data Wiring
+ * Phase 48B - Strict Type Safety
  *
  * This service aggregates data from Supabase tables to power dashboard charts and KPIs.
  */
 
 import { createClient } from '@/lib/supabase/server'
 import type { Database } from '@/types/database.types'
+import type {
+  RevenueDataPoint,
+  RevenueBreakdownItem,
+  ConversionStats,
+  TrafficSource,
+  SubscriberGrowthPoint,
+  ModelPerformanceItem,
+  DashboardKPIs,
+  ExpenseHistoryPoint,
+} from '@/types/dashboard'
 
 type Transaction = Database['public']['Tables']['transactions']['Row']
 type Model = Database['public']['Tables']['models']['Row']
@@ -15,7 +26,10 @@ type Model = Database['public']['Tables']['models']['Row']
  * Revenue History for Charts
  * Groups transactions by date and type for trend visualization
  */
-export async function getRevenueHistory(agencyId: string, days: number = 30) {
+export async function getRevenueHistory(
+  agencyId: string,
+  days: number = 30
+): Promise<RevenueDataPoint[]> {
   const supabase = await createClient()
 
   // Calculate date range
@@ -72,17 +86,7 @@ export async function getRevenueHistory(agencyId: string, days: number = 30) {
 
       return acc
     },
-    {} as Record<
-      string,
-      {
-        date: string
-        subscriptions: number
-        tips: number
-        messages: number
-        ppv: number
-        total: number
-      }
-    >
+    {} as Record<string, RevenueDataPoint>
   )
 
   return Object.values(grouped)
@@ -92,7 +96,10 @@ export async function getRevenueHistory(agencyId: string, days: number = 30) {
  * Get Revenue Breakdown by Type
  * Returns percentage split for pie/donut charts
  */
-export async function getRevenueBreakdown(agencyId: string, days: number = 30) {
+export async function getRevenueBreakdown(
+  agencyId: string,
+  days: number = 30
+): Promise<RevenueBreakdownItem[]> {
   const supabase = await createClient()
 
   const startDate = new Date()
@@ -131,7 +138,7 @@ export async function getRevenueBreakdown(agencyId: string, days: number = 30) {
  * Conversion Stats for KPI Cards
  * Calculates funnel metrics and conversion rates
  */
-export async function getConversionStats(agencyId: string) {
+export async function getConversionStats(agencyId: string): Promise<ConversionStats> {
   const supabase = await createClient()
 
   // Get all models for this agency
@@ -197,7 +204,10 @@ export async function getConversionStats(agencyId: string) {
  * Traffic Sources for Bio Pages
  * Groups tracking events by referrer
  */
-export async function getTrafficSources(agencyId: string, days: number = 30) {
+export async function getTrafficSources(
+  agencyId: string,
+  days: number = 30
+): Promise<TrafficSource[]> {
   const supabase = await createClient()
 
   // Get bio pages for this agency
@@ -263,7 +273,10 @@ export async function getTrafficSources(agencyId: string, days: number = 30) {
  * Subscriber Growth Over Time
  * Tracks how subscriber count changes across models
  */
-export async function getSubscriberGrowth(agencyId: string, days: number = 30) {
+export async function getSubscriberGrowth(
+  agencyId: string,
+  days: number = 30
+): Promise<SubscriberGrowthPoint[]> {
   const supabase = await createClient()
 
   // Get models
@@ -301,7 +314,7 @@ export async function getSubscriberGrowth(agencyId: string, days: number = 30) {
  * Model Performance Comparison
  * Returns revenue and subscriber data for each model
  */
-export async function getModelPerformance(agencyId: string) {
+export async function getModelPerformance(agencyId: string): Promise<ModelPerformanceItem[]> {
   const supabase = await createClient()
 
   const { data: models, error } = await supabase
@@ -330,7 +343,7 @@ export async function getModelPerformance(agencyId: string) {
  * Get Key Performance Indicators
  * Aggregated metrics for KPI cards
  */
-export async function getDashboardKPIs(agencyId: string) {
+export async function getDashboardKPIs(agencyId: string): Promise<DashboardKPIs> {
   const supabase = await createClient()
 
   // Get models
@@ -385,7 +398,10 @@ export async function getDashboardKPIs(agencyId: string) {
  * Expense Tracking Over Time
  * Returns expense history for comparison charts
  */
-export async function getExpenseHistory(agencyId: string, months: number = 6) {
+export async function getExpenseHistory(
+  agencyId: string,
+  months: number = 6
+): Promise<ExpenseHistoryPoint[]> {
   const supabase = await createClient()
 
   const { data: expenses } = await supabase
