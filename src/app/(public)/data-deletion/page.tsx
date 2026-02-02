@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 
 export default function DataDeletionPage() {
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
+    <div className="text-zinc-100">
       <div className="max-w-3xl mx-auto px-6 py-16">
         <h1 className="text-4xl font-bold mb-2">Data Deletion Request</h1>
         <p className="text-zinc-400 mb-8">
@@ -178,27 +178,6 @@ export default function DataDeletionPage() {
           </div>
         </div>
 
-        <div className="mt-12 pt-8 border-t border-zinc-800 flex gap-4">
-          <a 
-            href="/dashboard" 
-            className="text-primary hover:underline"
-          >
-            ← Back to Dashboard
-          </a>
-          <span className="text-zinc-600">|</span>
-          <a 
-            href="/privacy" 
-            className="text-zinc-400 hover:text-white"
-          >
-            Privacy Policy
-          </a>
-          <a 
-            href="/terms" 
-            className="text-zinc-400 hover:text-white"
-          >
-            Terms of Service
-          </a>
-        </div>
       </div>
     </div>
   )

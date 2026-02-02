@@ -7,7 +7,7 @@ export const metadata: Metadata = {
 
 export default function PrivacyPage() {
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
+    <div className="text-zinc-100">
       <div className="max-w-3xl mx-auto px-6 py-16">
         <h1 className="text-4xl font-bold mb-2">Privacy Policy</h1>
         <p className="text-zinc-400 mb-8">Last updated: February 2, 2026</p>
@@ -115,14 +115,6 @@ export default function PrivacyPage() {
           </section>
         </div>
 
-        <div className="mt-12 pt-8 border-t border-zinc-800">
-          <a 
-            href="/dashboard" 
-            className="text-primary hover:underline"
-          >
-            ← Back to Dashboard
-          </a>
-        </div>
       </div>
     </div>
   )
