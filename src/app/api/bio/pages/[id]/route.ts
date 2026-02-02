@@ -3,23 +3,32 @@ import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { z } from 'zod'
 
 const UpdatePageSchema = z.object({
-  slug: z.string().min(2).max(50).regex(/^[a-z0-9-]+$/).optional(),
+  slug: z
+    .string()
+    .min(2)
+    .max(50)
+    .regex(/^[a-z0-9-]+$/)
+    .optional(),
   title: z.string().min(1).max(100).optional(),
   description: z.string().max(500).optional().nullable(),
   status: z.enum(['published', 'draft', 'banned']).optional(),
-  theme: z.object({
-    backgroundType: z.enum(['color', 'image', 'video', 'gradient']).optional(),
-    backgroundValue: z.string().optional(),
-    fontFamily: z.string().optional(),
-    buttonStyle: z.enum(['rounded', 'sharp', 'glass', 'outline']).optional(),
-    textColor: z.string().optional(),
-    accentColor: z.string().optional(),
-  }).optional(),
-  pixels: z.object({
-    meta_pixel_id: z.string().optional(),
-    tiktok_pixel_id: z.string().optional(),
-    google_analytics_id: z.string().optional(),
-  }).optional(),
+  theme: z
+    .object({
+      backgroundType: z.enum(['color', 'image', 'video', 'gradient']).optional(),
+      backgroundValue: z.string().optional(),
+      fontFamily: z.string().optional(),
+      buttonStyle: z.enum(['rounded', 'sharp', 'glass', 'outline']).optional(),
+      textColor: z.string().optional(),
+      accentColor: z.string().optional(),
+    })
+    .optional(),
+  pixels: z
+    .object({
+      meta_pixel_id: z.string().optional(),
+      tiktok_pixel_id: z.string().optional(),
+      google_analytics_id: z.string().optional(),
+    })
+    .optional(),
   seo_title: z.string().max(70).optional().nullable(),
   seo_description: z.string().max(160).optional().nullable(),
   seo_image: z.string().url().optional().nullable(),
@@ -29,14 +38,13 @@ const UpdatePageSchema = z.object({
  * GET /api/bio/pages/[id]
  * Get a single bio page with blocks
  */
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -45,11 +53,13 @@ export async function GET(
     const adminClient = await createAdminClient()
     const { data: page, error } = await adminClient
       .from('bio_pages')
-      .select(`
+      .select(
+        `
         *,
         model:models(id, name, avatar_url),
         blocks:bio_blocks(*)
-      `)
+      `
+      )
       .eq('id', id)
       .single()
 
@@ -59,7 +69,9 @@ export async function GET(
 
     // Sort blocks by order_index
     if (page.blocks) {
-      page.blocks.sort((a: { order_index: number }, b: { order_index: number }) => a.order_index - b.order_index)
+      page.blocks.sort(
+        (a: { order_index: number }, b: { order_index: number }) => a.order_index - b.order_index
+      )
     }
 
     return NextResponse.json({ page })
@@ -73,14 +85,13 @@ export async function GET(
  * PUT /api/bio/pages/[id]
  * Update a bio page
  */
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -101,7 +112,7 @@ export async function PUT(
 
     if (!validation.success) {
       return NextResponse.json(
-        { error: 'Invalid input', details: validation.error.errors },
+        { error: 'Invalid input', details: validation.error.format() },
         { status: 400 }
       )
     }
@@ -139,7 +150,8 @@ export async function PUT(
     if (validation.data.theme) updateData.theme = validation.data.theme
     if (validation.data.pixels) updateData.pixels = validation.data.pixels
     if ('seo_title' in validation.data) updateData.seo_title = validation.data.seo_title
-    if ('seo_description' in validation.data) updateData.seo_description = validation.data.seo_description
+    if ('seo_description' in validation.data)
+      updateData.seo_description = validation.data.seo_description
     if ('seo_image' in validation.data) updateData.seo_image = validation.data.seo_image
 
     const { data: page, error } = await adminClient
@@ -147,10 +159,12 @@ export async function PUT(
       .update(updateData)
       .eq('id', id)
       .eq('agency_id', profile.agency_id)
-      .select(`
+      .select(
+        `
         *,
         model:models(id, name, avatar_url)
-      `)
+      `
+      )
       .single()
 
     if (error || !page) {
@@ -176,7 +190,9 @@ export async function DELETE(
   try {
     const { id } = await params
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

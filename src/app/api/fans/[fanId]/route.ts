@@ -24,14 +24,16 @@ export async function GET(
     const modelId = request.nextUrl.searchParams.get('model_id')
 
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const adminClient = await createAdminClient()
-    
+
     let query = adminClient
       .from('fan_insights')
       .select('*, model:models(id, name)')
@@ -59,9 +61,7 @@ export async function GET(
       fan: {
         ...fan,
         whaleScore,
-        ppvUnlockRate: fan.ppv_sent > 0 
-          ? Math.round((fan.ppv_unlocked / fan.ppv_sent) * 100) 
-          : 0,
+        ppvUnlockRate: fan.ppv_sent > 0 ? Math.round((fan.ppv_unlocked / fan.ppv_sent) * 100) : 0,
       },
       isNew: false,
     })
@@ -82,7 +82,9 @@ export async function PATCH(
   try {
     const { fanId } = await params
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -93,7 +95,7 @@ export async function PATCH(
 
     if (!validation.success) {
       return NextResponse.json(
-        { error: 'Invalid input', details: validation.error.errors },
+        { error: 'Invalid input', details: validation.error.format() },
         { status: 400 }
       )
     }
@@ -154,12 +156,15 @@ export async function PATCH(
 
     const { data: fan, error } = await adminClient
       .from('fan_insights')
-      .upsert({
-        agency_id: profile.agency_id,
-        model_id,
-        fan_id: fanId,
-        ...updateData,
-      }, { onConflict: 'model_id,fan_id' })
+      .upsert(
+        {
+          agency_id: profile.agency_id,
+          model_id,
+          fan_id: fanId,
+          ...updateData,
+        },
+        { onConflict: 'model_id,fan_id' }
+      )
       .select()
       .single()
 

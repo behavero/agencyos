@@ -3,7 +3,11 @@ import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { z } from 'zod'
 
 const CreateRedirectSchema = z.object({
-  slug: z.string().min(2).max(50).regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
+  slug: z
+    .string()
+    .min(2)
+    .max(50)
+    .regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
   name: z.string().max(100).optional(),
   target_url: z.string().url(),
   target_type: z.enum(['external', 'vault', 'fanvue', 'bio_page']).default('external'),
@@ -18,7 +22,9 @@ const CreateRedirectSchema = z.object({
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -37,10 +43,12 @@ export async function GET(request: NextRequest) {
     const adminClient = await createAdminClient()
     const { data: links, error } = await adminClient
       .from('redirect_links')
-      .select(`
+      .select(
+        `
         *,
         model:models(id, name)
-      `)
+      `
+      )
       .eq('agency_id', profile.agency_id)
       .order('created_at', { ascending: false })
 
@@ -63,7 +71,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -84,7 +94,7 @@ export async function POST(request: NextRequest) {
 
     if (!validation.success) {
       return NextResponse.json(
-        { error: 'Invalid input', details: validation.error.errors },
+        { error: 'Invalid input', details: validation.error.format() },
         { status: 400 }
       )
     }
@@ -114,10 +124,12 @@ export async function POST(request: NextRequest) {
         breakout_mode: validation.data.breakout_mode,
         model_id: validation.data.model_id || null,
       })
-      .select(`
+      .select(
+        `
         *,
         model:models(id, name)
-      `)
+      `
+      )
       .single()
 
     if (error) {

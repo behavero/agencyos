@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { 
-  addWatchedAccount, 
+import {
+  addWatchedAccount,
   getWatchedAccounts,
   getWatchedAccountsByType,
 } from '@/lib/services/ghost-tracker'
@@ -24,7 +24,9 @@ const AddAccountSchema = z.object({
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -42,8 +44,12 @@ export async function GET(request: NextRequest) {
     }
 
     // Check for type filter
-    const accountType = request.nextUrl.searchParams.get('type') as 
-      'competitor' | 'slave' | 'reference' | 'backup' | null
+    const accountType = request.nextUrl.searchParams.get('type') as
+      | 'competitor'
+      | 'slave'
+      | 'reference'
+      | 'backup'
+      | null
 
     let accounts
     if (accountType) {
@@ -67,10 +73,7 @@ export async function GET(request: NextRequest) {
     })
   } catch (error) {
     console.error('[Ghost API] Error:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch accounts' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to fetch accounts' }, { status: 500 })
   }
 }
 
@@ -81,7 +84,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -104,7 +109,7 @@ export async function POST(request: NextRequest) {
 
     if (!validation.success) {
       return NextResponse.json(
-        { error: 'Invalid input', details: validation.error.errors },
+        { error: 'Invalid input', details: validation.error.format() },
         { status: 400 }
       )
     }
@@ -124,10 +129,7 @@ export async function POST(request: NextRequest) {
     })
 
     if (!account) {
-      return NextResponse.json(
-        { error: 'Account already exists or scan failed' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Account already exists or scan failed' }, { status: 400 })
     }
 
     return NextResponse.json({
@@ -136,9 +138,6 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     console.error('[Ghost API] Error:', error)
-    return NextResponse.json(
-      { error: 'Failed to add account' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to add account' }, { status: 500 })
   }
 }

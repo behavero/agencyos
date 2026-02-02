@@ -4,9 +4,19 @@ import { z } from 'zod'
 
 const BlockSchema = z.object({
   page_id: z.string().uuid(),
-  type: z.enum(['header', 'social_row', 'button', 'video', 'text', 'spacer', 'image', 'divider', 'countdown']),
-  content: z.record(z.unknown()).default({}),
-  config: z.record(z.unknown()).default({}),
+  type: z.enum([
+    'header',
+    'social_row',
+    'button',
+    'video',
+    'text',
+    'spacer',
+    'image',
+    'divider',
+    'countdown',
+  ]),
+  content: z.record(z.string(), z.unknown()).default({}),
+  config: z.record(z.string(), z.unknown()).default({}),
   order_index: z.number().int().min(0).optional(),
 })
 
@@ -22,7 +32,9 @@ const ReorderSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -43,7 +55,7 @@ export async function POST(request: NextRequest) {
 
     if (!validation.success) {
       return NextResponse.json(
-        { error: 'Invalid input', details: validation.error.errors },
+        { error: 'Invalid input', details: validation.error.format() },
         { status: 400 }
       )
     }
@@ -71,7 +83,7 @@ export async function POST(request: NextRequest) {
       .limit(1)
       .single()
 
-    const orderIndex = validation.data.order_index ?? ((maxBlock?.order_index || 0) + 1)
+    const orderIndex = validation.data.order_index ?? (maxBlock?.order_index || 0) + 1
 
     // Create the block
     const { data: block, error } = await adminClient
@@ -105,7 +117,9 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -126,7 +140,7 @@ export async function PUT(request: NextRequest) {
 
     if (!validation.success) {
       return NextResponse.json(
-        { error: 'Invalid input', details: validation.error.errors },
+        { error: 'Invalid input', details: validation.error.format() },
         { status: 400 }
       )
     }

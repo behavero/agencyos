@@ -16,14 +16,13 @@ const UpdateShiftSchema = z.object({
  * GET /api/shifts/[id]
  * Get a single shift
  */
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -32,11 +31,13 @@ export async function GET(
     const adminClient = await createAdminClient()
     const { data: shift, error } = await adminClient
       .from('shifts')
-      .select(`
+      .select(
+        `
         *,
         employee:profiles(id, username, role),
         model:models(id, name)
-      `)
+      `
+      )
       .eq('id', id)
       .single()
 
@@ -55,14 +56,13 @@ export async function GET(
  * PUT /api/shifts/[id]
  * Update a shift (admin only)
  */
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -87,7 +87,7 @@ export async function PUT(
 
     if (!validation.success) {
       return NextResponse.json(
-        { error: 'Invalid input', details: validation.error.errors },
+        { error: 'Invalid input', details: validation.error.format() },
         { status: 400 }
       )
     }
@@ -101,11 +101,13 @@ export async function PUT(
       })
       .eq('id', id)
       .eq('agency_id', profile.agency_id)
-      .select(`
+      .select(
+        `
         *,
         employee:profiles(id, username, role),
         model:models(id, name)
-      `)
+      `
+      )
       .single()
 
     if (error || !shift) {
@@ -131,7 +133,9 @@ export async function DELETE(
   try {
     const { id } = await params
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

@@ -3,23 +3,34 @@ import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { z } from 'zod'
 
 const UpdateBlockSchema = z.object({
-  type: z.enum(['header', 'social_row', 'button', 'video', 'text', 'spacer', 'image', 'divider', 'countdown']).optional(),
-  content: z.record(z.unknown()).optional(),
-  config: z.record(z.unknown()).optional(),
+  type: z
+    .enum([
+      'header',
+      'social_row',
+      'button',
+      'video',
+      'text',
+      'spacer',
+      'image',
+      'divider',
+      'countdown',
+    ])
+    .optional(),
+  content: z.record(z.string(), z.unknown()).optional(),
+  config: z.record(z.string(), z.unknown()).optional(),
 })
 
 /**
  * GET /api/bio/blocks/[id]
  * Get a single block
  */
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -47,14 +58,13 @@ export async function GET(
  * PUT /api/bio/blocks/[id]
  * Update a block
  */
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -75,7 +85,7 @@ export async function PUT(
 
     if (!validation.success) {
       return NextResponse.json(
-        { error: 'Invalid input', details: validation.error.errors },
+        { error: 'Invalid input', details: validation.error.format() },
         { status: 400 }
       )
     }
@@ -137,7 +147,9 @@ export async function DELETE(
   try {
     const { id } = await params
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -171,10 +183,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
-    const { error } = await adminClient
-      .from('bio_blocks')
-      .delete()
-      .eq('id', id)
+    const { error } = await adminClient.from('bio_blocks').delete().eq('id', id)
 
     if (error) {
       console.error('[Bio Blocks API] Delete error:', error)

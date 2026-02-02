@@ -26,7 +26,9 @@ const ContentTaskSchema = z.object({
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -54,11 +56,13 @@ export async function GET(request: NextRequest) {
     const adminClient = await createAdminClient()
     let query = adminClient
       .from('content_tasks')
-      .select(`
+      .select(
+        `
         *,
         model:models(id, name),
         assignee:profiles(id, username)
-      `)
+      `
+      )
       .eq('agency_id', profile.agency_id)
       .order('scheduled_at', { ascending: true, nullsFirst: false })
 
@@ -89,7 +93,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -111,7 +117,7 @@ export async function POST(request: NextRequest) {
 
     if (!validation.success) {
       return NextResponse.json(
-        { error: 'Invalid input', details: validation.error.errors },
+        { error: 'Invalid input', details: validation.error.format() },
         { status: 400 }
       )
     }
@@ -124,11 +130,13 @@ export async function POST(request: NextRequest) {
         created_by: user.id,
         ...validation.data,
       })
-      .select(`
+      .select(
+        `
         *,
         model:models(id, name),
         assignee:profiles(id, username)
-      `)
+      `
+      )
       .single()
 
     if (error) {
