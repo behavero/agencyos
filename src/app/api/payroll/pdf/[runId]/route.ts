@@ -105,7 +105,7 @@ export async function GET(
 
     // Generate PDF
     const pdfStream = await renderToStream(
-      React.createElement(StatementPDF, { paycheck, period, runId }) as React.ReactElement
+      React.createElement(StatementPDF, { paycheck, period, runId })
     )
 
     // Convert stream to buffer

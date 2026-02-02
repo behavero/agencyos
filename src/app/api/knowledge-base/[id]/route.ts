@@ -15,8 +15,9 @@ const UpdateArticleSchema = z.object({
  * GET /api/knowledge-base/[id]
  * Get a single article
  */
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params
     const supabase = await createClient()
 
     const {
@@ -41,7 +42,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     const { data: article, error } = await adminSupabase
       .from('knowledge_base')
       .select('*')
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('agency_id', profile.agency_id)
       .contains('visible_to', [profile.role])
       .single()
@@ -54,7 +55,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     await adminSupabase
       .from('knowledge_base')
       .update({ view_count: (article.view_count || 0) + 1 })
-      .eq('id', params.id)
+      .eq('id', id)
 
     return NextResponse.json({ article })
   } catch (error) {
@@ -67,8 +68,9 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
  * PUT /api/knowledge-base/[id]
  * Update an article
  */
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params
     const supabase = await createClient()
 
     const {
@@ -114,7 +116,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     const { data: article, error } = await adminSupabase
       .from('knowledge_base')
       .update(updateData)
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('agency_id', profile.agency_id)
       .select()
       .single()
@@ -139,8 +141,9 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
  * DELETE /api/knowledge-base/[id]
  * Delete an article
  */
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params
     const supabase = await createClient()
 
     const {
@@ -165,7 +168,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     const { error } = await adminSupabase
       .from('knowledge_base')
       .delete()
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('agency_id', profile.agency_id)
 
     if (error) throw error

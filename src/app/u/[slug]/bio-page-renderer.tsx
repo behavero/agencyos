@@ -410,7 +410,7 @@ function CountdownBlock({
 }: {
   content: Record<string, unknown>
   theme: BioPageRendererProps['page']['theme']
-}) {
+}): React.ReactElement {
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 })
 
   useEffect(() => {
@@ -439,9 +439,9 @@ function CountdownBlock({
 
   return (
     <div className="text-center">
-      {content.label && (
-        <p className="text-sm opacity-70 mb-2">{content.label as string}</p>
-      )}
+      {content.label ? (
+        <p className="text-sm opacity-70 mb-2">{String(content.label)}</p>
+      ) : null}
       <div className="flex justify-center gap-3">
         {[
           { value: timeLeft.days, label: 'Days' },

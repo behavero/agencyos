@@ -1,6 +1,6 @@
 'use client'
 
-import { getXpForLevel } from '@/lib/services/quest-engine'
+import { getXpForLevel } from '@/lib/utils/xp-calculator'
 
 interface XpRingProps {
   xp: number

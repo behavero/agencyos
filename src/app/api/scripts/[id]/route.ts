@@ -16,8 +16,9 @@ const UpdateScriptSchema = z.object({
  * GET /api/scripts/[id]
  * Get a single script
  */
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params
     const supabase = await createClient()
 
     const {
@@ -42,7 +43,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     const { data: script, error } = await adminSupabase
       .from('chat_scripts')
       .select('*')
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('agency_id', profile.agency_id)
       .single()
 
@@ -61,8 +62,9 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
  * PUT /api/scripts/[id]
  * Update a script
  */
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params
     const supabase = await createClient()
 
     const {
@@ -93,7 +95,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         ...validated,
         updated_by: user.id,
       })
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('agency_id', profile.agency_id)
       .select()
       .single()
@@ -118,8 +120,9 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
  * POST /api/scripts/[id]/use
  * Increment usage count when a script is used
  */
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params
     const supabase = await createClient()
 
     const {
@@ -145,7 +148,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     const { data: script } = await adminSupabase
       .from('chat_scripts')
       .select('usage_count')
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('agency_id', profile.agency_id)
       .single()
 
@@ -160,7 +163,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         usage_count: (script.usage_count || 0) + 1,
         last_used_at: new Date().toISOString(),
       })
-      .eq('id', params.id)
+      .eq('id', id)
 
     return NextResponse.json({ success: true })
   } catch (error) {
@@ -173,8 +176,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
  * DELETE /api/scripts/[id]
  * Delete a script
  */
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params
     const supabase = await createClient()
 
     const {
@@ -200,7 +204,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     const { error } = await adminSupabase
       .from('chat_scripts')
       .update({ is_active: false })
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('agency_id', profile.agency_id)
 
     if (error) throw error

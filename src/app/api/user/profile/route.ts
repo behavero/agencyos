@@ -44,7 +44,11 @@ export async function GET() {
         .select('model:models(id, name)')
         .eq('profile_id', user.id)
 
-      assignedModels = assignments?.map(a => a.model).filter(Boolean) as { id: string; name: string }[] || []
+      assignedModels =
+        (assignments
+          ?.flatMap((a: any) => a.model)
+          .filter((m: any) => m && typeof m === 'object' && 'id' in m && 'name' in m)
+          .map((m: any) => ({ id: m.id, name: m.name })) as { id: string; name: string }[]) || []
     }
 
     return NextResponse.json({

@@ -37,20 +37,10 @@ interface Quest {
 }
 
 /**
- * XP required for each level
- * Formula: (level - 1)^2 * 100
+ * Re-export XP utility functions from shared module
+ * This allows them to be used in both server and client components
  */
-export function getXpForLevel(level: number): number {
-  return Math.pow(level - 1, 2) * 100
-}
-
-/**
- * Calculate level from XP
- * Formula: floor(sqrt(xp / 100)) + 1
- */
-export function calculateLevel(xp: number): number {
-  return Math.floor(Math.sqrt(xp / 100)) + 1
-}
+export { calculateLevel, getXpForLevel, getXpForNextLevel } from '@/lib/utils/xp-calculator'
 
 /**
  * Check and update quest progress for a user event

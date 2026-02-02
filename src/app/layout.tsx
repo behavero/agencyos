@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import { Toaster } from '@/components/ui/sonner'
-import { AlfredFloatingChat } from '@/components/alfred/floating-chat'
+// import { AlfredFloatingChat } from '@/components/alfred/floating-chat' // TODO: Fix AI SDK v6 compatibility
 import './globals.css'
 
 // Vega Style uses Inter font
@@ -26,7 +26,7 @@ export default function RootLayout({
       <body className="min-h-screen bg-background font-sans antialiased">
         {children}
         <Toaster />
-        <AlfredFloatingChat />
+        {/* <AlfredFloatingChat /> */}
       </body>
     </html>
   )

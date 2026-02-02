@@ -82,11 +82,18 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
   const [searchQuery, setSearchQuery] = useState('')
   const [filterType, setFilterType] = useState<string>('all')
 
-  const [editForm, setEditForm] = useState({
+  const [editForm, setEditForm] = useState<{
+    title: string
+    description: string
+    price: number
+    content_type: 'free' | 'ppv' | 'subscription' | 'tip'
+    tags: string
+    model_id: string
+  }>({
     title: '',
     description: '',
     price: 0,
-    content_type: 'free' as const,
+    content_type: 'free',
     tags: '',
     model_id: '',
   })
@@ -188,7 +195,7 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
       title: asset.title || '',
       description: asset.description || '',
       price: asset.price || 0,
-      content_type: asset.content_type || 'free',
+      content_type: (asset.content_type as 'free' | 'ppv' | 'subscription' | 'tip') || 'free',
       tags: asset.tags?.join(', ') || '',
       model_id: asset.model_id || '',
     })
