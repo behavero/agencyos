@@ -1,14 +1,11 @@
 /**
- * Manual Transaction Sync API
- * Phase 49 - Trigger transaction sync manually
- *
- * This endpoint allows users to manually trigger a transaction sync
- * for their agency or a specific model.
+ * Fanvue Vault Sync API
+ * Syncs media from Fanvue Vault to content_assets
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { syncAgencyTransactions, syncModelTransactions } from '@/lib/services/transaction-syncer'
+import { syncFanvueVault, syncAgencyVault } from '@/lib/services/fanvue-vault-sync'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -29,7 +26,7 @@ export async function POST(request: NextRequest) {
     // Get user profile
     const { data: profile } = await supabase
       .from('profiles')
-      .select('agency_id')
+      .select('agency_id, role')
       .eq('id', user.id)
       .single()
 
@@ -38,25 +35,27 @@ export async function POST(request: NextRequest) {
     }
 
     // Parse request body
-    const body = await request.json()
+    const body = await request.json().catch(() => ({}))
     const { modelId } = body
 
     let result
 
     if (modelId) {
       // Sync specific model
-      result = await syncModelTransactions(modelId)
+      result = await syncFanvueVault(modelId)
     } else {
       // Sync entire agency
-      result = await syncAgencyTransactions(profile.agency_id)
+      result = await syncAgencyVault(profile.agency_id)
     }
 
     return NextResponse.json({
-      ...result,
-      message: result.success ? `Synced ${result.transactionsSynced} transactions` : 'Sync failed',
+      success: result.success,
+      message: `Synced ${result.assetsSynced} assets from Fanvue Vault`,
+      assetsSynced: result.assetsSynced,
+      errors: result.errors,
     })
   } catch (error) {
-    console.error('Manual sync error:', error)
+    console.error('Fanvue vault sync error:', error)
     return NextResponse.json(
       {
         success: false,

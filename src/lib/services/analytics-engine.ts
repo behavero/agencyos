@@ -70,7 +70,7 @@ export async function getChartData(
   }
 
   // Convert database response to ChartDataPoint
-  const dataPoints = (data || []).map(row => ({
+  const dataPoints = (data || []).map((row: any) => ({
     date: new Date(row.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
     subscriptions: Number(row.subscriptions) || 0,
     tips: Number(row.tips) || 0,
@@ -149,7 +149,6 @@ export async function getKPIMetrics(
   const prevTotalRevenue = prevTransactions?.reduce((sum, tx) => sum + Number(tx.amount), 0) || 0
 
   const tipTransactions = currentTransactions?.filter(tx => tx.category === 'tip') || []
-  const messageTransactions = currentTransactions?.filter(tx => tx.category === 'message') || []
 
   const tipAverage =
     tipTransactions.length > 0

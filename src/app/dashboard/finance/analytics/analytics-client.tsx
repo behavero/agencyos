@@ -321,7 +321,10 @@ export default function FinancialAnalyticsClient({
                     outerRadius={100}
                     paddingAngle={2}
                     dataKey="amount"
-                    label={({ category, percentage }) => `${category}: ${percentage}%`}
+                    label={(props: any) => {
+                      const entry = categoryBreakdown.find(e => e.category === props.name)
+                      return entry ? `${entry.category}: ${entry.percentage}%` : ''
+                    }}
                   >
                     {categoryBreakdown.map((entry, index) => (
                       <Cell

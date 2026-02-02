@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { tool } from 'ai'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/server'
@@ -23,7 +24,13 @@ export const getAgencyFinancials = tool({
       .describe('Time range for the financial report'),
     modelId: z.string().optional().describe('Optional: Filter by specific model ID'),
   }),
-  execute: async ({ timeRange, modelId }) => {
+  execute: async ({
+    timeRange,
+    modelId,
+  }: {
+    timeRange: '7d' | '30d' | '90d' | '1y' | 'all'
+    modelId?: string
+  }) => {
     try {
       const supabase = createAdminClient()
 
@@ -46,7 +53,13 @@ export const getAgencyFinancials = tool({
       ])
 
       // Get expenses for the same period
-      const daysMap = { '7d': 7, '30d': 30, '90d': 90, '1y': 365, all: 9999 }
+      const daysMap: Record<typeof timeRange, number> = {
+        '7d': 7,
+        '30d': 30,
+        '90d': 90,
+        '1y': 365,
+        all: 9999,
+      }
       const days = daysMap[timeRange]
       const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
 
@@ -110,7 +123,7 @@ export const getModelStats = tool({
   parameters: z.object({
     modelName: z.string().describe('Name of the model to look up (can be partial match)'),
   }),
-  execute: async ({ modelName }) => {
+  execute: async ({ modelName }: { modelName: string }) => {
     try {
       const supabase = await createAdminClient()
 

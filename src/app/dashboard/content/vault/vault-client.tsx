@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -30,7 +30,6 @@ import {
   Video,
   Music,
   DollarSign,
-  Tag,
   Trash2,
   Edit,
   Plus,
@@ -38,14 +37,12 @@ import {
   Filter,
   Grid3X3,
   List,
-  Eye,
   Lock,
   TrendingUp,
   Flame,
   RefreshCcw,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { getPerformanceColor } from '@/lib/services/asset-attribution'
 
 interface ContentAsset {
   id: string
@@ -95,6 +92,7 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
   const [filterType, setFilterType] = useState<string>('all')
   const [sortBy, setSortBy] = useState<string>('recent')
   const [isCalculatingROI, setIsCalculatingROI] = useState(false)
+  const [isSyncingFanvue, setIsSyncingFanvue] = useState(false)
 
   const [editForm, setEditForm] = useState<{
     title: string
@@ -132,7 +130,7 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
         const fileName = `${agencyId}/${timestamp}-${Math.random().toString(36).substring(7)}.${ext}`
 
         // Upload to Supabase Storage
-        const { data: uploadData, error: uploadError } = await supabase.storage
+        const { error: uploadError } = await supabase.storage
           .from('agency-assets')
           .upload(fileName, file, {
             cacheControl: '3600',
@@ -305,6 +303,32 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
       toast.error('Failed to calculate ROI')
     } finally {
       setIsCalculatingROI(false)
+    }
+  }
+
+  // Phase 50B: Sync from Fanvue Vault
+  const handleSyncFanvue = async () => {
+    setIsSyncingFanvue(true)
+    try {
+      const response = await fetch('/api/vault/sync-fanvue', {
+        method: 'POST',
+      })
+      const result = await response.json()
+
+      if (result.success) {
+        toast.success(`Synced ${result.assetsSynced} assets from Fanvue Vault`)
+        // Reload the page to show new assets
+        window.location.reload()
+      } else {
+        toast.error(result.error || 'Failed to sync from Fanvue Vault')
+        if (result.errors && result.errors.length > 0) {
+          console.error('Fanvue sync errors:', result.errors)
+        }
+      }
+    } catch (error) {
+      toast.error('Failed to sync from Fanvue Vault')
+    } finally {
+      setIsSyncingFanvue(false)
     }
   }
 
@@ -481,6 +505,15 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
             </SelectItem>
           </SelectContent>
         </Select>
+        <Button
+          variant="outline"
+          onClick={handleSyncFanvue}
+          disabled={isSyncingFanvue}
+          className="gap-2"
+        >
+          <RefreshCcw className={cn('w-4 h-4', isSyncingFanvue && 'animate-spin')} />
+          {isSyncingFanvue ? 'Syncing...' : 'Sync from Fanvue'}
+        </Button>
         <Button
           variant="outline"
           onClick={handleCalculateROI}
