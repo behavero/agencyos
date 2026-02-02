@@ -1,8 +1,8 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
   /* config options here */
-  
+
   // Security headers
   async headers() {
     return [
@@ -12,27 +12,27 @@ const nextConfig: NextConfig = {
         headers: [
           {
             key: 'X-DNS-Prefetch-Control',
-            value: 'on'
+            value: 'on',
           },
           {
             key: 'X-Frame-Options',
-            value: 'DENY'
+            value: 'DENY',
           },
           {
             key: 'X-Content-Type-Options',
-            value: 'nosniff'
+            value: 'nosniff',
           },
           {
             key: 'Referrer-Policy',
-            value: 'origin-when-cross-origin'
+            value: 'origin-when-cross-origin',
           },
           {
             key: 'X-XSS-Protection',
-            value: '1; mode=block'
+            value: '1; mode=block',
           },
           {
             key: 'Permissions-Policy',
-            value: 'camera=(), microphone=(), geolocation=()'
+            value: 'camera=(), microphone=(), geolocation=()',
           },
         ],
       },
@@ -59,7 +59,6 @@ const nextConfig: NextConfig = {
 
   // Production optimizations
   reactStrictMode: true,
-  swcMinify: true,
 
   // Logging
   logging: {
@@ -67,6 +66,6 @@ const nextConfig: NextConfig = {
       fullUrl: true,
     },
   },
-};
+}
 
-export default nextConfig;
+export default nextConfig
