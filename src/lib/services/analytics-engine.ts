@@ -213,50 +213,90 @@ export async function getKPIMetrics(
   const totalFollowers = models?.reduce((sum, m) => sum + (m.followers_count || 0), 0) || 0
   const totalAudience = totalFollowers + totalSubscribers
 
-  // Query 3: Get ALL transactions for revenue calculation (set high limit to fetch everything!)
-  let allTransactionsQuery = supabase
-    .from('fanvue_transactions')
-    .select('amount, net_amount')
-    .eq('agency_id', agencyId)
-    .gte('transaction_date', startDate.toISOString())
-    .lte('transaction_date', endDate.toISOString())
-    .limit(100000) // High limit to ensure we get ALL transactions (Supabase default is only 1000!)
+  // Query 3: Get ALL transactions for revenue calculation using PAGINATION
+  // Supabase has a 1000-row limit that .limit() doesn't always override!
+  let allTransactions: { amount: number; net_amount: number }[] = []
+  let revOffset = 0
+  const revPageSize = 1000
+  let revHasMore = true
 
-  if (options.modelId) {
-    allTransactionsQuery = allTransactionsQuery.eq('model_id', options.modelId)
+  while (revHasMore) {
+    let query = supabase
+      .from('fanvue_transactions')
+      .select('amount, net_amount')
+      .eq('agency_id', agencyId)
+      .gte('transaction_date', startDate.toISOString())
+      .lte('transaction_date', endDate.toISOString())
+      .range(revOffset, revOffset + revPageSize - 1) // Proper pagination
+
+    if (options.modelId) {
+      query = query.eq('model_id', options.modelId)
+    }
+
+    const { data, error } = await query
+
+    if (error) {
+      console.error('[analytics-engine] Error fetching transactions page:', error)
+      break
+    }
+
+    if (!data || data.length === 0) {
+      revHasMore = false
+    } else {
+      allTransactions = allTransactions.concat(data)
+      revOffset += revPageSize
+      if (data.length < revPageSize) {
+        revHasMore = false
+      }
+    }
   }
 
-  const { data: allTransactions, error: allError } = await allTransactionsQuery
-
-  if (allError) {
-    console.error('[analytics-engine] Error fetching all transactions:', allError)
-  }
-
-  console.log('[analytics-engine] Fetched transactions:', {
-    count: allTransactions?.length,
-    hasData: !!allTransactions,
-    sampleAmount: allTransactions?.[0]?.amount,
+  console.log('[analytics-engine] Fetched ALL transactions via pagination:', {
+    count: allTransactions.length,
+    hasData: allTransactions.length > 0,
   })
 
   // Query 4: Get previous period transactions for growth calculation
-  let prevAllQuery = supabase
-    .from('fanvue_transactions')
-    .select('amount')
-    .eq('agency_id', agencyId)
-    .gte('transaction_date', prevStartDate.toISOString())
-    .lte('transaction_date', prevEndDate.toISOString())
-    .limit(100000) // High limit to ensure we get ALL transactions
+  let prevAllTransactions: { amount: number }[] = []
+  let prevOffset = 0
+  let prevHasMore = true
 
-  if (options.modelId) {
-    prevAllQuery = prevAllQuery.eq('model_id', options.modelId)
+  while (prevHasMore) {
+    let query = supabase
+      .from('fanvue_transactions')
+      .select('amount')
+      .eq('agency_id', agencyId)
+      .gte('transaction_date', prevStartDate.toISOString())
+      .lte('transaction_date', prevEndDate.toISOString())
+      .range(prevOffset, prevOffset + revPageSize - 1)
+
+    if (options.modelId) {
+      query = query.eq('model_id', options.modelId)
+    }
+
+    const { data, error } = await query
+
+    if (error || !data || data.length === 0) {
+      prevHasMore = false
+    } else {
+      prevAllTransactions = prevAllTransactions.concat(data)
+      prevOffset += revPageSize
+      if (data.length < revPageSize) {
+        prevHasMore = false
+      }
+    }
   }
 
-  const { data: prevAllTransactions } = await prevAllQuery
-
   // Calculate metrics from complete dataset
-  const totalRevenue = allTransactions?.reduce((sum, tx) => sum + Number(tx.amount), 0) || 0
-  const netRevenue = allTransactions?.reduce((sum, tx) => sum + Number(tx.net_amount), 0) || 0
-  const prevTotalRevenue = prevAllTransactions?.reduce((sum, tx) => sum + Number(tx.amount), 0) || 0
+  const totalRevenue = allTransactions.reduce((sum, tx) => sum + Number(tx.amount), 0)
+  const netRevenue = allTransactions.reduce((sum, tx) => sum + Number(tx.net_amount), 0)
+  const prevTotalRevenue = prevAllTransactions.reduce((sum, tx) => sum + Number(tx.amount), 0)
+
+  console.log('[analytics-engine] Revenue calculation:', {
+    transactionCount: allTransactions.length,
+    totalRevenue,
+    netRevenue,
+  })
 
   console.log('[analytics-engine] Revenue calculation:', {
     transactionsCount: allTransactions?.length,
@@ -426,22 +466,50 @@ export async function getCategoryBreakdown(
 
   const { startDate, endDate } = getDateRange(options.timeRange, options.startDate, options.endDate)
 
-  let query = supabase
-    .from('fanvue_transactions')
-    .select('transaction_type, amount')
-    .eq('agency_id', agencyId)
-    .gte('transaction_date', startDate.toISOString())
-    .lte('transaction_date', endDate.toISOString())
-    .limit(100000) // Ensure we get all transactions for breakdown
+  // Use pagination to get ALL rows (Supabase default limit is 1000!)
+  let allData: { transaction_type: string; amount: number }[] = []
+  let offset = 0
+  const pageSize = 1000
+  let hasMore = true
 
-  if (options.modelId) {
-    query = query.eq('model_id', options.modelId)
+  while (hasMore) {
+    let query = supabase
+      .from('fanvue_transactions')
+      .select('transaction_type, amount')
+      .eq('agency_id', agencyId)
+      .gte('transaction_date', startDate.toISOString())
+      .lte('transaction_date', endDate.toISOString())
+      .range(offset, offset + pageSize - 1) // Proper pagination
+
+    if (options.modelId) {
+      query = query.eq('model_id', options.modelId)
+    }
+
+    const { data, error } = await query
+
+    if (error) {
+      console.error('[getCategoryBreakdown] Error fetching transactions:', error)
+      return []
+    }
+
+    if (!data || data.length === 0) {
+      hasMore = false
+    } else {
+      allData = allData.concat(data)
+      offset += pageSize
+      // If we got fewer rows than requested, we've reached the end
+      if (data.length < pageSize) {
+        hasMore = false
+      }
+    }
   }
 
-  const { data, error } = await query
+  console.log(`[getCategoryBreakdown] Fetched ${allData.length} total transactions`)
 
-  if (error || !data) {
-    console.error('Error fetching category breakdown:', error)
+  const data = allData
+
+  if (!data || data.length === 0) {
+    console.error('[getCategoryBreakdown] No data found')
     return []
   }
 
