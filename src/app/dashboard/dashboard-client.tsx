@@ -74,6 +74,7 @@ import { SyncButton } from '@/components/dashboard/sync-button'
 import { DateRangeFilter, type DateRangeValue } from '@/components/dashboard/date-range-filter'
 import { NewFansAnalytics } from '@/components/dashboard/new-fans-analytics'
 import { TopTrackingLinksCard } from '@/components/dashboard/top-tracking-links-card'
+import { InstagramInsightsCard } from '@/components/dashboard/instagram-insights-card'
 
 // Dark mode chart theme for Recharts
 const CHART_THEME = {
@@ -865,12 +866,20 @@ export default function DashboardClient({
             </Card>
           </div>
 
-          {/* Top Tracking Links & Best Sellers Row */}
+          {/* Top Tracking Links & Instagram Insights Row */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <TopTrackingLinksCard 
               models={models.map(m => ({ id: m.id, name: m.name }))} 
               initialModelId={selectedModelId === 'all' ? undefined : selectedModelId}
             />
+            <InstagramInsightsCard 
+              modelId={selectedModelId}
+              modelName={models.find(m => m.id === selectedModelId)?.name}
+            />
+          </div>
+
+          {/* Best Sellers */}
+          <div className="grid grid-cols-1 gap-6">
             <BestSellersWidget />
           </div>
 
