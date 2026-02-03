@@ -182,9 +182,67 @@ export default function DashboardClient({
     preset: 'all', // Default to "All Time" to show full history
   })
 
+  // Overview-specific state (separate from Fanvue tab)
+  const [overviewData, setOverviewData] = useState<{
+    chartData: ChartDataPoint[]
+    kpiMetrics: KPIMetrics
+    categoryBreakdown: CategoryBreakdown[]
+  } | null>(null)
+  const [isLoadingOverview, setIsLoadingOverview] = useState(false)
+
   const selectedModel = models.find(m => m.id === selectedModelId)
 
-  // Fetch data when model selection or date range changes (ALWAYS, including "All Models")
+  // Fetch Overview tab data when date range changes (ALWAYS agency-wide, no model filter)
+  useEffect(() => {
+    const fetchOverviewData = async () => {
+      setIsLoadingOverview(true)
+      try {
+        const params = new URLSearchParams()
+        params.set('agencyId', agency?.id || '')
+
+        // Map preset to timeRange format
+        const timeRangeMap: Record<string, string> = {
+          all: 'all',
+          today: '7d',
+          yesterday: '7d',
+          last7days: '7d',
+          last30days: '30d',
+          thisMonth: '30d',
+          thisYear: '1y',
+          custom: 'all',
+        }
+
+        const timeRange = dateRange.preset ? timeRangeMap[dateRange.preset] || 'all' : 'all'
+        params.set('timeRange', timeRange)
+
+        if (dateRange.startDate) {
+          params.set('startDate', dateRange.startDate.toISOString())
+        }
+        if (dateRange.endDate) {
+          params.set('endDate', dateRange.endDate.toISOString())
+        }
+
+        const response = await fetch(`/api/analytics/dashboard?${params.toString()}`)
+        if (!response.ok) throw new Error('Failed to fetch overview data')
+
+        const data = await response.json()
+        setOverviewData({
+          chartData: data.chartData || [],
+          kpiMetrics: data.kpiMetrics,
+          categoryBreakdown: data.categoryBreakdown || [],
+        })
+      } catch (error) {
+        console.error('Error fetching overview data:', error)
+        toast.error('Failed to load overview data')
+      } finally {
+        setIsLoadingOverview(false)
+      }
+    }
+
+    fetchOverviewData()
+  }, [dateRange, agency?.id])
+
+  // Fetch Fanvue tab data when model selection or date range changes
   useEffect(() => {
     const fetchModelData = async () => {
       setIsLoadingModelData(true)
@@ -307,8 +365,11 @@ export default function DashboardClient({
     return presetLabels[dateRange.preset] || 'Last 30 days'
   }
 
-  // ===== REAL CALCULATIONS (from models table) =====
-  const totalGrossRevenue = models.reduce((sum, m) => sum + Number(m.revenue_total || 0), 0)
+  // ===== DYNAMIC CALCULATIONS (from filtered API data) =====
+  // Use overview data if available (filtered by date), otherwise fallback to static models data
+  const totalGrossRevenue =
+    overviewData?.kpiMetrics?.totalRevenue ??
+    models.reduce((sum, m) => sum + Number(m.revenue_total || 0), 0)
   const platformFee = totalGrossRevenue * 0.2
   const afterPlatformFee = totalGrossRevenue - platformFee
   const taxRate = agency?.tax_rate ?? 0.2
@@ -327,31 +388,27 @@ export default function DashboardClient({
   const totalLikes = models.reduce((sum, m) => sum + Number(m.likes_count || 0), 0)
   const totalPosts = models.reduce((sum, m) => sum + Number(m.posts_count || 0), 0)
 
-  // ===== REAL DATA FROM ANALYTICS SERVICE (Phase 48) =====
-  // Format revenue + expense data for chart
+  // ===== DYNAMIC DATA FROM API (filtered by date range) =====
+  // Format revenue + expense data for "Revenue vs Expenses" chart
   const monthlyData = useMemo(() => {
-    console.log('[monthlyData] revenueHistory:', revenueHistory)
-    console.log('[monthlyData] expenseHistory:', expenseHistory)
+    console.log('[monthlyData] overviewData:', overviewData)
 
-    if (revenueHistory.length === 0 && expenseHistory.length === 0) {
-      console.log('[monthlyData] No data found, using mock fallback')
-      // Fallback to mock data if no real data
-      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun']
-      const baseRevenue = totalGrossRevenue / 6
-      return months.map((month, i) => ({
-        month,
-        revenue: Math.round(baseRevenue * (0.7 + Math.random() * 0.6)),
-        expenses: Math.round(totalExpenses * (0.8 + Math.random() * 0.4)),
-        subscribers: Math.round((totalSubscribers / 6) * (0.5 + i * 0.2)),
-        followers: Math.round((totalFollowers / 6) * (0.3 + i * 0.25)),
+    // Use dynamic overview data if available (filtered by date)
+    if (overviewData?.chartData && overviewData.chartData.length > 0) {
+      console.log('[monthlyData] Using filtered overview data from API')
+      return overviewData.chartData.map(point => ({
+        month: point.date, // Will be "Jan", "Feb" etc. (already formatted by analytics-engine)
+        revenue: point.total || 0,
+        expenses: 0, // TODO: Add expense tracking
+        subscribers: 0,
+        followers: 0,
       }))
     }
 
-    // If we have revenue history but no expense history, create combined data from revenue
-    if (revenueHistory.length > 0 && expenseHistory.length === 0) {
-      console.log('[monthlyData] Using revenue history only (no expenses)')
+    // Fallback to static props during initial load
+    if (revenueHistory.length > 0) {
+      console.log('[monthlyData] Using static revenueHistory fallback')
       return revenueHistory.map(rev => {
-        // Extract month from "Sep 2025" format -> "Sep"
         const monthOnly = rev.date.split(' ')[0]
         return {
           month: monthOnly,
@@ -363,28 +420,10 @@ export default function DashboardClient({
       })
     }
 
-    // Combine revenue history with expense history
-    console.log('[monthlyData] Combining revenue and expense history')
-    return expenseHistory.map(exp => {
-      const revenueForMonth = revenueHistory.find(rev =>
-        rev.date.includes(exp.month.substring(0, 3))
-      )
-      return {
-        month: exp.month,
-        revenue: revenueForMonth?.total || 0,
-        expenses: exp.expenses,
-        subscribers: 0, // Will use subscriberGrowth for this
-        followers: 0, // Will use subscriberGrowth for this
-      }
-    })
-  }, [
-    revenueHistory,
-    expenseHistory,
-    totalGrossRevenue,
-    totalExpenses,
-    totalSubscribers,
-    totalFollowers,
-  ])
+    // Empty state - no data yet
+    console.log('[monthlyData] No data available')
+    return []
+  }, [overviewData, revenueHistory])
 
   // Model performance data from analytics service
   const modelPerformanceData = useMemo(() => {
@@ -434,6 +473,9 @@ export default function DashboardClient({
 
   const profitMargin =
     totalGrossRevenue > 0 ? ((netProfit / totalGrossRevenue) * 100).toFixed(1) : '0'
+
+  // Get transaction count from overview data (filtered by date)
+  const totalTransactions = overviewData?.kpiMetrics?.transactionCount ?? 0
 
   return (
     <div className="space-y-6">
