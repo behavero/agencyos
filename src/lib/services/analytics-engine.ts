@@ -79,8 +79,9 @@ export async function getChartData(
   }
 
   // Convert database response to ChartDataPoint
+  // IMPORTANT: Include year in date format to avoid mixing data from different years!
   const dataPoints = (data || []).map((row: any) => ({
-    date: new Date(row.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    date: new Date(row.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
     subscriptions: Number(row.subscriptions) || 0,
     tips: Number(row.tips) || 0,
     messages: Number(row.messages) || 0,
@@ -113,7 +114,7 @@ export async function getChartData(
   // Group transactions by date and count cumulative unique fans
   const transactionsByDate = new Map<string, string[]>()
   subTransactions?.forEach((tx: any) => {
-    const dateKey = new Date(tx.transaction_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    const dateKey = new Date(tx.transaction_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     if (!transactionsByDate.has(dateKey)) {
       transactionsByDate.set(dateKey, [])
     }
@@ -755,7 +756,8 @@ function aggregateDaily(
   const currentDate = new Date(startDate)
 
   while (currentDate <= endDate) {
-    const dateStr = currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    // IMPORTANT: Include year to avoid mixing data from different years!
+    const dateStr = currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     const existingPoint = dataPoints.find(d => d.date === dateStr)
 
     filledData.push(
@@ -785,47 +787,54 @@ function aggregateWeekly(
   startDate: Date,
   endDate: Date
 ): ChartDataPoint[] {
-  const weeklyData = new Map<string, ChartDataPoint>()
+  const weeklyData = new Map<string, { data: ChartDataPoint; sortKey: string }>()
 
   // Parse all data points and group by week
   for (const point of dataPoints) {
     // Get the Monday of the week for this data point
-    const pointDate = new Date(point.date + ' 2025') // Add year for parsing
+    // Date format is now "Jan 15, 2025" which JS can parse directly
+    const pointDate = new Date(point.date)
+    if (isNaN(pointDate.getTime())) continue // Skip invalid dates
+    
     const monday = new Date(pointDate)
     const day = monday.getDay()
     const diff = monday.getDate() - day + (day === 0 ? -6 : 1) // Adjust to Monday
     monday.setDate(diff)
 
-    const weekKey = monday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    // Use sortable key for proper ordering
+    const sortKey = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`
+    const weekKey = monday.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 
-    if (weeklyData.has(weekKey)) {
-      const existing = weeklyData.get(weekKey)!
+    if (weeklyData.has(sortKey)) {
+      const existing = weeklyData.get(sortKey)!.data
       existing.subscriptions += point.subscriptions
       existing.tips += point.tips
       existing.messages += point.messages
       existing.posts += point.posts
       existing.total += point.total
-      existing.subscribers = Math.max(existing.subscribers || 0, point.subscribers || 0) // Use latest count
-      existing.followers = Math.max(existing.followers || 0, point.followers || 0) // Use latest count
+      existing.subscribers = Math.max(existing.subscribers || 0, point.subscribers || 0)
+      existing.followers = Math.max(existing.followers || 0, point.followers || 0)
     } else {
-      weeklyData.set(weekKey, {
-        date: weekKey,
-        subscriptions: point.subscriptions,
-        tips: point.tips,
-        messages: point.messages,
-        posts: point.posts,
-        total: point.total,
-        subscribers: point.subscribers || 0,
-        followers: point.followers || 0,
+      weeklyData.set(sortKey, {
+        sortKey,
+        data: {
+          date: weekKey,
+          subscriptions: point.subscriptions,
+          tips: point.tips,
+          messages: point.messages,
+          posts: point.posts,
+          total: point.total,
+          subscribers: point.subscribers || 0,
+          followers: point.followers || 0,
+        }
       })
     }
   }
 
-  return Array.from(weeklyData.values()).sort((a, b) => {
-    const dateA = new Date(a.date + ' 2025')
-    const dateB = new Date(b.date + ' 2025')
-    return dateA.getTime() - dateB.getTime()
-  })
+  // Sort by sortKey (YYYY-MM-DD format sorts correctly)
+  return Array.from(weeklyData.values())
+    .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+    .map(item => item.data)
 }
 
 /**
@@ -841,51 +850,9 @@ function aggregateMonthly(
 
   // Parse all data points and group by month+year
   for (const point of dataPoints) {
-    // Try to parse date from various formats
-    // Format could be "Jan 15" or "Jan 15, 2025" or similar
-    let parsedDate: Date | null = null
-    
-    // Try parsing with the year from the date range context
-    const monthMatch = point.date.match(/^([A-Za-z]{3})\s*(\d+)?(?:,?\s*(\d{4}))?/)
-    if (monthMatch) {
-      const month = monthMatch[1]
-      const day = monthMatch[2] ? parseInt(monthMatch[2]) : 1
-      const year = monthMatch[3] ? parseInt(monthMatch[3]) : null
-      
-      // Map month name to number
-      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-      const monthIndex = monthNames.indexOf(month)
-      
-      if (monthIndex !== -1) {
-        // If no year in date string, infer from the data range
-        // Check if this month falls within startDate-endDate range
-        if (year) {
-          parsedDate = new Date(year, monthIndex, day)
-        } else {
-          // Try current year first, then check if it makes sense in range
-          const testDate = new Date(startDate.getFullYear(), monthIndex, day)
-          if (testDate >= startDate && testDate <= endDate) {
-            parsedDate = testDate
-          } else {
-            // Try next year
-            const nextYearDate = new Date(startDate.getFullYear() + 1, monthIndex, day)
-            if (nextYearDate >= startDate && nextYearDate <= endDate) {
-              parsedDate = nextYearDate
-            } else {
-              // Try previous year
-              const prevYearDate = new Date(startDate.getFullYear() - 1, monthIndex, day)
-              if (prevYearDate >= startDate && prevYearDate <= endDate) {
-                parsedDate = prevYearDate
-              } else {
-                parsedDate = testDate // Default to start year
-              }
-            }
-          }
-        }
-      }
-    }
-    
-    if (!parsedDate) continue
+    // Date format is now "Jan 15, 2025" which JS can parse directly
+    const parsedDate = new Date(point.date)
+    if (isNaN(parsedDate.getTime())) continue // Skip invalid dates
     
     // Create key with year and month for proper grouping
     const sortKey = `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, '0')}`
