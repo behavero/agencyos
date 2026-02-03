@@ -4,18 +4,21 @@
   "buildCommand": "npm run build",
   "devCommand": "npm run dev",
   "installCommand": "npm install",
+  "git": {
+    "ignoreCommand": "git diff --quiet HEAD^ HEAD -- src/ package.json next.config.ts public/"
+  },
   "crons": [
     {
       "path": "/api/cron/sync-transactions",
-      "schedule": "*/15 * * * *"
+      "schedule": "0 */2 * * *"
     },
     {
       "path": "/api/cron/daily-refresh",
-      "schedule": "*/5 * * * *"
+      "schedule": "0 */1 * * *"
     },
     {
       "path": "/api/cron/sync-tracking-links",
-      "schedule": "*/30 * * * *"
+      "schedule": "0 */3 * * *"
     },
     {
       "path": "/api/cron/check-late-shifts",

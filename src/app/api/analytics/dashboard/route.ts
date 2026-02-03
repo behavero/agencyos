@@ -1,11 +1,18 @@
 /**
  * Dashboard Analytics API
- * Fetches Fanvue analytics data for a specific model or all models
+ * Phase 65 - Performance Optimized with unstable_cache
+ *
+ * Fetches Fanvue analytics data for a specific model or all models.
+ * Uses cached versions to reduce database queries and function invocations.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getChartData, getKPIMetrics, getCategoryBreakdown } from '@/lib/services/analytics-engine'
+import {
+  getCachedChartData,
+  getCachedKPIMetrics,
+  getCachedCategoryBreakdown,
+} from '@/lib/services/analytics-engine'
 
 export async function GET(request: NextRequest) {
   try {
@@ -47,26 +54,30 @@ export async function GET(request: NextRequest) {
       endDate: endDate?.toISOString(),
     })
 
-    // Fetch analytics data
+    // Fetch analytics data (using cached versions for performance)
+    const effectiveModelId = modelId === 'all' ? undefined : modelId || undefined
     const [chartData, kpiMetrics, categoryBreakdown] = await Promise.all([
-      getChartData(profile.agency_id, {
-        modelId: modelId === 'all' ? undefined : modelId || undefined,
+      getCachedChartData(
+        profile.agency_id,
+        effectiveModelId,
         timeRange,
-        startDate,
-        endDate,
-      }),
-      getKPIMetrics(profile.agency_id, {
-        modelId: modelId === 'all' ? undefined : modelId || undefined,
+        startDate?.toISOString(),
+        endDate?.toISOString()
+      ),
+      getCachedKPIMetrics(
+        profile.agency_id,
+        effectiveModelId,
         timeRange,
-        startDate,
-        endDate,
-      }),
-      getCategoryBreakdown(profile.agency_id, {
-        modelId: modelId === 'all' ? undefined : modelId || undefined,
+        startDate?.toISOString(),
+        endDate?.toISOString()
+      ),
+      getCachedCategoryBreakdown(
+        profile.agency_id,
+        effectiveModelId,
         timeRange,
-        startDate,
-        endDate,
-      }),
+        startDate?.toISOString(),
+        endDate?.toISOString()
+      ),
     ])
 
     return NextResponse.json({

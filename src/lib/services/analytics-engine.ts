@@ -1,12 +1,17 @@
 /**
  * Analytics Engine
  * Phase 49 - Granular Analytics with Fanvue Transactions
+ * Phase 65 - Performance Optimization with unstable_cache
  *
  * This service provides accurate revenue tracking and KPI calculations
  * using granular transaction data from Fanvue API.
+ *
+ * Heavy queries are cached using Next.js unstable_cache for 5 minutes
+ * to reduce database load and Vercel function invocations.
  */
 
 import { createClient } from '@/lib/supabase/server'
+import { unstable_cache } from 'next/cache'
 
 export type TimeRange = '7d' | '30d' | '90d' | '1y' | 'all'
 
@@ -81,7 +86,11 @@ export async function getChartData(
   // Convert database response to ChartDataPoint
   // IMPORTANT: Include year in date format to avoid mixing data from different years!
   const dataPoints = (data || []).map((row: any) => ({
-    date: new Date(row.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+    date: new Date(row.date).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    }),
     subscriptions: Number(row.subscriptions) || 0,
     tips: Number(row.tips) || 0,
     messages: Number(row.messages) || 0,
@@ -112,26 +121,32 @@ export async function getChartData(
     .from('models')
     .select('followers_count')
     .eq('agency_id', agencyId)
-  
+
   if (options.modelId) {
     modelsForFollowersQuery = modelsForFollowersQuery.eq('id', options.modelId)
   }
-  
+
   const { data: modelsForFollowers } = await modelsForFollowersQuery
-  const totalCurrentFollowers = modelsForFollowers?.reduce((sum, m) => sum + (m.followers_count || 0), 0) || 0
+  const totalCurrentFollowers =
+    modelsForFollowers?.reduce((sum, m) => sum + (m.followers_count || 0), 0) || 0
 
   // Sort transactions by date to calculate cumulative counts correctly
-  const sortedTransactions = (subTransactions || []).sort((a: any, b: any) => 
-    new Date(a.transaction_date).getTime() - new Date(b.transaction_date).getTime()
+  const sortedTransactions = (subTransactions || []).sort(
+    (a: any, b: any) =>
+      new Date(a.transaction_date).getTime() - new Date(b.transaction_date).getTime()
   )
 
   // Calculate cumulative unique subscribers by date (sorted!)
   const seenFans = new Set<string>()
   const subscriberByDate = new Map<string, number>()
-  
+
   sortedTransactions.forEach((tx: any) => {
     seenFans.add(tx.fan_id)
-    const dateKey = new Date(tx.transaction_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    const dateKey = new Date(tx.transaction_date).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    })
     subscriberByDate.set(dateKey, seenFans.size) // Update cumulative count for this date
   })
 
@@ -150,14 +165,14 @@ export async function getChartData(
   // Followers: Linear growth from 0 to current (approximation)
   const totalDays = sortedDataPoints.length
   let lastSubscriberCount = 0
-  
+
   const mergedDataPoints = sortedDataPoints.map((point, index) => {
     // Get subscriber count for this date, or carry forward the last known count
     const subCount = subscriberByDate.get(point.date)
     if (subCount !== undefined) {
       lastSubscriberCount = subCount
     }
-    
+
     return {
       ...point,
       // Cumulative subscribers (carries forward)
@@ -253,7 +268,7 @@ export async function getKPIMetrics(
   }
 
   const { data: models } = await modelsQuery
-  
+
   // Get ACTUAL subscriber and follower counts from Fanvue Smart Lists (stored in models table)
   // This is the source of truth for audience metrics
   const modelSubscribers = models?.reduce((sum, m) => sum + (m.subscribers_count || 0), 0) || 0
@@ -297,7 +312,9 @@ export async function getKPIMetrics(
 
   // Count UNIQUE PAYING subscribers from transactions (for LTV and conversion calculations)
   // This is DIFFERENT from modelSubscribers (which is current active subs from Fanvue Smart Lists)
-  const paidSubscribersFromTransactions = new Set(allSubTransactions.map(t => t.fan_id).filter(Boolean)).size
+  const paidSubscribersFromTransactions = new Set(
+    allSubTransactions.map(t => t.fan_id).filter(Boolean)
+  ).size
 
   // For "New Fans" and audience display, use Fanvue Smart List data (source of truth)
   // modelSubscribers = current active subscribers
@@ -401,7 +418,9 @@ export async function getKPIMetrics(
     transactionsCount: allTransactions?.length,
     totalRevenue,
     netRevenue,
-    sampleTransactions: allTransactions?.slice(0, 3).map(t => ({ amount: t.amount, net: t.net_amount })),
+    sampleTransactions: allTransactions
+      ?.slice(0, 3)
+      .map(t => ({ amount: t.amount, net: t.net_amount })),
   })
 
   // Calculate Avg Tip from ALL tip transactions (not just sample)
@@ -412,11 +431,11 @@ export async function getKPIMetrics(
     .eq('transaction_type', 'tip')
     .gte('transaction_date', startDate.toISOString())
     .lte('transaction_date', endDate.toISOString())
-  
+
   if (options.modelId) {
     tipCountQuery = tipCountQuery.eq('model_id', options.modelId)
   }
-  
+
   const { count: tipCount } = await tipCountQuery.then(r => ({ count: r.count || 0 }))
 
   let tipDataQuery = supabase
@@ -427,11 +446,11 @@ export async function getKPIMetrics(
     .gte('transaction_date', startDate.toISOString())
     .lte('transaction_date', endDate.toISOString())
     .limit(50000)
-  
+
   if (options.modelId) {
     tipDataQuery = tipDataQuery.eq('model_id', options.modelId)
   }
-  
+
   const { data: tipData } = await tipDataQuery
 
   const totalTipAmount = tipData?.reduce((sum, tx) => sum + Number(tx.amount), 0) || 0
@@ -450,11 +469,11 @@ export async function getKPIMetrics(
     .eq('transaction_type', 'message')
     .gte('transaction_date', startDate.toISOString())
     .lte('transaction_date', endDate.toISOString())
-  
+
   if (options.modelId) {
     messageCountQuery = messageCountQuery.eq('model_id', options.modelId)
   }
-  
+
   const { count: messageCount } = await messageCountQuery.then(r => ({ count: r.count || 0 }))
 
   let ppvCountQuery = supabase
@@ -464,11 +483,11 @@ export async function getKPIMetrics(
     .eq('transaction_type', 'ppv')
     .gte('transaction_date', startDate.toISOString())
     .lte('transaction_date', endDate.toISOString())
-  
+
   if (options.modelId) {
     ppvCountQuery = ppvCountQuery.eq('model_id', options.modelId)
   }
-  
+
   const { count: ppvCount } = await ppvCountQuery.then(r => ({ count: r.count || 0 }))
 
   let postCountQuery = supabase
@@ -478,11 +497,11 @@ export async function getKPIMetrics(
     .eq('transaction_type', 'post')
     .gte('transaction_date', startDate.toISOString())
     .lte('transaction_date', endDate.toISOString())
-  
+
   if (options.modelId) {
     postCountQuery = postCountQuery.eq('model_id', options.modelId)
   }
-  
+
   const { count: postCount } = await postCountQuery.then(r => ({ count: r.count || 0 }))
 
   // Get UNIQUE fans who purchased messages (for conversion rate)
@@ -494,11 +513,11 @@ export async function getKPIMetrics(
     .gte('transaction_date', startDate.toISOString())
     .lte('transaction_date', endDate.toISOString())
     .limit(50000)
-  
+
   if (options.modelId) {
     uniqueMessageBuyersQuery = uniqueMessageBuyersQuery.eq('model_id', options.modelId)
   }
-  
+
   const { data: uniqueMessageBuyers } = await uniqueMessageBuyersQuery
 
   const uniqueMessageFans = new Set(uniqueMessageBuyers?.map(t => t.fan_id).filter(Boolean)).size
@@ -512,25 +531,27 @@ export async function getKPIMetrics(
     .gte('transaction_date', startDate.toISOString())
     .lte('transaction_date', endDate.toISOString())
     .limit(50000)
-  
+
   if (options.modelId) {
     uniquePostBuyersQuery = uniquePostBuyersQuery.eq('model_id', options.modelId)
   }
-  
+
   const { data: uniquePostBuyers } = await uniquePostBuyersQuery
 
   const uniquePostFans = new Set(uniquePostBuyers?.map(t => t.fan_id).filter(Boolean)).size
 
   // Message Purchase Rate: % of PAID subscribers who bought at least 1 message
   // Uses paidSubscribersFromTransactions (people who actually paid for subscription)
-  const messageConversionRate = paidSubscribersFromTransactions > 0 
-    ? (uniqueMessageFans / paidSubscribersFromTransactions) * 100 
-    : 0
+  const messageConversionRate =
+    paidSubscribersFromTransactions > 0
+      ? (uniqueMessageFans / paidSubscribersFromTransactions) * 100
+      : 0
 
   // Post Purchase Rate: % of PAID subscribers who bought at least 1 post/PPV
-  const ppvConversionRate = paidSubscribersFromTransactions > 0 
-    ? (uniquePostFans / paidSubscribersFromTransactions) * 100 
-    : 0
+  const ppvConversionRate =
+    paidSubscribersFromTransactions > 0
+      ? (uniquePostFans / paidSubscribersFromTransactions) * 100
+      : 0
 
   // Calculate revenue growth
   const revenueGrowth =
@@ -540,7 +561,8 @@ export async function getKPIMetrics(
 
   // 1. LTV (Lifetime Value) = Total Revenue / Paid Subscribers
   // This represents the average lifetime value per paying customer
-  const ltv = paidSubscribersFromTransactions > 0 ? totalRevenue / paidSubscribersFromTransactions : 0
+  const ltv =
+    paidSubscribersFromTransactions > 0 ? totalRevenue / paidSubscribersFromTransactions : 0
 
   // 2. Golden Ratio = (Message + PPV + Tip Revenue) / Subscription Revenue
   const subscriptionRevenue =
@@ -616,19 +638,19 @@ export async function getCategoryBreakdown(
   let hasMore = true
 
   while (hasMore) {
-  let query = supabase
-    .from('fanvue_transactions')
+    let query = supabase
+      .from('fanvue_transactions')
       .select('transaction_type, amount')
-    .eq('agency_id', agencyId)
+      .eq('agency_id', agencyId)
       .gte('transaction_date', startDate.toISOString())
       .lte('transaction_date', endDate.toISOString())
       .range(offset, offset + pageSize - 1) // Proper pagination
 
-  if (options.modelId) {
-    query = query.eq('model_id', options.modelId)
-  }
+    if (options.modelId) {
+      query = query.eq('model_id', options.modelId)
+    }
 
-  const { data, error } = await query
+    const { data, error } = await query
 
     if (error) {
       console.error('[getCategoryBreakdown] Error fetching transactions:', error)
@@ -765,7 +787,11 @@ function aggregateDaily(
 
   while (currentDate <= endDate) {
     // IMPORTANT: Include year to avoid mixing data from different years!
-    const dateStr = currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    const dateStr = currentDate.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    })
     const existingPoint = dataPoints.find(d => d.date === dateStr)
 
     filledData.push(
@@ -778,7 +804,7 @@ function aggregateDaily(
         total: 0,
         subscribers: 0,
         followers: 0,
-    }
+      }
     )
 
     currentDate.setDate(currentDate.getDate() + 1)
@@ -803,7 +829,7 @@ function aggregateWeekly(
     // Date format is now "Jan 15, 2025" which JS can parse directly
     const pointDate = new Date(point.date)
     if (isNaN(pointDate.getTime())) continue // Skip invalid dates
-    
+
     const monday = new Date(pointDate)
     const day = monday.getDay()
     const diff = monday.getDate() - day + (day === 0 ? -6 : 1) // Adjust to Monday
@@ -811,7 +837,11 @@ function aggregateWeekly(
 
     // Use sortable key for proper ordering
     const sortKey = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`
-    const weekKey = monday.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    const weekKey = monday.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    })
 
     if (weeklyData.has(sortKey)) {
       const existing = weeklyData.get(sortKey)!.data
@@ -834,7 +864,7 @@ function aggregateWeekly(
           total: point.total,
           subscribers: point.subscribers || 0,
           followers: point.followers || 0,
-        }
+        },
       })
     }
   }
@@ -861,11 +891,11 @@ function aggregateMonthly(
     // Date format is now "Jan 15, 2025" which JS can parse directly
     const parsedDate = new Date(point.date)
     if (isNaN(parsedDate.getTime())) continue // Skip invalid dates
-    
+
     // Create key with year and month for proper grouping
     const sortKey = `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, '0')}`
     const displayKey = parsedDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) // "Jun 2025"
-    
+
     if (monthlyData.has(sortKey)) {
       const existing = monthlyData.get(sortKey)!.data
       existing.subscriptions += point.subscriptions
@@ -887,7 +917,7 @@ function aggregateMonthly(
           total: point.total,
           subscribers: point.subscribers || 0,
           followers: point.followers || 0,
-        }
+        },
       })
     }
   }
@@ -920,3 +950,77 @@ function getEmptyKPIMetrics(): KPIMetrics {
     unlockRate: 0,
   }
 }
+
+// ============================================================================
+// PHASE 65: CACHED VERSIONS (unstable_cache)
+// These reduce Vercel function invocations by caching for 5 minutes
+// ============================================================================
+
+/**
+ * Cached version of getKPIMetrics
+ * Reduces database queries by caching results for 5 minutes
+ */
+export const getCachedKPIMetrics = unstable_cache(
+  async (
+    agencyId: string,
+    modelId?: string,
+    timeRange?: TimeRange,
+    startDate?: string,
+    endDate?: string
+  ) => {
+    return getKPIMetrics(agencyId, {
+      modelId,
+      timeRange,
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+    })
+  },
+  ['kpi-metrics'],
+  { revalidate: 300 } // 5 minutes
+)
+
+/**
+ * Cached version of getCategoryBreakdown
+ * Reduces database queries by caching results for 5 minutes
+ */
+export const getCachedCategoryBreakdown = unstable_cache(
+  async (
+    agencyId: string,
+    modelId?: string,
+    timeRange?: TimeRange,
+    startDate?: string,
+    endDate?: string
+  ) => {
+    return getCategoryBreakdown(agencyId, {
+      modelId,
+      timeRange,
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+    })
+  },
+  ['category-breakdown'],
+  { revalidate: 300 } // 5 minutes
+)
+
+/**
+ * Cached version of getChartData
+ * Reduces database queries by caching results for 5 minutes
+ */
+export const getCachedChartData = unstable_cache(
+  async (
+    agencyId: string,
+    modelId?: string,
+    timeRange?: TimeRange,
+    startDate?: string,
+    endDate?: string
+  ) => {
+    return getChartData(agencyId, {
+      modelId,
+      timeRange,
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+    })
+  },
+  ['chart-data'],
+  { revalidate: 300 } // 5 minutes
+)
