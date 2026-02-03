@@ -72,6 +72,7 @@ import { AggregatedSocialGrid } from '@/components/dashboard/social-grid'
 import { BestSellersWidget } from '@/components/dashboard/best-sellers-widget'
 import { SyncButton } from '@/components/dashboard/sync-button'
 import { DateRangeFilter, type DateRangeValue } from '@/components/dashboard/date-range-filter'
+import { NewFansAnalytics } from '@/components/dashboard/new-fans-analytics'
 
 // Dark mode chart theme for Recharts
 const CHART_THEME = {
@@ -1038,6 +1039,87 @@ export default function DashboardClient({
             </Card>
           </div>
 
+          {/* New KPI Metrics Row (Competitor Parity) */}
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <Card className="glass border-amber-500/20">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">LTV</CardTitle>
+                <Trophy className="h-4 w-4 text-amber-400" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-amber-400">
+                  {formatCurrency(filteredFanvueData.kpiMetrics.ltv)}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Lifetime value</p>
+              </CardContent>
+            </Card>
+
+            <Card className="glass border-pink-500/20">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Golden Ratio</CardTitle>
+                <Crown className="h-4 w-4 text-pink-400" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-pink-400">
+                  {filteredFanvueData.kpiMetrics.goldenRatio.toFixed(2)}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Content monetization</p>
+              </CardContent>
+            </Card>
+
+            <Card className="glass border-blue-500/20">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Messages Sent</CardTitle>
+                <MessageSquare className="h-4 w-4 text-blue-400" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-blue-400">
+                  {filteredFanvueData.kpiMetrics.totalMessagesSent.toLocaleString()}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Paid messages</p>
+              </CardContent>
+            </Card>
+
+            <Card className="glass border-purple-500/20">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">PPV Sent</CardTitle>
+                <Eye className="h-4 w-4 text-purple-400" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-purple-400">
+                  {filteredFanvueData.kpiMetrics.totalPPVSent.toLocaleString()}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Posts & PPV</p>
+              </CardContent>
+            </Card>
+
+            <Card className="glass border-indigo-500/20">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">New Fans</CardTitle>
+                <Users className="h-4 w-4 text-indigo-400" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-indigo-400">
+                  {filteredFanvueData.kpiMetrics.newFans.toLocaleString()}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">In period</p>
+              </CardContent>
+            </Card>
+
+            <Card className="glass border-rose-500/20">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Unlock Rate</CardTitle>
+                <TrendingUp className="h-4 w-4 text-rose-400" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-rose-400">
+                  {filteredFanvueData.kpiMetrics.unlockRate.toFixed(1)}%
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">PPV conversion</p>
+              </CardContent>
+            </Card>
+          </div>
+
           {/* Conversion Stats Row */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card className="glass border-teal-500/20">
@@ -1154,6 +1236,14 @@ export default function DashboardClient({
               </div>
             </CardContent>
           </Card>
+
+          {/* New Fans Analytics Section */}
+          <NewFansAnalytics
+            newFansCount={filteredFanvueData.kpiMetrics.newFans}
+            variation={filteredFanvueData.kpiMetrics.revenueGrowth}
+            dateRangeLabel={getDateRangeLabel()}
+            className="mt-6"
+          />
 
           {/* Revenue Breakdown by Type */}
           {revenueBreakdown.length > 0 && (
