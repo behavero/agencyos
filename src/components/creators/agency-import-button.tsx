@@ -2,16 +2,14 @@
 
 import { Button } from '@/components/ui/button'
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
 import { Building2, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
@@ -20,9 +18,11 @@ import { useRouter } from 'next/navigation'
 export function AgencyImportButton() {
   const router = useRouter()
   const [isImporting, setIsImporting] = useState(false)
+  const [open, setOpen] = useState(false)
 
   const handleImport = async () => {
     setIsImporting(true)
+    setOpen(false) // Close dialog
 
     toast.loading('🏢 Discovering creators from agency account...', {
       id: 'agency-import',
@@ -81,8 +81,8 @@ export function AgencyImportButton() {
   }
 
   return (
-    <AlertDialog>
-      <AlertDialogTrigger asChild>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
         <Button
           variant="outline"
           className="gap-2 border-violet-500/30 hover:border-violet-500/50"
@@ -100,14 +100,14 @@ export function AgencyImportButton() {
             </>
           )}
         </Button>
-      </AlertDialogTrigger>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle className="flex items-center gap-2">
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
             <Building2 className="w-5 h-5 text-violet-500" />
             Import Creators from Agency
-          </AlertDialogTitle>
-          <AlertDialogDescription className="space-y-3 pt-2">
+          </DialogTitle>
+          <DialogDescription className="space-y-3 pt-2">
             <div className="flex items-start gap-2 text-sm">
               <CheckCircle2 className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
               <div>
@@ -138,11 +138,13 @@ export function AgencyImportButton() {
                 share the agency access token for API calls.
               </div>
             </div>
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button
             onClick={handleImport}
             disabled={isImporting}
             className="bg-violet-600 hover:bg-violet-700"
@@ -155,9 +157,9 @@ export function AgencyImportButton() {
             ) : (
               'Import Creators'
             )}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
