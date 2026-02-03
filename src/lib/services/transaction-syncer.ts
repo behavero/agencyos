@@ -186,14 +186,18 @@ export async function syncModelTransactions(modelId: string): Promise<SyncResult
 
     // Transform earnings to transactions
     const transactions = allEarnings.map(earning => {
-      // Map Fanvue 'source' to our category enum
+      // Map Fanvue 'source' to database transaction_type enum
+      // Must match CHECK constraint: subscription, tip, ppv, message, post, stream, other
       let category = 'other'
       const source = (earning.source || '').toLowerCase()
 
-      if (source.includes('subscription')) category = 'subscription'
+      if (source.includes('subscription') || source.includes('renewal')) category = 'subscription'
       else if (source.includes('tip')) category = 'tip'
-      else if (source.includes('message') || source.includes('ppv')) category = 'message'
+      else if (source.includes('ppv')) category = 'ppv'
+      else if (source.includes('message')) category = 'message'
       else if (source.includes('post') || source.includes('unlock')) category = 'post'
+      else if (source.includes('stream') || source.includes('live')) category = 'stream'
+      else if (source.includes('referral')) category = 'other' // Referral not in CHECK constraint, map to 'other'
 
       // Parse the date properly - Fanvue returns dates in ISO format (YYYY-MM-DD)
       // Ensure we create a proper timestamp for accurate charting
@@ -206,22 +210,24 @@ export async function syncModelTransactions(modelId: string): Promise<SyncResult
       return {
         agency_id: model.agency_id,
         model_id: model.id,
-        fanvue_id: `${earning.date}_${earning.source}_${earning.gross}_${earning.user?.uuid || 'unknown'}`, // Generate unique ID
-        fanvue_user_id: earning.user?.uuid || null, // The fan who made the transaction
+        fanvue_transaction_id: `${earning.date}_${earning.source}_${earning.gross}_${earning.user?.uuid || 'unknown'}`, // Generate unique ID
+        transaction_type: category, // Must match CHECK constraint: subscription, tip, ppv, message, post, stream, other
         amount: earning.gross / 100, // Convert cents to dollars (gross amount)
         net_amount: earning.net / 100, // Convert cents to dollars (after platform fees)
+        platform_fee: (earning.gross - earning.net) / 100, // Calculate platform fee
         currency: earning.currency || 'USD',
-        category: category, // Must match CHECK constraint: subscription, tip, message, post, referral, other
+        fan_id: earning.user?.uuid || null, // The fan who made the transaction
+        fan_username: earning.user?.handle || null, // Fan's username
         description: earning.source,
-        fanvue_created_at: fanvueCreatedAt, // Original timestamp from Fanvue
+        transaction_date: fanvueCreatedAt, // Original timestamp from Fanvue
         synced_at: new Date().toISOString(),
       }
     })
 
     // Upsert transactions (insert or update on conflict)
-    // The unique constraint is on (fanvue_id, model_id) per the schema
+    // The unique constraint is on fanvue_transaction_id
     const { error: upsertError } = await supabase.from('fanvue_transactions').upsert(transactions, {
-      onConflict: 'fanvue_id,model_id',
+      onConflict: 'fanvue_transaction_id',
       ignoreDuplicates: false,
     })
 
