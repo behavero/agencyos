@@ -1,21 +1,19 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { createFanvueClient } from '@/lib/fanvue/client'
-import { refreshAccessToken } from '@/lib/fanvue/oauth'
+import { getModelAccessToken } from '@/lib/services/fanvue-auth'
 
 /**
  * Fetch and update real stats from Fanvue API
+ * Phase 59: Uses agency-wide token system for seamless multi-creator support
  */
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
 
   try {
     const adminClient = createAdminClient()
 
-    // Get the model's Fanvue tokens
+    // Get the model's info
     const { data: model, error } = await adminClient
       .from('models')
       .select('*')
@@ -26,81 +24,126 @@ export async function POST(
       return NextResponse.json({ error: 'Creator not found' }, { status: 404 })
     }
 
-    if (!model.fanvue_access_token) {
-      return NextResponse.json({ error: 'Creator not connected to Fanvue' }, { status: 400 })
+    if (!model.fanvue_user_uuid) {
+      return NextResponse.json(
+        { error: 'Creator has no Fanvue UUID. Import via agency first.' },
+        { status: 400 }
+      )
     }
 
-    let accessToken = model.fanvue_access_token
+    // PHASE 59: Agency-wide token system
+    // Try to get model's own token first, fall back to agency admin token
+    let accessToken: string = ''
+    let useAgencyEndpoint = false
 
-    // Check if token is expired and refresh if needed
-    if (model.fanvue_token_expires_at) {
-      const expiresAt = new Date(model.fanvue_token_expires_at)
-      if (expiresAt < new Date() && model.fanvue_refresh_token) {
-        console.log('[Stats API] Token expired, refreshing...')
-        try {
-          const newTokens = await refreshAccessToken({
-            refreshToken: model.fanvue_refresh_token,
-            clientId: process.env.NEXT_PUBLIC_FANVUE_CLIENT_ID!,
-            clientSecret: process.env.FANVUE_CLIENT_SECRET!,
-          })
+    if (model.fanvue_access_token) {
+      // Model has its own token - use it
+      try {
+        accessToken = await getModelAccessToken(id)
+        console.log('[Stats API] Using model own token')
+      } catch (error) {
+        console.log('[Stats API] Model token refresh failed, falling back to agency token')
+        useAgencyEndpoint = true
+      }
+    } else {
+      // Model doesn't have a token - use agency admin token
+      useAgencyEndpoint = true
+    }
 
-          accessToken = newTokens.access_token
+    // If using agency endpoint, get the agency admin token
+    if (useAgencyEndpoint) {
+      try {
+        // Find any model in this agency with a valid token (typically the agency admin)
+        const { data: adminModel } = await adminClient
+          .from('models')
+          .select('id')
+          .eq('agency_id', model.agency_id)
+          .not('fanvue_access_token', 'is', null)
+          .order('fanvue_token_expires_at', { ascending: false, nullsFirst: false })
+          .limit(1)
+          .single()
 
-          // Update tokens in database
-          await adminClient
-            .from('models')
-            .update({
-              fanvue_access_token: newTokens.access_token,
-              fanvue_refresh_token: newTokens.refresh_token || model.fanvue_refresh_token,
-              fanvue_token_expires_at: new Date(Date.now() + newTokens.expires_in * 1000).toISOString(),
-            })
-            .eq('id', id)
-        } catch (refreshError) {
-          console.error('[Stats API] Token refresh failed:', refreshError)
-          return NextResponse.json({ error: 'Token expired, please reconnect' }, { status: 401 })
+        if (!adminModel) {
+          return NextResponse.json(
+            {
+              error:
+                'No connected accounts in this agency. Connect the agency admin via OAuth first.',
+            },
+            { status: 400 }
+          )
         }
+
+        accessToken = await getModelAccessToken(adminModel.id)
+        console.log('[Stats API] Using agency admin token')
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        return NextResponse.json({ error: `Agency token error: ${errorMessage}` }, { status: 401 })
       }
     }
 
     // Create Fanvue client and fetch all stats
     const fanvue = createFanvueClient(accessToken)
 
-    console.log('[Stats API] Fetching stats for', model.name)
+    console.log(
+      '[Stats API] Fetching stats for',
+      model.name,
+      '(using',
+      useAgencyEndpoint ? 'agency token' : 'own token',
+      ')'
+    )
 
-    // Fetch user info first (most reliable)
-    const userInfo = await fanvue.getCurrentUser().catch(e => {
-      console.error('[Stats API] User info error:', e.message)
-      return null
-    })
+    // These endpoints only work with the creator's own token (not agency token)
+    // Skip them if using agency endpoint
+    let userInfo = null
+    let unreadCount = null
+    let trackingLinks = null
 
-    console.log('[Stats API] User info:', JSON.stringify(userInfo, null, 2))
-
-    // Fetch stats in parallel with detailed logging
-    const [unreadCount, trackingLinks] = await Promise.all([
-      // Unread messages count
-      fanvue.getUnreadCount().then(data => {
-        console.log('[Stats API] Unread count raw:', JSON.stringify(data, null, 2))
-        return data
-      }).catch(e => {
-        console.error('[Stats API] Unread count error:', e.message, e.statusCode)
+    if (!useAgencyEndpoint) {
+      // Fetch user info first (most reliable) - only with own token
+      userInfo = await fanvue.getCurrentUser().catch(e => {
+        console.error('[Stats API] User info error:', e.message)
         return null
-      }),
+      })
 
-      // Tracking links (requires read:tracking_links scope)
-      fanvue.getTrackingLinks({ limit: 100 }).then(data => {
-        console.log('[Stats API] Tracking links raw:', JSON.stringify(data, null, 2))
-        return data
-      }).catch(e => {
-        console.error('[Stats API] Tracking links error:', e.message, e.statusCode)
-        return null
-      }),
-    ])
+      console.log('[Stats API] User info:', JSON.stringify(userInfo, null, 2))
+
+      // Fetch stats in parallel with detailed logging - only with own token
+      ;[unreadCount, trackingLinks] = await Promise.all([
+        // Unread messages count
+        fanvue
+          .getUnreadCount()
+          .then(data => {
+            console.log('[Stats API] Unread count raw:', JSON.stringify(data, null, 2))
+            return data
+          })
+          .catch(e => {
+            console.error('[Stats API] Unread count error:', e.message, e.statusCode)
+            return null
+          }),
+
+        // Tracking links (requires read:tracking_links scope)
+        fanvue
+          .getTrackingLinks({ limit: 100 })
+          .then(data => {
+            console.log('[Stats API] Tracking links raw:', JSON.stringify(data, null, 2))
+            return data
+          })
+          .catch(e => {
+            console.error('[Stats API] Tracking links error:', e.message, e.statusCode)
+            return null
+          }),
+      ])
+    } else {
+      console.log(
+        '[Stats API] Skipping personal stats (using agency token) - will only fetch earnings'
+      )
+    }
 
     // Fetch ALL earnings with pagination (from account creation to now)
     // Use ISO 8601 datetime format with timezone as required by Fanvue API
     const earningsStartDate = '2020-01-01T00:00:00Z' // Fanvue launched ~2021, so this captures everything
     const earningsEndDate = new Date().toISOString() // Now in ISO 8601 format
-    
+
     let allEarnings: Record<string, unknown>[] = []
     let earningsCursor: string | null = null
     let earningsPageCount = 0
@@ -108,7 +151,7 @@ export async function POST(
 
     try {
       do {
-        const params: Record<string, string | number> = { 
+        const params: Record<string, string | number> = {
           startDate: earningsStartDate,
           endDate: earningsEndDate,
           size: 50, // Max allowed by API (1-50)
@@ -116,24 +159,38 @@ export async function POST(
         if (earningsCursor) {
           params.cursor = earningsCursor
         }
-        
-        console.log(`[Stats API] Fetching earnings page ${earningsPageCount + 1} with params:`, params)
-        const earningsPage = await fanvue.getEarnings(params)
-        
-        console.log(`[Stats API] Earnings page ${earningsPageCount + 1} response:`, JSON.stringify(earningsPage).substring(0, 500))
-        
+
+        console.log(
+          `[Stats API] Fetching earnings page ${earningsPageCount + 1} with params:`,
+          params
+        )
+
+        // Use agency endpoint if model doesn't have its own token
+        const earningsPage = useAgencyEndpoint
+          ? await fanvue.getCreatorEarnings(model.fanvue_user_uuid, params)
+          : await fanvue.getEarnings(params)
+
+        console.log(
+          `[Stats API] Earnings page ${earningsPageCount + 1} response:`,
+          JSON.stringify(earningsPage).substring(0, 500)
+        )
+
         if (earningsPage?.data && Array.isArray(earningsPage.data)) {
           allEarnings = [...allEarnings, ...earningsPage.data]
           earningsCursor = earningsPage.nextCursor || null
           earningsPageCount++
-          console.log(`[Stats API] Earnings page ${earningsPageCount}: ${earningsPage.data.length} transactions, total so far: ${allEarnings.length}`)
+          console.log(
+            `[Stats API] Earnings page ${earningsPageCount}: ${earningsPage.data.length} transactions, total so far: ${allEarnings.length}`
+          )
         } else {
           console.log('[Stats API] No data in earnings response or data is not array')
           break
         }
       } while (earningsCursor && earningsPageCount < MAX_EARNINGS_PAGES)
-      
-      console.log(`[Stats API] Fetched ${allEarnings.length} total earnings transactions across ${earningsPageCount} pages`)
+
+      console.log(
+        `[Stats API] Fetched ${allEarnings.length} total earnings transactions across ${earningsPageCount} pages`
+      )
     } catch (e: unknown) {
       const error = e as { message?: string; statusCode?: number; response?: unknown }
       console.error('[Stats API] Earnings error:', error.message)
@@ -150,16 +207,31 @@ export async function POST(
     let totalRevenue = 0
     if (allEarnings.length > 0) {
       // Sum up gross earnings from all transactions (amounts are in cents)
-      const totalCents = allEarnings.reduce((sum: number, item: Record<string, unknown>) => sum + ((item.gross as number) || 0), 0)
+      const totalCents = allEarnings.reduce(
+        (sum: number, item: Record<string, unknown>) => sum + ((item.gross as number) || 0),
+        0
+      )
       // Convert cents to dollars
       totalRevenue = totalCents / 100
-      console.log('[Stats API] Earnings: Found', allEarnings.length, 'transactions, total cents:', totalCents, 'dollars:', totalRevenue)
+      console.log(
+        '[Stats API] Earnings: Found',
+        allEarnings.length,
+        'transactions, total cents:',
+        totalCents,
+        'dollars:',
+        totalRevenue
+      )
     }
     console.log('[Stats API] Total revenue calculated:', totalRevenue)
 
     // Unread messages - API returns unreadMessagesCount
     const unreadMessages = unreadCount?.unreadMessagesCount || 0
-    console.log('[Stats API] Unread messages:', unreadMessages, 'Unread chats:', unreadCount?.unreadChatsCount || 0)
+    console.log(
+      '[Stats API] Unread messages:',
+      unreadMessages,
+      'Unread chats:',
+      unreadCount?.unreadChatsCount || 0
+    )
 
     // Tracking links count (API returns data array + nextCursor, no totalCount)
     let totalTrackingLinks = 0
@@ -173,31 +245,39 @@ export async function POST(
     console.log('[Stats API] Tracking links:', totalTrackingLinks)
 
     // Build stats object
+    // When using agency token, only revenue data is available
     const stats = {
-      followers_count: totalFollowers,
-      subscribers_count: totalSubscribers,
-      posts_count: totalPosts,
-      revenue_total: totalRevenue,
-      unread_messages: unreadMessages,
-      tracking_links_count: totalTrackingLinks,
-      avatar_url: userInfo?.avatarUrl || model.avatar_url,
-      banner_url: userInfo?.bannerUrl,
-      bio: userInfo?.bio,
-      likes_count: totalLikes,
-      image_count: userInfo?.contentCounts?.imageCount || 0,
-      video_count: userInfo?.contentCounts?.videoCount || 0,
-      audio_count: userInfo?.contentCounts?.audioCount || 0,
-      stats_updated_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      ...(useAgencyEndpoint
+        ? {
+            // Agency token: Only update revenue (earnings are available via agency endpoint)
+            revenue_total: totalRevenue,
+            stats_updated_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }
+        : {
+            // Own token: Full stats available
+            followers_count: totalFollowers,
+            subscribers_count: totalSubscribers,
+            posts_count: totalPosts,
+            revenue_total: totalRevenue,
+            unread_messages: unreadMessages,
+            tracking_links_count: totalTrackingLinks,
+            avatar_url: userInfo?.avatarUrl || model.avatar_url,
+            banner_url: userInfo?.bannerUrl,
+            bio: userInfo?.bio,
+            likes_count: totalLikes,
+            image_count: userInfo?.contentCounts?.imageCount || 0,
+            video_count: userInfo?.contentCounts?.videoCount || 0,
+            audio_count: userInfo?.contentCounts?.audioCount || 0,
+            stats_updated_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }),
     }
 
     console.log('[Stats API] Final stats:', stats)
 
     // Update the model in database
-    const { error: updateError } = await adminClient
-      .from('models')
-      .update(stats)
-      .eq('id', id)
+    const { error: updateError } = await adminClient.from('models').update(stats).eq('id', id)
 
     if (updateError) {
       console.error('[Stats API] Update error:', updateError)
@@ -217,9 +297,8 @@ export async function POST(
         earningsPages: earningsPageCount,
         unreadRaw: unreadCount,
         trackingLinksRaw: trackingLinks,
-      }
+      },
     })
-
   } catch (error: unknown) {
     console.error('[Stats API] Error:', error)
     const errorMessage = error instanceof Error ? error.message : 'Failed to fetch stats'
