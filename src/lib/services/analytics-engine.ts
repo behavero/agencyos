@@ -107,33 +107,7 @@ export async function getChartData(
 
   const { data: subTransactions } = await subTransactionsQuery
 
-  // Calculate cumulative unique subscribers by date
-  const seenFans = new Set<string>()
-  const subscriberMap = new Map<string, { subscribers: number; followers: number }>()
-  
-  // Group transactions by date and count cumulative unique fans
-  const transactionsByDate = new Map<string, string[]>()
-  subTransactions?.forEach((tx: any) => {
-    const dateKey = new Date(tx.transaction_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-    if (!transactionsByDate.has(dateKey)) {
-      transactionsByDate.set(dateKey, [])
-    }
-    transactionsByDate.get(dateKey)!.push(tx.fan_id)
-  })
-
-  // Calculate cumulative counts
-  for (const [dateKey, fanIds] of transactionsByDate) {
-    // Add new fans to the set
-    fanIds.forEach(fanId => seenFans.add(fanId))
-    
-    // Store cumulative count
-    subscriberMap.set(dateKey, {
-      subscribers: seenFans.size,
-      followers: 0, // We don't have follower transaction data
-    })
-  }
-
-  // Get current follower count from models table for the final value
+  // Get current follower count from models table
   let modelsForFollowersQuery = supabase
     .from('models')
     .select('followers_count')
@@ -146,15 +120,49 @@ export async function getChartData(
   const { data: modelsForFollowers } = await modelsForFollowersQuery
   const totalCurrentFollowers = modelsForFollowers?.reduce((sum, m) => sum + (m.followers_count || 0), 0) || 0
 
+  // Sort transactions by date to calculate cumulative counts correctly
+  const sortedTransactions = (subTransactions || []).sort((a: any, b: any) => 
+    new Date(a.transaction_date).getTime() - new Date(b.transaction_date).getTime()
+  )
+
+  // Calculate cumulative unique subscribers by date (sorted!)
+  const seenFans = new Set<string>()
+  const subscriberByDate = new Map<string, number>()
+  
+  sortedTransactions.forEach((tx: any) => {
+    seenFans.add(tx.fan_id)
+    const dateKey = new Date(tx.transaction_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    subscriberByDate.set(dateKey, seenFans.size) // Update cumulative count for this date
+  })
+
+  // Get the final subscriber count
+  const finalSubscriberCount = seenFans.size
+
+  // Sort dataPoints chronologically first
+  const sortedDataPoints = [...dataPoints].sort((a, b) => {
+    const dateA = new Date(a.date)
+    const dateB = new Date(b.date)
+    return dateA.getTime() - dateB.getTime()
+  })
+
   // Merge subscriber data into chart data points
-  // For followers, we'll show a linear growth from 0 to current (approximation since we don't have historical data)
-  const totalDays = dataPoints.length
-  const mergedDataPoints = dataPoints.map((point, index) => {
-    const subData = subscriberMap.get(point.date)
+  // Subscribers: Use cumulative count, carry forward if no transactions that day
+  // Followers: Linear growth from 0 to current (approximation)
+  const totalDays = sortedDataPoints.length
+  let lastSubscriberCount = 0
+  
+  const mergedDataPoints = sortedDataPoints.map((point, index) => {
+    // Get subscriber count for this date, or carry forward the last known count
+    const subCount = subscriberByDate.get(point.date)
+    if (subCount !== undefined) {
+      lastSubscriberCount = subCount
+    }
+    
     return {
       ...point,
-      subscribers: subData?.subscribers || 0,
-      // Linear approximation for followers (we don't have historical data)
+      // Cumulative subscribers (carries forward)
+      subscribers: lastSubscriberCount,
+      // Linear growth for followers: 0 → current over time
       followers: totalDays > 0 ? Math.round((totalCurrentFollowers * (index + 1)) / totalDays) : 0,
     }
   })
