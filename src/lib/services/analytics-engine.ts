@@ -533,19 +533,19 @@ export async function getCategoryBreakdown(
   let hasMore = true
 
   while (hasMore) {
-    let query = supabase
-      .from('fanvue_transactions')
+  let query = supabase
+    .from('fanvue_transactions')
       .select('transaction_type, amount')
-      .eq('agency_id', agencyId)
+    .eq('agency_id', agencyId)
       .gte('transaction_date', startDate.toISOString())
       .lte('transaction_date', endDate.toISOString())
       .range(offset, offset + pageSize - 1) // Proper pagination
 
-    if (options.modelId) {
-      query = query.eq('model_id', options.modelId)
-    }
+  if (options.modelId) {
+    query = query.eq('model_id', options.modelId)
+  }
 
-    const { data, error } = await query
+  const { data, error } = await query
 
     if (error) {
       console.error('[getCategoryBreakdown] Error fetching transactions:', error)
@@ -694,7 +694,7 @@ function aggregateDaily(
         total: 0,
         subscribers: 0,
         followers: 0,
-      }
+    }
     )
 
     currentDate.setDate(currentDate.getDate() + 1)
@@ -755,67 +755,98 @@ function aggregateWeekly(
 }
 
 /**
- * Aggregate data by month
+ * Aggregate data by month (with year to avoid mixing different years)
  */
 function aggregateMonthly(
   dataPoints: ChartDataPoint[],
   startDate: Date,
   endDate: Date
 ): ChartDataPoint[] {
-  const monthlyData = new Map<string, ChartDataPoint>()
+  // Group by "YYYY-MM" to keep years separate
+  const monthlyData = new Map<string, { data: ChartDataPoint; sortKey: string }>()
 
-  // Parse all data points and group by month
+  // Parse all data points and group by month+year
   for (const point of dataPoints) {
-    // Extract month from date string
-    const monthMatch = point.date.match(/^([A-Za-z]{3})/)
-    if (!monthMatch) continue
-
-    const monthKey = monthMatch[1]
-
-    if (monthlyData.has(monthKey)) {
-      const existing = monthlyData.get(monthKey)!
+    // Try to parse date from various formats
+    // Format could be "Jan 15" or "Jan 15, 2025" or similar
+    let parsedDate: Date | null = null
+    
+    // Try parsing with the year from the date range context
+    const monthMatch = point.date.match(/^([A-Za-z]{3})\s*(\d+)?(?:,?\s*(\d{4}))?/)
+    if (monthMatch) {
+      const month = monthMatch[1]
+      const day = monthMatch[2] ? parseInt(monthMatch[2]) : 1
+      const year = monthMatch[3] ? parseInt(monthMatch[3]) : null
+      
+      // Map month name to number
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+      const monthIndex = monthNames.indexOf(month)
+      
+      if (monthIndex !== -1) {
+        // If no year in date string, infer from the data range
+        // Check if this month falls within startDate-endDate range
+        if (year) {
+          parsedDate = new Date(year, monthIndex, day)
+        } else {
+          // Try current year first, then check if it makes sense in range
+          const testDate = new Date(startDate.getFullYear(), monthIndex, day)
+          if (testDate >= startDate && testDate <= endDate) {
+            parsedDate = testDate
+          } else {
+            // Try next year
+            const nextYearDate = new Date(startDate.getFullYear() + 1, monthIndex, day)
+            if (nextYearDate >= startDate && nextYearDate <= endDate) {
+              parsedDate = nextYearDate
+            } else {
+              // Try previous year
+              const prevYearDate = new Date(startDate.getFullYear() - 1, monthIndex, day)
+              if (prevYearDate >= startDate && prevYearDate <= endDate) {
+                parsedDate = prevYearDate
+              } else {
+                parsedDate = testDate // Default to start year
+              }
+            }
+          }
+        }
+      }
+    }
+    
+    if (!parsedDate) continue
+    
+    // Create key with year and month for proper grouping
+    const sortKey = `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, '0')}`
+    const displayKey = parsedDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) // "Jun 2025"
+    
+    if (monthlyData.has(sortKey)) {
+      const existing = monthlyData.get(sortKey)!.data
       existing.subscriptions += point.subscriptions
       existing.tips += point.tips
       existing.messages += point.messages
       existing.posts += point.posts
       existing.total += point.total
-      existing.subscribers = Math.max(existing.subscribers || 0, point.subscribers || 0) // Use latest count
-      existing.followers = Math.max(existing.followers || 0, point.followers || 0) // Use latest count
+      existing.subscribers = Math.max(existing.subscribers || 0, point.subscribers || 0)
+      existing.followers = Math.max(existing.followers || 0, point.followers || 0)
     } else {
-      monthlyData.set(monthKey, {
-        date: monthKey,
-        subscriptions: point.subscriptions,
-        tips: point.tips,
-        messages: point.messages,
-        posts: point.posts,
-        total: point.total,
-        subscribers: point.subscribers || 0,
-        followers: point.followers || 0,
+      monthlyData.set(sortKey, {
+        sortKey,
+        data: {
+          date: displayKey, // "Jun 2025" format
+          subscriptions: point.subscriptions,
+          tips: point.tips,
+          messages: point.messages,
+          posts: point.posts,
+          total: point.total,
+          subscribers: point.subscribers || 0,
+          followers: point.followers || 0,
+        }
       })
     }
   }
 
-  // Sort by month order (Jan, Feb, Mar...)
-  const monthOrder = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ]
-
-  return Array.from(monthlyData.values()).sort((a, b) => {
-    const indexA = monthOrder.indexOf(a.date)
-    const indexB = monthOrder.indexOf(b.date)
-    return indexA - indexB
-  })
+  // Sort chronologically by sortKey (YYYY-MM format sorts correctly)
+  return Array.from(monthlyData.values())
+    .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+    .map(item => item.data)
 }
 
 /**
