@@ -85,9 +85,9 @@ export default async function DashboardPage() {
     DashboardAnalytics.getExpenseHistory(agencyId, 12), // Last 12 months
     DashboardAnalytics.getEarningsByType(agencyId),
     DashboardAnalytics.getMonthlyEarningsList(agencyId, 12),
-    getChartData(agencyId, { timeRange: '30d' }),
-    getKPIMetrics(agencyId, { timeRange: '30d' }),
-    getCategoryBreakdown(agencyId, { timeRange: '30d' }),
+    getChartData(agencyId, { timeRange: 'all' }), // Default to all-time data
+    getKPIMetrics(agencyId, { timeRange: 'all' }), // Default to all-time data
+    getCategoryBreakdown(agencyId, { timeRange: 'all' }), // Default to all-time data
   ])
 
   // DEBUG: Log dashboard data (Phase 51D - Data Pipeline Verification)
