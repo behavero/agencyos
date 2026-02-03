@@ -197,21 +197,68 @@ export async function getKPIMetrics(
 
   const { data: prevTransactions } = await prevQuery
 
-  // Get total subscribers count from models
+  // Get follower count from models (for display purposes)
   let modelsQuery = supabase
     .from('models')
     .select('subscribers_count, followers_count')
     .eq('agency_id', agencyId)
-    .eq('status', 'active')
 
   if (options.modelId) {
     modelsQuery = modelsQuery.eq('id', options.modelId)
   }
 
   const { data: models } = await modelsQuery
-  const totalSubscribers = models?.reduce((sum, m) => sum + (m.subscribers_count || 0), 0) || 0
-  const totalFollowers = models?.reduce((sum, m) => sum + (m.followers_count || 0), 0) || 0
+  const modelFollowers = models?.reduce((sum, m) => sum + (m.followers_count || 0), 0) || 0
+
+  // COUNT ACTUAL SUBSCRIBERS from transactions (people who paid for subscription)
+  // This is more accurate than models.subscribers_count which only shows CURRENT active subs
+  let subQuery = supabase
+    .from('fanvue_transactions')
+    .select('fan_id')
+    .eq('agency_id', agencyId)
+    .eq('transaction_type', 'subscription')
+    .gte('transaction_date', startDate.toISOString())
+    .lte('transaction_date', endDate.toISOString())
+
+  if (options.modelId) {
+    subQuery = subQuery.eq('model_id', options.modelId)
+  }
+
+  // Paginate to get ALL subscription transactions
+  let allSubTransactions: { fan_id: string }[] = []
+  let subOffset = 0
+  let subHasMore = true
+
+  while (subHasMore) {
+    const { data } = await supabase
+      .from('fanvue_transactions')
+      .select('fan_id')
+      .eq('agency_id', agencyId)
+      .eq('transaction_type', 'subscription')
+      .gte('transaction_date', startDate.toISOString())
+      .lte('transaction_date', endDate.toISOString())
+      .range(subOffset, subOffset + 999)
+
+    if (!data || data.length === 0) {
+      subHasMore = false
+    } else {
+      allSubTransactions = allSubTransactions.concat(data)
+      subOffset += 1000
+      if (data.length < 1000) subHasMore = false
+    }
+  }
+
+  // Count UNIQUE subscribers (distinct fan_id who paid for subscription)
+  const totalSubscribers = new Set(allSubTransactions.map(t => t.fan_id).filter(Boolean)).size
+  const totalFollowers = modelFollowers
   const totalAudience = totalFollowers + totalSubscribers
+
+  console.log('[analytics-engine] Audience counts:', {
+    totalSubscribers,
+    totalFollowers,
+    totalAudience,
+    subscriptionTransactions: allSubTransactions.length,
+  })
 
   // Query 3: Get ALL transactions for revenue calculation using PAGINATION
   // Supabase has a 1000-row limit that .limit() doesn't always override!
@@ -422,9 +469,9 @@ export async function getKPIMetrics(
   // 4. Total PPV/Posts Purchased (accurate count)
   const totalPPVSent = ppvCount + postCount
 
-  // 5. New Fans (unique fan_ids in period - this is unique buyers, not total subs/followers)
-  const uniqueFans = new Set(currentTransactions?.map(tx => tx.fan_id).filter(Boolean))
-  const newFans = uniqueFans.size
+  // 5. New Fans = Unique subscribers who paid in this period
+  // This uses the already-calculated totalSubscribers (from paginated subscription transactions)
+  const newFans = totalSubscribers // Unique fans who subscribed in this period
 
   // 6. Unlock Rate: N/A - Fanvue API doesn't provide "PPV sent" data (only "PPV purchased")
   // This would require tracking from chatting tool
