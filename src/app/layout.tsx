@@ -29,6 +29,7 @@ export default function RootLayout({
         <Toaster />
         <SpeedInsights />
         {/* <AlfredFloatingChat /> */}
+        <SpeedInsights />
       </body>
     </html>
   )
