@@ -7,23 +7,19 @@
   "crons": [
     {
       "path": "/api/cron/sync-transactions",
-      "schedule": "*/15 * * * *",
-      "comment": "Sync Fanvue transactions every 15 minutes for LIVE data"
+      "schedule": "*/15 * * * *"
     },
     {
       "path": "/api/cron/daily-refresh",
-      "schedule": "*/5 * * * *",
-      "comment": "Update subscribers/followers/messages every 5 minutes for LIVE data"
+      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/cron/check-late-shifts",
-      "schedule": "0 */6 * * *",
-      "comment": "Check late shifts every 6 hours (not critical)"
+      "schedule": "0 */6 * * *"
     },
     {
       "path": "/api/cron/check-missed-posts",
-      "schedule": "0 */6 * * *",
-      "comment": "Check missed posts every 6 hours (not critical)"
+      "schedule": "0 */6 * * *"
     }
   ],
   "redirects": [
