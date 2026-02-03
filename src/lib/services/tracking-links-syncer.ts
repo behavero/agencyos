@@ -47,6 +47,8 @@ async function fetchTrackingLinks(
     url.searchParams.set('cursor', cursor)
   }
 
+  console.log(`[tracking-links] Fetching: ${url.toString()}`)
+  
   const response = await fetch(url.toString(), {
     headers: {
       'Authorization': `Bearer ${accessToken}`,
@@ -54,16 +56,25 @@ async function fetchTrackingLinks(
     },
   })
 
+  // Log response status for debugging
+  console.log(`[tracking-links] Response status: ${response.status} for creator ${creatorUuid}`)
+
   // 404 means no tracking links exist for this creator - return empty
   if (response.status === 404) {
-    return { data: [], cursor: null }
+    const body = await response.text()
+    console.log(`[tracking-links] 404 response body: ${body}`)
+    return { data: [], nextCursor: null }
   }
 
   if (!response.ok) {
-    throw new Error(`Fanvue API error: ${response.status} ${response.statusText}`)
+    const errorBody = await response.text()
+    console.error(`[tracking-links] Error response: ${errorBody}`)
+    throw new Error(`Fanvue API error: ${response.status} ${response.statusText} - ${errorBody}`)
   }
 
-  return response.json()
+  const data = await response.json()
+  console.log(`[tracking-links] Got ${data.data?.length || 0} links`)
+  return data
 }
 
 /**
@@ -151,29 +162,26 @@ export async function syncAllTrackingLinks(agencyId: string): Promise<{
   let modelsProcessed = 0
   const errors: string[] = []
 
+  // Get agency admin token ONCE - more reliable for tracking links
+  const { data: agencyAdmin } = await supabase
+    .from('models')
+    .select('fanvue_access_token')
+    .eq('agency_id', agencyId)
+    .not('fanvue_access_token', 'is', null)
+    .limit(1)
+    .single()
+
+  const agencyToken = agencyAdmin?.fanvue_access_token
+
+  if (!agencyToken) {
+    throw new Error('No agency access token available')
+  }
+
   for (const model of models || []) {
     if (!model.fanvue_user_uuid) continue
 
-    // Get token - try model's own token first, then fall back to agency token
-    let token = model.fanvue_access_token
-
-    if (!token) {
-      // Try to get agency admin token
-      const { data: agencyModel } = await supabase
-        .from('models')
-        .select('fanvue_access_token')
-        .eq('agency_id', agencyId)
-        .not('fanvue_access_token', 'is', null)
-        .limit(1)
-        .single()
-
-      token = agencyModel?.fanvue_access_token
-    }
-
-    if (!token) {
-      errors.push(`No access token for model ${model.name}`)
-      continue
-    }
+    // Always use agency token for tracking links (more reliable scopes)
+    const token = agencyToken
 
     try {
       const result = await syncTrackingLinksForModel(
