@@ -1,18 +1,22 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import type { Database } from '@/types/database.types'
-import { CheckCircle2, Circle, Instagram, Twitter, Save, ExternalLink } from 'lucide-react'
+import { CheckCircle2, Circle, Instagram, Twitter, Save, ExternalLink, RefreshCw, AlertCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 
-type Model = Database['public']['Tables']['models']['Row']
+type Model = Database['public']['Tables']['models']['Row'] & {
+  instagram_business_id?: string | null
+  instagram_username?: string | null
+  instagram_token_expires_at?: string | null
+}
 
 interface SocialConnectorProps {
   modelId: string
@@ -122,6 +126,17 @@ export function SocialConnector({ modelId, agencyId, model }: SocialConnectorPro
     }
   }
 
+  // Check if Instagram is connected via OAuth (for insights)
+  const instagramApiConnected = !!model.instagram_business_id
+  const instagramTokenExpires = model.instagram_token_expires_at
+  const isTokenExpiringSoon = instagramTokenExpires
+    ? new Date(instagramTokenExpires).getTime() - Date.now() < 7 * 24 * 60 * 60 * 1000
+    : false
+
+  const handleInstagramConnect = () => {
+    window.location.href = `/api/auth/meta/login?modelId=${modelId}`
+  }
+
   const platforms = [
     {
       id: 'instagram' as const,
@@ -162,7 +177,119 @@ export function SocialConnector({ modelId, agencyId, model }: SocialConnectorPro
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {platforms.map(platform => {
+          {/* Instagram with OAuth Connect */}
+          <div
+            className={cn(
+              'p-4 rounded-lg border-2 transition-colors',
+              instagramApiConnected 
+                ? 'border-pink-500/50 bg-gradient-to-r from-purple-500/10 to-pink-500/10' 
+                : 'border-border hover:border-pink-500/30'
+            )}
+          >
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-lg flex items-center justify-center bg-gradient-to-br from-purple-500 to-pink-500">
+                <Instagram className="w-6 h-6 text-white" />
+              </div>
+
+              <div className="flex-1 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-semibold">Instagram</h3>
+                    {instagramApiConnected ? (
+                      <div className="flex items-center gap-2 mt-1">
+                        <Badge variant="outline" className="gap-1 border-green-500/50 text-green-500">
+                          <CheckCircle2 className="w-3 h-3" />
+                          API Connected
+                        </Badge>
+                        {model.instagram_username && (
+                          <span className="text-xs text-muted-foreground">@{model.instagram_username}</span>
+                        )}
+                        {isTokenExpiringSoon && (
+                          <Badge variant="outline" className="gap-1 border-yellow-500/50 text-yellow-500">
+                            <AlertCircle className="w-3 h-3" />
+                            Expires soon
+                          </Badge>
+                        )}
+                      </div>
+                    ) : (
+                      <Badge variant="outline" className="gap-1 mt-1">
+                        <Circle className="w-3 h-3" />
+                        Not Connected
+                      </Badge>
+                    )}
+                  </div>
+                  
+                  {/* OAuth Connect Button */}
+                  <Button
+                    onClick={handleInstagramConnect}
+                    size="sm"
+                    className={cn(
+                      instagramApiConnected 
+                        ? 'bg-muted text-foreground hover:bg-muted/80' 
+                        : 'bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600'
+                    )}
+                  >
+                    {instagramApiConnected ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 mr-2" />
+                        {isTokenExpiringSoon ? 'Renew' : 'Reconnect'}
+                      </>
+                    ) : (
+                      <>
+                        <Instagram className="w-4 h-4 mr-2" />
+                        Connect Instagram
+                      </>
+                    )}
+                  </Button>
+                </div>
+
+                {instagramApiConnected && (
+                  <div className="text-xs text-muted-foreground bg-muted/30 rounded p-2">
+                    ✅ Connected to Instagram Insights API — Reach, impressions, and profile views will be tracked automatically.
+                  </div>
+                )}
+
+                {!instagramApiConnected && (
+                  <div className="text-xs text-muted-foreground bg-muted/30 rounded p-2">
+                    📊 Connect to get <strong>Reach</strong>, <strong>Impressions</strong>, <strong>Profile Views</strong>, and <strong>Website Clicks</strong> tracking.
+                    <br />
+                    <span className="text-yellow-500">Requires:</span> Professional Instagram account connected to a Facebook Page.
+                  </div>
+                )}
+
+                {/* Manual handle input (for display/reference) */}
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <div className="flex gap-2">
+                      <span className="flex items-center px-3 rounded-md border border-border bg-muted text-muted-foreground text-sm">
+                        @
+                      </span>
+                      <Input
+                        id="instagram"
+                        value={handles.instagram}
+                        onChange={e => setHandles({ ...handles, instagram: e.target.value })}
+                        placeholder="username (optional)"
+                        className="flex-1"
+                      />
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleVerify('instagram')}
+                    disabled={!handles.instagram}
+                    className="gap-2"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    View
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Twitter & TikTok (manual only) */}
+          {platforms.filter(p => p.id !== 'instagram').map(platform => {
             const Icon = platform.icon
             const isConnected = verified[platform.id]
             const handle = handles[platform.id]

@@ -26,10 +26,10 @@ export default async function CreatorDetailPage({ params }: { params: Promise<{ 
     redirect('/dashboard')
   }
 
-  // Fetch the model with social accounts
+  // Fetch the model with social accounts and Instagram connection
   const { data: model } = await supabase
     .from('models')
-    .select('*, social_accounts(*)')
+    .select('*, social_accounts(*), instagram_business_id, instagram_username, instagram_token_expires_at')
     .eq('id', id)
     .eq('agency_id', profile.agency_id)
     .single()
