@@ -125,7 +125,7 @@ export async function syncModelTransactions(modelId: string): Promise<SyncResult
     // This dramatically reduces API calls and sync time
     const startDate = model.last_transaction_sync
       ? new Date(new Date(model.last_transaction_sync).getTime() + 1000) // Add 1 second buffer
-      : new Date('2024-01-01T00:00:00Z') // Default for first-time sync
+      : new Date('2020-01-01T00:00:00Z') // Default for first-time sync - go back further for full history
 
     console.log(`📅 Syncing transactions since: ${startDate.toISOString()}`)
     const timeSinceLastSync = Date.now() - startDate.getTime()
