@@ -112,20 +112,34 @@ export async function getKPIMetrics(
   const prevStartDate = new Date(startDate.getTime() - periodLength)
   const prevEndDate = startDate
 
-  // Build query for current period (fetch ALL transactions, not just 1000)
-  let currentQuery = supabase
+  // Query 1: Get transaction count (NOT limited by rows)
+  let countQuery = supabase
     .from('fanvue_transactions')
-    .select('amount, net_amount, transaction_type, fan_id', { count: 'exact' })
+    .select('*', { count: 'exact', head: true })
     .eq('agency_id', agencyId)
     .gte('transaction_date', startDate.toISOString())
     .lte('transaction_date', endDate.toISOString())
-    .limit(100000) // Ensure we get all transactions (Supabase default is 1000)
+
+  if (options.modelId) {
+    countQuery = countQuery.eq('model_id', options.modelId)
+  }
+
+  const { count: transactionCount, error: countError } = await countQuery
+
+  // Query 2: Get transaction data for calculations (limited to 10,000 for performance)
+  let currentQuery = supabase
+    .from('fanvue_transactions')
+    .select('amount, net_amount, transaction_type, fan_id')
+    .eq('agency_id', agencyId)
+    .gte('transaction_date', startDate.toISOString())
+    .lte('transaction_date', endDate.toISOString())
+    .limit(10000) // Get sample for calculations
 
   if (options.modelId) {
     currentQuery = currentQuery.eq('model_id', options.modelId)
   }
 
-  const { data: currentTransactions, error: currentError, count } = await currentQuery
+  const { data: currentTransactions, error: currentError } = await currentQuery
 
   if (currentError) {
     console.error('Error fetching KPI metrics:', currentError)
@@ -239,7 +253,7 @@ export async function getKPIMetrics(
     messageConversionRate: Math.round(messageConversionRate * 10) / 10, // Round to 1 decimal place
     ppvConversionRate: Math.round(ppvConversionRate * 10) / 10, // Round to 1 decimal place
     tipAverage: Math.round(tipAverage * 100) / 100, // Round to 2 decimal places
-    transactionCount: currentTransactions?.length || 0,
+    transactionCount: transactionCount || 0, // Use the COUNT query result, not array length!
     revenueGrowth: Math.round(revenueGrowth * 10) / 10,
     // New metrics
     ltv: Math.round(ltv * 100) / 100,
