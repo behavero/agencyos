@@ -178,28 +178,33 @@ export default function DashboardClient({
 
   // Date range filter state (for both Overview and Fanvue tabs)
   const [dateRange, setDateRange] = useState<DateRangeValue>({
-    preset: '30d',
+    preset: 'last30days',
   })
 
   const selectedModel = models.find(m => m.id === selectedModelId)
 
-  // Fetch model-specific data when selection changes
+  // Fetch model-specific data when selection or date range changes
   useEffect(() => {
-    if (selectedModelId === 'all') {
-      // Reset to initial server-rendered data
-      setModelChartData([])
-      setModelKPIMetrics(null)
-      setModelCategoryBreakdown([])
-      return
-    }
-
-    // Fetch data for the selected model
     const fetchModelData = async () => {
       setIsLoadingModelData(true)
       try {
-        const response = await fetch(
-          `/api/analytics/dashboard?modelId=${selectedModelId}&timeRange=30d`
-        )
+        // Build query params
+        const params = new URLSearchParams()
+        params.set('agencyId', agency?.id || '')
+
+        if (selectedModelId !== 'all') {
+          params.set('modelId', selectedModelId)
+        }
+
+        // Add date range params
+        if (dateRange.startDate) {
+          params.set('startDate', dateRange.startDate.toISOString())
+        }
+        if (dateRange.endDate) {
+          params.set('endDate', dateRange.endDate.toISOString())
+        }
+
+        const response = await fetch(`/api/analytics/dashboard?${params.toString()}`)
         if (!response.ok) throw new Error('Failed to fetch model data')
 
         const data = await response.json()
@@ -215,43 +220,23 @@ export default function DashboardClient({
     }
 
     fetchModelData()
-  }, [selectedModelId])
+  }, [selectedModelId, dateRange, agency?.id])
 
-  // Use the appropriate data source based on selection
+  // Always use the dynamically fetched data (includes date range filtering)
   const filteredFanvueData = useMemo(() => {
-    if (selectedModelId === 'all') {
-      return {
-        chartData: fanvueChartData,
-        kpiMetrics: fanvueKPIMetrics,
-        categoryBreakdown: fanvueCategoryBreakdown,
-      }
-    }
-
-    // Use fetched model data
     return {
-      chartData: modelChartData,
-      kpiMetrics: modelKPIMetrics || {
-        totalRevenue: selectedModel?.revenue_total || 0,
-        netRevenue: (selectedModel?.revenue_total || 0) * 0.8,
-        activeSubscribers: selectedModel?.subscribers_count || 0,
-        arpu: 0,
-        messageConversionRate: 0,
-        ppvConversionRate: 0,
-        tipAverage: 0,
-        transactionCount: 0,
-        revenueGrowth: 0,
-      },
-      categoryBreakdown: modelCategoryBreakdown,
+      chartData: modelChartData.length > 0 ? modelChartData : fanvueChartData,
+      kpiMetrics: modelKPIMetrics || fanvueKPIMetrics,
+      categoryBreakdown:
+        modelCategoryBreakdown.length > 0 ? modelCategoryBreakdown : fanvueCategoryBreakdown,
     }
   }, [
-    selectedModelId,
-    fanvueChartData,
-    fanvueKPIMetrics,
-    fanvueCategoryBreakdown,
-    selectedModel,
     modelChartData,
+    fanvueChartData,
     modelKPIMetrics,
+    fanvueKPIMetrics,
     modelCategoryBreakdown,
+    fanvueCategoryBreakdown,
   ])
 
   // Handle OAuth success/error notifications
@@ -286,6 +271,30 @@ export default function DashboardClient({
 
   const handleAddModel = () => {
     router.push('/api/oauth/login')
+  }
+
+  // Helper to format date range label
+  const getDateRangeLabel = () => {
+    const presetLabels: Record<string, string> = {
+      all: 'All time',
+      today: 'Today',
+      yesterday: 'Yesterday',
+      last7days: 'Last 7 days',
+      last30days: 'Last 30 days',
+      thisMonth: 'This month',
+      thisYear: 'This year',
+    }
+
+    if (dateRange.preset === 'custom' && dateRange.startDate && dateRange.endDate) {
+      const start = dateRange.startDate.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+      })
+      const end = dateRange.endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      return `${start} – ${end}`
+    }
+
+    return presetLabels[dateRange.preset] || 'Last 30 days'
   }
 
   // ===== REAL CALCULATIONS (from models table) =====
@@ -908,8 +917,8 @@ export default function DashboardClient({
                   Revenue Over Time
                 </CardTitle>
                 <CardDescription>
-                  Last 30 days • {filteredFanvueData.kpiMetrics.transactionCount.toLocaleString()}{' '}
-                  transactions
+                  {getDateRangeLabel()} •{' '}
+                  {filteredFanvueData.kpiMetrics.transactionCount.toLocaleString()} transactions
                 </CardDescription>
               </CardHeader>
               <CardContent className="pl-2">

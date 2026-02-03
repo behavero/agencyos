@@ -33,12 +33,27 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams
     const modelId = searchParams.get('modelId')
     const timeRange = (searchParams.get('timeRange') as any) || '30d'
+    const startDateParam = searchParams.get('startDate')
+    const endDateParam = searchParams.get('endDate')
+
+    // Parse dates if provided
+    const startDate = startDateParam ? new Date(startDateParam) : undefined
+    const endDate = endDateParam ? new Date(endDateParam) : undefined
+
+    console.log('[Dashboard API] Fetching data:', {
+      modelId,
+      timeRange,
+      startDate: startDate?.toISOString(),
+      endDate: endDate?.toISOString(),
+    })
 
     // Fetch analytics data
     const [chartData, kpiMetrics, categoryBreakdown] = await Promise.all([
       getChartData(profile.agency_id, {
         modelId: modelId === 'all' ? undefined : modelId || undefined,
         timeRange,
+        startDate,
+        endDate,
       }),
       getKPIMetrics(profile.agency_id, {
         modelId: modelId === 'all' ? undefined : modelId || undefined,

@@ -25,15 +25,15 @@ export type DateRangePreset =
   | 'thisYear'
   | 'custom'
 
-export interface DateRangeFilter {
+export interface DateRangeValue {
   preset: DateRangePreset
   startDate?: Date
   endDate?: Date
 }
 
 interface DateRangeFilterProps {
-  value: DateRangeFilter
-  onChange: (value: DateRangeFilter) => void
+  value: DateRangeValue
+  onChange: (value: DateRangeValue) => void
   className?: string
 }
 
