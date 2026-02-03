@@ -106,10 +106,10 @@ export async function getKPIMetrics(
   // Build query for current period
   let currentQuery = supabase
     .from('fanvue_transactions')
-    .select('amount, net_amount, category, fanvue_user_id')
+    .select('amount, net_amount, transaction_type, fan_id')
     .eq('agency_id', agencyId)
-    .gte('fanvue_created_at', startDate.toISOString())
-    .lte('fanvue_created_at', endDate.toISOString())
+    .gte('transaction_date', startDate.toISOString())
+    .lte('transaction_date', endDate.toISOString())
 
   if (options.modelId) {
     currentQuery = currentQuery.eq('model_id', options.modelId)
@@ -127,8 +127,8 @@ export async function getKPIMetrics(
     .from('fanvue_transactions')
     .select('amount')
     .eq('agency_id', agencyId)
-    .gte('fanvue_created_at', prevStartDate.toISOString())
-    .lte('fanvue_created_at', prevEndDate.toISOString())
+    .gte('transaction_date', prevStartDate.toISOString())
+    .lte('transaction_date', prevEndDate.toISOString())
 
   if (options.modelId) {
     prevQuery = prevQuery.eq('model_id', options.modelId)
@@ -136,27 +136,46 @@ export async function getKPIMetrics(
 
   const { data: prevTransactions } = await prevQuery
 
-  // Get active subscribers count
-  const { count: activeSubscribers } = await supabase
+  // Get total subscribers count from models
+  let modelsQuery = supabase
     .from('models')
-    .select('subscribers_count', { count: 'exact', head: true })
+    .select('subscribers_count')
     .eq('agency_id', agencyId)
     .eq('status', 'active')
+
+  if (options.modelId) {
+    modelsQuery = modelsQuery.eq('id', options.modelId)
+  }
+
+  const { data: models } = await modelsQuery
+  const activeSubscribers = models?.reduce((sum, m) => sum + (m.subscribers_count || 0), 0) || 0
 
   // Calculate metrics
   const totalRevenue = currentTransactions?.reduce((sum, tx) => sum + Number(tx.amount), 0) || 0
   const netRevenue = currentTransactions?.reduce((sum, tx) => sum + Number(tx.net_amount), 0) || 0
   const prevTotalRevenue = prevTransactions?.reduce((sum, tx) => sum + Number(tx.amount), 0) || 0
 
-  const tipTransactions = currentTransactions?.filter(tx => tx.category === 'tip') || []
+  const tipTransactions = currentTransactions?.filter(tx => tx.transaction_type === 'tip') || []
 
   const tipAverage =
     tipTransactions.length > 0
       ? tipTransactions.reduce((sum, tx) => sum + Number(tx.amount), 0) / tipTransactions.length
       : 0
 
-  const uniqueFans = new Set(currentTransactions?.map(tx => tx.fanvue_user_id).filter(Boolean)).size
-  const arpu = uniqueFans > 0 ? totalRevenue / uniqueFans : 0
+  // Calculate ARPU (Average Revenue Per User) = Total Revenue / Total Subscribers
+  const arpu = activeSubscribers > 0 ? totalRevenue / activeSubscribers : 0
+
+  // Calculate conversion rates
+  const messageTransactions =
+    currentTransactions?.filter(
+      tx => tx.transaction_type === 'message' || tx.transaction_type === 'ppv'
+    ) || []
+  const messageConversionRate =
+    activeSubscribers > 0 ? (messageTransactions.length / activeSubscribers) * 100 : 0
+
+  const ppvTransactions = currentTransactions?.filter(tx => tx.transaction_type === 'ppv') || []
+  const ppvConversionRate =
+    activeSubscribers > 0 ? (ppvTransactions.length / activeSubscribers) * 100 : 0
 
   // Calculate revenue growth
   const revenueGrowth =
@@ -165,11 +184,11 @@ export async function getKPIMetrics(
   return {
     totalRevenue: Math.round(totalRevenue),
     netRevenue: Math.round(netRevenue),
-    activeSubscribers: activeSubscribers || 0,
-    arpu: Math.round(arpu),
-    messageConversionRate: 0, // TODO: Requires message_logs table
-    ppvConversionRate: 0, // TODO: Requires message_logs table
-    tipAverage: Math.round(tipAverage),
+    activeSubscribers: activeSubscribers,
+    arpu: Math.round(arpu * 100) / 100, // Round to 2 decimal places
+    messageConversionRate: Math.round(messageConversionRate * 10) / 10, // Round to 1 decimal place
+    ppvConversionRate: Math.round(ppvConversionRate * 10) / 10, // Round to 1 decimal place
+    tipAverage: Math.round(tipAverage * 100) / 100, // Round to 2 decimal places
     transactionCount: currentTransactions?.length || 0,
     revenueGrowth: Math.round(revenueGrowth * 10) / 10,
   }
@@ -191,10 +210,10 @@ export async function getCategoryBreakdown(
 
   let query = supabase
     .from('fanvue_transactions')
-    .select('category, amount')
+    .select('transaction_type, amount')
     .eq('agency_id', agencyId)
-    .gte('fanvue_created_at', startDate.toISOString())
-    .lte('fanvue_created_at', endDate.toISOString())
+    .gte('transaction_date', startDate.toISOString())
+    .lte('transaction_date', endDate.toISOString())
 
   if (options.modelId) {
     query = query.eq('model_id', options.modelId)
@@ -207,10 +226,10 @@ export async function getCategoryBreakdown(
     return []
   }
 
-  // Group by category
+  // Group by transaction_type
   const grouped = data.reduce(
     (acc, tx) => {
-      const category = tx.category || 'other'
+      const category = tx.transaction_type || 'other'
       if (!acc[category]) {
         acc[category] = { amount: 0, count: 0 }
       }
@@ -218,7 +237,7 @@ export async function getCategoryBreakdown(
       acc[category].count += 1
       return acc
     },
-    {} as Record<string, { amount: number; count: number }>
+    {} as Record<string, { amount: number; count: 0 }>
   )
 
   const total = Object.values(grouped).reduce((sum, cat) => sum + cat.amount, 0)
