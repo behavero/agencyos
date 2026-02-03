@@ -208,36 +208,38 @@ export async function getKPIMetrics(
   }
 
   const { data: models } = await modelsQuery
+  
+  // Get ACTUAL subscriber and follower counts from Fanvue Smart Lists (stored in models table)
+  // This is the source of truth for audience metrics
+  const modelSubscribers = models?.reduce((sum, m) => sum + (m.subscribers_count || 0), 0) || 0
   const modelFollowers = models?.reduce((sum, m) => sum + (m.followers_count || 0), 0) || 0
+  const totalAudienceFromFanvue = modelSubscribers + modelFollowers
 
-  // COUNT ACTUAL SUBSCRIBERS from transactions (people who paid for subscription)
-  // This is more accurate than models.subscribers_count which only shows CURRENT active subs
-  let subQuery = supabase
-    .from('fanvue_transactions')
-    .select('fan_id')
-    .eq('agency_id', agencyId)
-    .eq('transaction_type', 'subscription')
-    .gte('transaction_date', startDate.toISOString())
-    .lte('transaction_date', endDate.toISOString())
-
-  if (options.modelId) {
-    subQuery = subQuery.eq('model_id', options.modelId)
-  }
-
-  // Paginate to get ALL subscription transactions
+  // For CONVERSION RATE calculations, we need PAID subscribers from transactions
+  // This excludes free trials and counts only paying customers
+  // Paginate to get ALL PAID subscription transactions (exclude $0 free trials)
+  // This count should match Fanvue's "Subscribers + Expired Subscribers" count
   let allSubTransactions: { fan_id: string }[] = []
   let subOffset = 0
   let subHasMore = true
 
   while (subHasMore) {
-    const { data } = await supabase
+    let query = supabase
       .from('fanvue_transactions')
       .select('fan_id')
       .eq('agency_id', agencyId)
       .eq('transaction_type', 'subscription')
+      .gt('amount', 0) // CRITICAL: Only count PAID subscriptions (exclude $0 free trials)
       .gte('transaction_date', startDate.toISOString())
       .lte('transaction_date', endDate.toISOString())
       .range(subOffset, subOffset + 999)
+
+    // Apply model filter if specified
+    if (options.modelId) {
+      query = query.eq('model_id', options.modelId)
+    }
+
+    const { data } = await query
 
     if (!data || data.length === 0) {
       subHasMore = false
@@ -248,16 +250,21 @@ export async function getKPIMetrics(
     }
   }
 
-  // Count UNIQUE subscribers (distinct fan_id who paid for subscription)
-  const totalSubscribers = new Set(allSubTransactions.map(t => t.fan_id).filter(Boolean)).size
-  const totalFollowers = modelFollowers
-  const totalAudience = totalFollowers + totalSubscribers
+  // Count UNIQUE PAYING subscribers from transactions (for LTV and conversion calculations)
+  // This is DIFFERENT from modelSubscribers (which is current active subs from Fanvue Smart Lists)
+  const paidSubscribersFromTransactions = new Set(allSubTransactions.map(t => t.fan_id).filter(Boolean)).size
+
+  // For "New Fans" and audience display, use Fanvue Smart List data (source of truth)
+  // modelSubscribers = current active subscribers
+  // modelFollowers = free followers
+  const totalAudienceDisplay = totalAudienceFromFanvue // Use Smart Lists for display
 
   console.log('[analytics-engine] Audience counts:', {
-    totalSubscribers,
-    totalFollowers,
-    totalAudience,
-    subscriptionTransactions: allSubTransactions.length,
+    paidSubscribersFromTransactions, // For LTV/conversion calculations
+    modelSubscribers, // Current active subs from Fanvue
+    modelFollowers, // Followers from Fanvue
+    totalAudienceFromFanvue, // For "New Fans" display
+    paidSubscriptionTransactions: allSubTransactions.length,
   })
 
   // Query 3: Get ALL transactions for revenue calculation using PAGINATION
@@ -375,8 +382,8 @@ export async function getKPIMetrics(
   const tipAverage = tipCount > 0 ? totalTipAmount / tipCount : 0
 
   // Calculate ARPU (Average Revenue Per User) = Total Revenue / Total Audience (Subscribers + Followers)
-  // Using totalAudience calculated earlier from models query
-  const arpu = totalAudience > 0 ? totalRevenue / totalAudience : 0
+  // Using totalAudienceFromFanvue from Smart Lists (source of truth)
+  const arpu = totalAudienceFromFanvue > 0 ? totalRevenue / totalAudienceFromFanvue : 0
 
   // Calculate conversion rates
   // Get accurate message/PPV/post TRANSACTION counts using COUNT queries
@@ -431,11 +438,16 @@ export async function getKPIMetrics(
 
   const uniquePostFans = new Set(uniquePostBuyers?.map(t => t.fan_id).filter(Boolean)).size
 
-  // Message Purchase Rate: % of subscribers who bought at least 1 message
-  const messageConversionRate = totalSubscribers > 0 ? (uniqueMessageFans / totalSubscribers) * 100 : 0
+  // Message Purchase Rate: % of PAID subscribers who bought at least 1 message
+  // Uses paidSubscribersFromTransactions (people who actually paid for subscription)
+  const messageConversionRate = paidSubscribersFromTransactions > 0 
+    ? (uniqueMessageFans / paidSubscribersFromTransactions) * 100 
+    : 0
 
-  // Post Purchase Rate: % of subscribers who bought at least 1 post/PPV
-  const ppvConversionRate = totalSubscribers > 0 ? (uniquePostFans / totalSubscribers) * 100 : 0
+  // Post Purchase Rate: % of PAID subscribers who bought at least 1 post/PPV
+  const ppvConversionRate = paidSubscribersFromTransactions > 0 
+    ? (uniquePostFans / paidSubscribersFromTransactions) * 100 
+    : 0
 
   // Calculate revenue growth
   const revenueGrowth =
@@ -443,8 +455,9 @@ export async function getKPIMetrics(
 
   // NEW METRICS for competitor parity:
 
-  // 1. LTV (Lifetime Value) = Total Revenue / Total Subscribers (actual average lifetime value)
-  const ltv = totalSubscribers > 0 ? totalRevenue / totalSubscribers : 0
+  // 1. LTV (Lifetime Value) = Total Revenue / Paid Subscribers
+  // This represents the average lifetime value per paying customer
+  const ltv = paidSubscribersFromTransactions > 0 ? totalRevenue / paidSubscribersFromTransactions : 0
 
   // 2. Golden Ratio = (Message + PPV + Tip Revenue) / Subscription Revenue
   const subscriptionRevenue =
@@ -469,9 +482,9 @@ export async function getKPIMetrics(
   // 4. Total PPV/Posts Purchased (accurate count)
   const totalPPVSent = ppvCount + postCount
 
-  // 5. New Fans = Unique subscribers who paid in this period
-  // This uses the already-calculated totalSubscribers (from paginated subscription transactions)
-  const newFans = totalSubscribers // Unique fans who subscribed in this period
+  // 5. New Fans = Total current audience from Fanvue Smart Lists (subscribers + followers)
+  // This uses actual Fanvue data, not transaction-based estimates
+  const newFans = totalAudienceFromFanvue // Actual current audience from Fanvue
 
   // 6. Unlock Rate: N/A - Fanvue API doesn't provide "PPV sent" data (only "PPV purchased")
   // This would require tracking from chatting tool
@@ -480,7 +493,7 @@ export async function getKPIMetrics(
   return {
     totalRevenue: Math.round(totalRevenue),
     netRevenue: Math.round(netRevenue),
-    activeSubscribers: totalSubscribers, // Use total subscribers from models table
+    activeSubscribers: modelSubscribers, // Current active subscribers from Fanvue Smart Lists
     arpu: Math.round(arpu * 100) / 100, // Round to 2 decimal places
     messageConversionRate: Math.round(messageConversionRate * 10) / 10, // Messages per subscriber (%)
     ppvConversionRate: Math.round(ppvConversionRate * 10) / 10, // PPV per subscriber (%)
