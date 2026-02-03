@@ -184,7 +184,7 @@ export default function DashboardClient({
 
   const selectedModel = models.find(m => m.id === selectedModelId)
 
-  // Fetch model-specific data when selection or date range changes
+  // Fetch data when model selection or date range changes (ALWAYS, including "All Models")
   useEffect(() => {
     const fetchModelData = async () => {
       setIsLoadingModelData(true)
@@ -193,6 +193,7 @@ export default function DashboardClient({
         const params = new URLSearchParams()
         params.set('agencyId', agency?.id || '')
 
+        // Add modelId ONLY if not 'all'
         if (selectedModelId !== 'all') {
           params.set('modelId', selectedModelId)
         }
@@ -239,22 +240,14 @@ export default function DashboardClient({
     fetchModelData()
   }, [selectedModelId, dateRange, agency?.id])
 
-  // Always use the dynamically fetched data (includes date range filtering)
+  // ALWAYS use the dynamically fetched data (ignores stale server-side props)
   const filteredFanvueData = useMemo(() => {
     return {
-      chartData: modelChartData.length > 0 ? modelChartData : fanvueChartData,
-      kpiMetrics: modelKPIMetrics || fanvueKPIMetrics,
-      categoryBreakdown:
-        modelCategoryBreakdown.length > 0 ? modelCategoryBreakdown : fanvueCategoryBreakdown,
+      chartData: modelChartData,
+      kpiMetrics: modelKPIMetrics || fanvueKPIMetrics, // Fallback during initial load
+      categoryBreakdown: modelCategoryBreakdown,
     }
-  }, [
-    modelChartData,
-    fanvueChartData,
-    modelKPIMetrics,
-    fanvueKPIMetrics,
-    modelCategoryBreakdown,
-    fanvueCategoryBreakdown,
-  ])
+  }, [modelChartData, modelKPIMetrics, fanvueKPIMetrics, modelCategoryBreakdown])
 
   // Handle OAuth success/error notifications
   useEffect(() => {

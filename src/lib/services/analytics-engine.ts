@@ -345,7 +345,10 @@ function getDateRange(
 }
 
 /**
- * Helper: Fill missing dates with zero values for smooth graphs
+ * Helper: Aggregate and fill data based on date range
+ * - Short ranges (7-30 days): Daily granularity
+ * - Medium ranges (31-180 days): Weekly granularity
+ * - Long ranges (181+ days): Monthly granularity
  */
 function fillMissingDates(
   dataPoints: ChartDataPoint[],
@@ -356,31 +359,159 @@ function fillMissingDates(
     return []
   }
 
+  const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
+
+  // For short ranges (≤30 days), return daily data
+  if (daysDiff <= 30) {
+    return aggregateDaily(dataPoints, startDate, endDate)
+  }
+
+  // For medium ranges (31-180 days), aggregate by week
+  if (daysDiff <= 180) {
+    return aggregateWeekly(dataPoints, startDate, endDate)
+  }
+
+  // For long ranges (>180 days), aggregate by month
+  return aggregateMonthly(dataPoints, startDate, endDate)
+}
+
+/**
+ * Aggregate data by day
+ */
+function aggregateDaily(
+  dataPoints: ChartDataPoint[],
+  startDate: Date,
+  endDate: Date
+): ChartDataPoint[] {
   const filledData: ChartDataPoint[] = []
   const currentDate = new Date(startDate)
 
   while (currentDate <= endDate) {
     const dateStr = currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-
     const existingPoint = dataPoints.find(d => d.date === dateStr)
 
-    if (existingPoint) {
-      filledData.push(existingPoint)
-    } else {
-      filledData.push({
+    filledData.push(
+      existingPoint || {
         date: dateStr,
         subscriptions: 0,
         tips: 0,
         messages: 0,
         posts: 0,
         total: 0,
-      })
-    }
+      }
+    )
 
     currentDate.setDate(currentDate.getDate() + 1)
   }
 
   return filledData
+}
+
+/**
+ * Aggregate data by week
+ */
+function aggregateWeekly(
+  dataPoints: ChartDataPoint[],
+  startDate: Date,
+  endDate: Date
+): ChartDataPoint[] {
+  const weeklyData = new Map<string, ChartDataPoint>()
+
+  // Parse all data points and group by week
+  for (const point of dataPoints) {
+    // Get the Monday of the week for this data point
+    const pointDate = new Date(point.date + ' 2025') // Add year for parsing
+    const monday = new Date(pointDate)
+    const day = monday.getDay()
+    const diff = monday.getDate() - day + (day === 0 ? -6 : 1) // Adjust to Monday
+    monday.setDate(diff)
+
+    const weekKey = monday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+
+    if (weeklyData.has(weekKey)) {
+      const existing = weeklyData.get(weekKey)!
+      existing.subscriptions += point.subscriptions
+      existing.tips += point.tips
+      existing.messages += point.messages
+      existing.posts += point.posts
+      existing.total += point.total
+    } else {
+      weeklyData.set(weekKey, {
+        date: weekKey,
+        subscriptions: point.subscriptions,
+        tips: point.tips,
+        messages: point.messages,
+        posts: point.posts,
+        total: point.total,
+      })
+    }
+  }
+
+  return Array.from(weeklyData.values()).sort((a, b) => {
+    const dateA = new Date(a.date + ' 2025')
+    const dateB = new Date(b.date + ' 2025')
+    return dateA.getTime() - dateB.getTime()
+  })
+}
+
+/**
+ * Aggregate data by month
+ */
+function aggregateMonthly(
+  dataPoints: ChartDataPoint[],
+  startDate: Date,
+  endDate: Date
+): ChartDataPoint[] {
+  const monthlyData = new Map<string, ChartDataPoint>()
+
+  // Parse all data points and group by month
+  for (const point of dataPoints) {
+    // Extract month from date string
+    const monthMatch = point.date.match(/^([A-Za-z]{3})/)
+    if (!monthMatch) continue
+
+    const monthKey = monthMatch[1]
+
+    if (monthlyData.has(monthKey)) {
+      const existing = monthlyData.get(monthKey)!
+      existing.subscriptions += point.subscriptions
+      existing.tips += point.tips
+      existing.messages += point.messages
+      existing.posts += point.posts
+      existing.total += point.total
+    } else {
+      monthlyData.set(monthKey, {
+        date: monthKey,
+        subscriptions: point.subscriptions,
+        tips: point.tips,
+        messages: point.messages,
+        posts: point.posts,
+        total: point.total,
+      })
+    }
+  }
+
+  // Sort by month order (Jan, Feb, Mar...)
+  const monthOrder = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ]
+
+  return Array.from(monthlyData.values()).sort((a, b) => {
+    const indexA = monthOrder.indexOf(a.date)
+    const indexB = monthOrder.indexOf(b.date)
+    return indexA - indexB
+  })
 }
 
 /**
