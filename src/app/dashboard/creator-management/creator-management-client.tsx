@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Input } from '@/components/ui/input'
-import type { Database } from '@/types/database.types'
 import {
   Plus,
   Search,
@@ -33,13 +32,10 @@ import { toast } from 'sonner'
 import Link from 'next/link'
 import { AddCreatorDialog } from '@/components/creators/add-creator-dialog'
 import { AgencyImportButton } from '@/components/creators/agency-import-button'
+import { useAgencyData } from '@/providers/agency-data-provider'
 
-type Model = Database['public']['Tables']['models']['Row']
-
-interface CreatorManagementClientProps {
-  models: Model[]
-  agencyId?: string
-}
+// Props interface removed - now using useAgencyData() context
+// Phase 64: Unified Data Architecture
 
 // Format number with K/M suffix
 function formatNumber(num: number | null | undefined): string {
@@ -77,12 +73,19 @@ function formatRelativeTime(dateStr: string | null | undefined): string {
   return date.toLocaleDateString()
 }
 
-export default function CreatorManagementClient({
-  models,
-  agencyId,
-}: CreatorManagementClientProps) {
+/**
+ * Creator Management Client Component
+ * Phase 64 - Unified Data Architecture
+ *
+ * Now uses useAgencyData() context for all data.
+ */
+export default function CreatorManagementClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
+
+  // Get data from unified context
+  const { models, agency, refreshData } = useAgencyData()
+  const agencyId = agency?.id
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [refreshingIds, setRefreshingIds] = useState<Set<string>>(new Set())

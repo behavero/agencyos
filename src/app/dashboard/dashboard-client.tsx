@@ -36,8 +36,6 @@ import {
 } from 'recharts'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
-import type { User } from '@supabase/supabase-js'
-import type { Database } from '@/types/database.types'
 import type {
   RevenueDataPoint,
   RevenueBreakdownItem,
@@ -75,6 +73,7 @@ import { DateRangeFilter, type DateRangeValue } from '@/components/dashboard/dat
 import { NewFansAnalytics } from '@/components/dashboard/new-fans-analytics'
 import { TopTrackingLinksCard } from '@/components/dashboard/top-tracking-links-card'
 import { InstagramInsightsCard } from '@/components/dashboard/instagram-insights-card'
+import { useAgencyData } from '@/providers/agency-data-provider'
 
 // Dark mode chart theme for Recharts
 const CHART_THEME = {
@@ -87,19 +86,8 @@ const CHART_THEME = {
   },
 }
 
-type Profile = Database['public']['Tables']['profiles']['Row']
-type Agency = Database['public']['Tables']['agencies']['Row']
-type Model = Database['public']['Tables']['models']['Row']
-
-interface DashboardClientProps {
-  user: User
-  profile: Profile | null
-  agency: Agency | null
-  models: Model[]
-  totalExpenses: number
-  // All analytics data is now fetched client-side via /api/analytics/dashboard
-  // This ensures Overview and Fanvue tabs use the SAME data source
-}
+// Props interface removed - now using useAgencyData() context
+// Phase 64: Unified Data Architecture
 
 // Chart configs - Lime Theme
 const revenueChartConfig = {
@@ -131,15 +119,38 @@ const modelChartConfig = {
   },
 } satisfies ChartConfig
 
-export default function DashboardClient({
-  user,
-  profile,
-  agency,
-  models,
-  totalExpenses,
-}: DashboardClientProps) {
+/**
+ * Dashboard Client Component
+ * Phase 64 - Unified Data Architecture
+ *
+ * Now uses useAgencyData() context for all data.
+ * No more props - everything comes from the provider.
+ */
+export default function DashboardClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
+
+  // Get all data from the unified context
+  const {
+    user,
+    profile,
+    agency,
+    models,
+    agencyStats,
+    chartData: contextChartData,
+    categoryBreakdown: contextCategoryBreakdown,
+    kpiMetrics: contextKpiMetrics,
+    isLoading: isContextLoading,
+    isRefreshing,
+    refreshData,
+    setTimeRange: setContextTimeRange,
+    setSelectedModel: setContextSelectedModel,
+    timeRange: contextTimeRange,
+    selectedModelId: contextSelectedModelId,
+  } = useAgencyData()
+
+  // Calculate total expenses from models (for backwards compatibility)
+  const totalExpenses = 0 // TODO: Get from context
 
   // Default empty arrays for removed server-side props (now fetched client-side)
   const revenueHistory: RevenueDataPoint[] = []
@@ -161,7 +172,7 @@ export default function DashboardClient({
   }
   const expenseHistory: ExpenseHistoryPoint[] = []
 
-  // Model filter state
+  // Model filter state - use context state
   const [selectedModelId, setSelectedModelId] = useState<string>('all')
   const [isLoadingModelData, setIsLoadingModelData] = useState(false)
   const [modelChartData, setModelChartData] = useState<ChartDataPoint[]>([])
@@ -173,13 +184,24 @@ export default function DashboardClient({
     preset: 'all', // Default to "All Time" to show full history
   })
 
-  // Overview-specific state (separate from Fanvue tab)
+  // Overview-specific state - use context data when available
   const [overviewData, setOverviewData] = useState<{
     chartData: ChartDataPoint[]
     kpiMetrics: KPIMetrics
     categoryBreakdown: CategoryBreakdown[]
   } | null>(null)
   const [isLoadingOverview, setIsLoadingOverview] = useState(false)
+
+  // Sync context data with local state when context updates
+  useEffect(() => {
+    if (contextChartData && contextKpiMetrics && contextCategoryBreakdown) {
+      setOverviewData({
+        chartData: contextChartData,
+        kpiMetrics: contextKpiMetrics,
+        categoryBreakdown: contextCategoryBreakdown,
+      })
+    }
+  }, [contextChartData, contextKpiMetrics, contextCategoryBreakdown])
 
   const selectedModel = models.find(m => m.id === selectedModelId)
 
@@ -868,11 +890,11 @@ export default function DashboardClient({
 
           {/* Top Tracking Links & Instagram Insights Row */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <TopTrackingLinksCard 
-              models={models.map(m => ({ id: m.id, name: m.name }))} 
+            <TopTrackingLinksCard
+              models={models.map(m => ({ id: m.id, name: m.name }))}
               initialModelId={selectedModelId === 'all' ? undefined : selectedModelId}
             />
-            <InstagramInsightsCard 
+            <InstagramInsightsCard
               modelId={selectedModelId}
               modelName={models.find(m => m.id === selectedModelId)?.name}
             />
@@ -1235,9 +1257,7 @@ export default function DashboardClient({
                 <div className="text-2xl font-bold text-blue-400">
                   {filteredFanvueData.kpiMetrics.messageConversionRate.toFixed(1)}%
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  % of subs who bought messages
-                </p>
+                <p className="text-xs text-muted-foreground mt-1">% of subs who bought messages</p>
               </CardContent>
             </Card>
 
@@ -1252,9 +1272,7 @@ export default function DashboardClient({
                 <div className="text-2xl font-bold text-purple-400">
                   {filteredFanvueData.kpiMetrics.ppvConversionRate.toFixed(1)}%
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  % of subs who bought posts
-                </p>
+                <p className="text-xs text-muted-foreground mt-1">% of subs who bought posts</p>
               </CardContent>
             </Card>
           </div>
