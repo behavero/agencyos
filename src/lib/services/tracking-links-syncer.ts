@@ -54,6 +54,11 @@ async function fetchTrackingLinks(
     },
   })
 
+  // 404 means no tracking links exist for this creator - return empty
+  if (response.status === 404) {
+    return { data: [], cursor: null }
+  }
+
   if (!response.ok) {
     throw new Error(`Fanvue API error: ${response.status} ${response.statusText}`)
   }
