@@ -1,12 +1,12 @@
 /**
  * Facebook Login for Business - OAuth Callback
- * 
+ *
  * Handles the OAuth callback from Facebook:
  * 1. Exchange authorization code for access token
  * 2. Exchange for long-lived token (60 days)
  * 3. Get Facebook Pages with connected Instagram accounts
  * 4. Save credentials to the models table
- * 
+ *
  * Docs: https://developers.facebook.com/docs/instagram-platform/instagram-api-with-facebook-login/business-login-for-instagram
  */
 
@@ -46,6 +46,14 @@ interface PagesResponse {
 }
 
 export async function GET(request: NextRequest) {
+  // Log ALL incoming parameters for debugging
+  console.log('[meta/callback] ========== CALLBACK HIT ==========')
+  console.log('[meta/callback] Full URL:', request.url)
+  console.log(
+    '[meta/callback] All params:',
+    Object.fromEntries(request.nextUrl.searchParams.entries())
+  )
+
   const searchParams = request.nextUrl.searchParams
   const code = searchParams.get('code')
   const state = searchParams.get('state')
@@ -72,24 +80,21 @@ export async function GET(request: NextRequest) {
     try {
       stateData = JSON.parse(Buffer.from(state, 'base64').toString())
     } catch {
-      return NextResponse.redirect(
-        new URL('/dashboard?error=Invalid+state+parameter', request.url)
-      )
+      return NextResponse.redirect(new URL('/dashboard?error=Invalid+state+parameter', request.url))
     }
 
     const { modelId } = stateData
 
     // Check state age (max 10 minutes)
     if (Date.now() - stateData.timestamp > 10 * 60 * 1000) {
-      return NextResponse.redirect(
-        new URL('/dashboard?error=Authorization+expired', request.url)
-      )
+      return NextResponse.redirect(new URL('/dashboard?error=Authorization+expired', request.url))
     }
 
     // Use Facebook App credentials
     const clientId = process.env.NEXT_PUBLIC_META_APP_ID
     const clientSecret = process.env.META_APP_SECRET
-    const redirectUri = process.env.META_REDIRECT_URI || `${request.nextUrl.origin}/api/auth/meta/callback`
+    const redirectUri =
+      process.env.META_REDIRECT_URI || `${request.nextUrl.origin}/api/auth/meta/callback`
 
     if (!clientId || !clientSecret) {
       throw new Error('Meta credentials not configured')
@@ -130,7 +135,10 @@ export async function GET(request: NextRequest) {
     console.log('[meta/callback] Fetching connected Instagram accounts...')
     const pagesUrl = new URL(`${META_GRAPH_API}/me/accounts`)
     pagesUrl.searchParams.set('access_token', userToken)
-    pagesUrl.searchParams.set('fields', 'id,name,access_token,instagram_business_account{id,username}')
+    pagesUrl.searchParams.set(
+      'fields',
+      'id,name,access_token,instagram_business_account{id,username}'
+    )
 
     const pagesResponse = await fetch(pagesUrl.toString())
     const pagesData: PagesResponse = await pagesResponse.json()
@@ -147,7 +155,10 @@ export async function GET(request: NextRequest) {
 
     if (pagesWithInstagram.length === 0) {
       return NextResponse.redirect(
-        new URL('/dashboard?error=No+Instagram+Professional+account+found.+Make+sure+your+Instagram+is+a+Professional+account+connected+to+a+Facebook+Page.', request.url)
+        new URL(
+          '/dashboard?error=No+Instagram+Professional+account+found.+Make+sure+your+Instagram+is+a+Professional+account+connected+to+a+Facebook+Page.',
+          request.url
+        )
       )
     }
 
@@ -170,7 +181,7 @@ export async function GET(request: NextRequest) {
 
     // Step 4: Save to database
     const supabase = await createAdminClient()
-    
+
     const { error: updateError } = await supabase
       .from('models')
       .update({
@@ -190,12 +201,18 @@ export async function GET(request: NextRequest) {
 
     // Redirect back to creator page with success message
     return NextResponse.redirect(
-      new URL(`/dashboard/creator-management/${modelId}?success=Instagram+connected!+@${instagramUsername}`, request.url)
+      new URL(
+        `/dashboard/creator-management/${modelId}?success=Instagram+connected!+@${instagramUsername}`,
+        request.url
+      )
     )
   } catch (error) {
     console.error('[meta/callback] Error:', error)
     return NextResponse.redirect(
-      new URL(`/dashboard?error=${encodeURIComponent(error instanceof Error ? error.message : 'Unknown error')}`, request.url)
+      new URL(
+        `/dashboard?error=${encodeURIComponent(error instanceof Error ? error.message : 'Unknown error')}`,
+        request.url
+      )
     )
   }
 }
