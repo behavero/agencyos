@@ -322,10 +322,35 @@ export async function POST(request: NextRequest) {
     const duration = ((Date.now() - startTime) / 1000).toFixed(1)
     console.log(`   Duration before error: ${duration}s`)
 
+    // Extract more helpful error message
+    let errorMessage = 'Unknown error'
+    let errorDetails = ''
+
+    if (error instanceof Error) {
+      errorMessage = error.message
+
+      // Check for common error types
+      if (errorMessage.includes('NO_FANVUE_CONNECTION')) {
+        errorDetails = 'Connect at least one creator with Fanvue first'
+      } else if (errorMessage.includes('Failed to fetch creators')) {
+        errorDetails = 'Could not fetch creators from Fanvue API'
+      } else if (errorMessage.includes('401') || errorMessage.includes('Unauthorized')) {
+        errorDetails = 'Fanvue authentication failed. Please reconnect your account'
+      } else if (errorMessage.includes('429') || errorMessage.includes('Too many requests')) {
+        errorDetails = 'Rate limit exceeded. Please wait a minute and try again'
+      }
+    }
+
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: errorMessage,
+        details: errorDetails || errorMessage,
+        troubleshooting: {
+          step1: 'Ensure at least one creator is connected to Fanvue',
+          step2: 'Check that Fanvue tokens are not expired',
+          step3: 'Wait a minute if you recently synced (rate limit)',
+        },
       },
       { status: 500 }
     )
