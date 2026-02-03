@@ -17,6 +17,8 @@ export interface ChartDataPoint {
   messages: number
   posts: number
   total: number
+  subscribers?: number // Audience growth data
+  followers?: number // Audience growth data
 }
 
 export interface KPIMetrics {
@@ -86,8 +88,42 @@ export async function getChartData(
     total: Number(row.total) || 0,
   }))
 
+  // Fetch subscriber/follower history for Audience Growth chart
+  let subscriberHistoryQuery = supabase
+    .from('subscriber_history')
+    .select('date, subscribers_total, followers_count')
+    .eq('agency_id', agencyId)
+    .gte('date', startDate.toISOString().split('T')[0]) // Date only (YYYY-MM-DD)
+    .lte('date', endDate.toISOString().split('T')[0])
+    .order('date', { ascending: true })
+
+  if (options.modelId) {
+    subscriberHistoryQuery = subscriberHistoryQuery.eq('model_id', options.modelId)
+  }
+
+  const { data: subscriberData } = await subscriberHistoryQuery
+
+  // Create a map of subscriber/follower data by date
+  const subscriberMap = new Map<string, { subscribers: number; followers: number }>()
+  subscriberData?.forEach((row: any) => {
+    const dateKey = new Date(row.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    // If multiple models, aggregate their counts
+    const existing = subscriberMap.get(dateKey) || { subscribers: 0, followers: 0 }
+    subscriberMap.set(dateKey, {
+      subscribers: existing.subscribers + (Number(row.subscribers_total) || 0),
+      followers: existing.followers + (Number(row.followers_count) || 0),
+    })
+  })
+
+  // Merge subscriber data into chart data points
+  const mergedDataPoints = dataPoints.map(point => ({
+    ...point,
+    subscribers: subscriberMap.get(point.date)?.subscribers || 0,
+    followers: subscriberMap.get(point.date)?.followers || 0,
+  }))
+
   // Fill missing dates with zeros
-  return fillMissingDates(dataPoints, startDate, endDate)
+  return fillMissingDates(mergedDataPoints, startDate, endDate)
 }
 
 /**
@@ -177,20 +213,30 @@ export async function getKPIMetrics(
   const totalFollowers = models?.reduce((sum, m) => sum + (m.followers_count || 0), 0) || 0
   const totalAudience = totalFollowers + totalSubscribers
 
-  // Query 3: Get ALL transactions for revenue calculation (just amount columns, lightweight)
+  // Query 3: Get ALL transactions for revenue calculation (set high limit to fetch everything!)
   let allTransactionsQuery = supabase
     .from('fanvue_transactions')
     .select('amount, net_amount')
     .eq('agency_id', agencyId)
     .gte('transaction_date', startDate.toISOString())
     .lte('transaction_date', endDate.toISOString())
-    .limit(50000) // Higher limit for revenue accuracy
+    .limit(100000) // High limit to ensure we get ALL transactions (Supabase default is only 1000!)
 
   if (options.modelId) {
     allTransactionsQuery = allTransactionsQuery.eq('model_id', options.modelId)
   }
 
-  const { data: allTransactions } = await allTransactionsQuery
+  const { data: allTransactions, error: allError } = await allTransactionsQuery
+
+  if (allError) {
+    console.error('[analytics-engine] Error fetching all transactions:', allError)
+  }
+
+  console.log('[analytics-engine] Fetched transactions:', {
+    count: allTransactions?.length,
+    hasData: !!allTransactions,
+    sampleAmount: allTransactions?.[0]?.amount,
+  })
 
   // Query 4: Get previous period transactions for growth calculation
   let prevAllQuery = supabase
@@ -199,7 +245,7 @@ export async function getKPIMetrics(
     .eq('agency_id', agencyId)
     .gte('transaction_date', prevStartDate.toISOString())
     .lte('transaction_date', prevEndDate.toISOString())
-    .limit(50000)
+    .limit(100000) // High limit to ensure we get ALL transactions
 
   if (options.modelId) {
     prevAllQuery = prevAllQuery.eq('model_id', options.modelId)
@@ -211,6 +257,13 @@ export async function getKPIMetrics(
   const totalRevenue = allTransactions?.reduce((sum, tx) => sum + Number(tx.amount), 0) || 0
   const netRevenue = allTransactions?.reduce((sum, tx) => sum + Number(tx.net_amount), 0) || 0
   const prevTotalRevenue = prevAllTransactions?.reduce((sum, tx) => sum + Number(tx.amount), 0) || 0
+
+  console.log('[analytics-engine] Revenue calculation:', {
+    transactionsCount: allTransactions?.length,
+    totalRevenue,
+    netRevenue,
+    sampleTransactions: allTransactions?.slice(0, 3).map(t => ({ amount: t.amount, net: t.net_amount })),
+  })
 
   // Calculate Avg Tip from ALL tip transactions (not just sample)
   const { count: tipCount } = await supabase
@@ -487,6 +540,8 @@ function aggregateDaily(
         messages: 0,
         posts: 0,
         total: 0,
+        subscribers: 0,
+        followers: 0,
       }
     )
 
@@ -524,6 +579,8 @@ function aggregateWeekly(
       existing.messages += point.messages
       existing.posts += point.posts
       existing.total += point.total
+      existing.subscribers = Math.max(existing.subscribers || 0, point.subscribers || 0) // Use latest count
+      existing.followers = Math.max(existing.followers || 0, point.followers || 0) // Use latest count
     } else {
       weeklyData.set(weekKey, {
         date: weekKey,
@@ -532,6 +589,8 @@ function aggregateWeekly(
         messages: point.messages,
         posts: point.posts,
         total: point.total,
+        subscribers: point.subscribers || 0,
+        followers: point.followers || 0,
       })
     }
   }
@@ -568,6 +627,8 @@ function aggregateMonthly(
       existing.messages += point.messages
       existing.posts += point.posts
       existing.total += point.total
+      existing.subscribers = Math.max(existing.subscribers || 0, point.subscribers || 0) // Use latest count
+      existing.followers = Math.max(existing.followers || 0, point.followers || 0) // Use latest count
     } else {
       monthlyData.set(monthKey, {
         date: monthKey,
@@ -576,6 +637,8 @@ function aggregateMonthly(
         messages: point.messages,
         posts: point.posts,
         total: point.total,
+        subscribers: point.subscribers || 0,
+        followers: point.followers || 0,
       })
     }
   }

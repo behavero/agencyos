@@ -116,7 +116,62 @@ export async function POST(request: NextRequest) {
         updateData.unread_messages = unreadMessages
         updateData.tracking_links_count = trackingLinksCount
 
-        await adminClient.from('models').update(updateData).eq('id', model.id)
+        const { error: updateError } = await adminClient.from('models').update(updateData).eq('id', model.id)
+
+        if (updateError) {
+          throw new Error(`Failed to update model: ${updateError.message}`)
+        }
+
+        // INSERT INTO subscriber_history for Audience Growth chart
+        if (updateData.subscribers_count !== undefined && updateData.followers_count !== undefined) {
+          // Get model's agency_id
+          const { data: modelData } = await adminClient
+            .from('models')
+            .select('agency_id')
+            .eq('id', model.id)
+            .single()
+
+          if (modelData?.agency_id) {
+            // Get previous day's counts to calculate net change
+            const today = new Date().toISOString().split('T')[0]
+            const yesterday = new Date()
+            yesterday.setDate(yesterday.getDate() - 1)
+            const yesterdayDate = yesterday.toISOString().split('T')[0]
+
+            const { data: prevHistory } = await adminClient
+              .from('subscriber_history')
+              .select('subscribers_total')
+              .eq('model_id', model.id)
+              .eq('date', yesterdayDate)
+              .single()
+
+            const prevSubscribers = prevHistory?.subscribers_total || 0
+            const newSubscribers = Math.max(0, updateData.subscribers_count - prevSubscribers)
+            const netChange = updateData.subscribers_count - prevSubscribers
+
+            // Upsert today's snapshot
+            await adminClient
+              .from('subscriber_history')
+              .upsert(
+                {
+                  model_id: model.id,
+                  agency_id: modelData.agency_id,
+                  date: today,
+                  subscribers_total: updateData.subscribers_count,
+                  followers_count: updateData.followers_count,
+                  new_subscribers: newSubscribers,
+                  cancelled_subscribers: netChange < 0 ? Math.abs(netChange) : 0,
+                  net_change: netChange,
+                  updated_at: new Date().toISOString(),
+                },
+                {
+                  onConflict: 'model_id,date',
+                }
+              )
+
+            console.log(`[CRON] Saved subscriber history for ${model.name}: ${updateData.subscribers_count} subs, ${updateData.followers_count} followers`)
+          }
+        }
 
         results.push({ model: model.name, success: true })
         console.log(`[CRON] Updated ${model.name}`)
