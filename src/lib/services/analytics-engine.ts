@@ -98,12 +98,14 @@ export async function getKPIMetrics(
   options: {
     modelId?: string
     timeRange?: TimeRange
+    startDate?: Date
+    endDate?: Date
   } = {}
 ): Promise<KPIMetrics> {
   const supabase = await createClient()
 
   // Calculate date range for current period
-  const { startDate, endDate } = getDateRange(options.timeRange)
+  const { startDate, endDate } = getDateRange(options.timeRange, options.startDate, options.endDate)
 
   // Calculate previous period for growth comparison
   const periodLength = endDate.getTime() - startDate.getTime()
@@ -255,11 +257,13 @@ export async function getCategoryBreakdown(
   options: {
     modelId?: string
     timeRange?: TimeRange
+    startDate?: Date
+    endDate?: Date
   } = {}
 ): Promise<CategoryBreakdown[]> {
   const supabase = await createClient()
 
-  const { startDate, endDate } = getDateRange(options.timeRange)
+  const { startDate, endDate } = getDateRange(options.timeRange, options.startDate, options.endDate)
 
   let query = supabase
     .from('fanvue_transactions')

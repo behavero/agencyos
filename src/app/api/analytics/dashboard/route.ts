@@ -58,10 +58,14 @@ export async function GET(request: NextRequest) {
       getKPIMetrics(profile.agency_id, {
         modelId: modelId === 'all' ? undefined : modelId || undefined,
         timeRange,
+        startDate,
+        endDate,
       }),
       getCategoryBreakdown(profile.agency_id, {
         modelId: modelId === 'all' ? undefined : modelId || undefined,
         timeRange,
+        startDate,
+        endDate,
       }),
     ])
 
