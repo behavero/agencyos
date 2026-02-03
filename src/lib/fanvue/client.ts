@@ -15,7 +15,7 @@ export class FanvueAPIError extends Error {
   constructor(
     message: string,
     public statusCode: number,
-    public response?: any
+    public response?: unknown
   ) {
     super(message)
     this.name = 'FanvueAPIError'
@@ -636,6 +636,45 @@ export class FanvueClient {
       }>
       totalCount: number
     }>(`/creators${query}`)
+  }
+
+  /**
+   * Get earnings for a specific creator (agency endpoint)
+   * Requires agency admin token with read:creator and read:insights scopes
+   */
+  async getCreatorEarnings(
+    creatorUserUuid: string,
+    params?: {
+      startDate?: string
+      endDate?: string
+      size?: number
+      cursor?: string
+    }
+  ) {
+    const queryParams = new URLSearchParams()
+    if (params?.startDate) queryParams.set('startDate', params.startDate)
+    if (params?.endDate) queryParams.set('endDate', params.endDate)
+    if (params?.size) queryParams.set('size', String(params.size))
+    if (params?.cursor) queryParams.set('cursor', params.cursor)
+
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : ''
+    return this.request<{
+      data: Array<{
+        date: string
+        gross: number // In cents
+        net: number // In cents
+        currency: string | null
+        source: string
+        user: {
+          uuid: string
+          handle: string
+          displayName: string
+          nickname: string | null
+          isTopSpender: boolean
+        } | null
+      }>
+      nextCursor: string | null
+    }>(`/creators/${creatorUserUuid}/insights/earnings${query}`)
   }
 }
 

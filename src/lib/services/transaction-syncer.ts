@@ -1,12 +1,12 @@
 /**
  * Transaction Syncer Service
  * Phase 55 - Intelligent cursor-based incremental sync with automatic token refresh
+ * Phase 59 - Agency-wide token system for seamless multi-creator sync
  *
  * This service fetches only NEW transactions from Fanvue API using cursor-based
  * pagination and automatic token refresh for resilient, scalable syncing.
  */
 
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { createFanvueClient, FanvueAPIError } from '@/lib/fanvue/client'
 import { getModelAccessToken } from '@/lib/services/fanvue-auth'
@@ -16,6 +16,37 @@ export interface SyncResult {
   transactionsSynced: number
   errors: string[]
   lastSyncedDate?: Date
+}
+
+/**
+ * Get the agency admin token for accessing all creators' data
+ * Looks for any model in the agency with a valid token (typically the agency admin)
+ */
+async function getAgencyAdminToken(agencyId: string): Promise<string> {
+  const supabase = createAdminClient()
+
+  // Find any model in this agency with a Fanvue token
+  // Prioritize models with the most recent token expiry (likely the admin)
+  const { data: models } = await supabase
+    .from('models')
+    .select('id, name, fanvue_access_token, fanvue_refresh_token, fanvue_token_expires_at')
+    .eq('agency_id', agencyId)
+    .not('fanvue_access_token', 'is', null)
+    .order('fanvue_token_expires_at', { ascending: false, nullsFirst: false })
+    .limit(1)
+
+  if (!models || models.length === 0) {
+    throw new Error(
+      'No connected accounts in this agency. Connect the agency admin via OAuth first.'
+    )
+  }
+
+  const model = models[0]
+  console.log(`🔑 Using agency token from: ${model.name}`)
+
+  // Use the existing token refresh logic
+  const token = await getModelAccessToken(model.id)
+  return token
 }
 
 /**
@@ -29,7 +60,7 @@ export async function syncModelTransactions(modelId: string): Promise<SyncResult
     // Get model details
     const { data: model, error: modelError } = await supabase
       .from('models')
-      .select('id, agency_id, fanvue_user_uuid, last_transaction_sync')
+      .select('id, agency_id, fanvue_user_uuid, last_transaction_sync, fanvue_access_token')
       .eq('id', modelId)
       .single()
 
@@ -41,18 +72,49 @@ export async function syncModelTransactions(modelId: string): Promise<SyncResult
       }
     }
 
-    console.log(`🔄 Starting incremental sync for model ${model.id}...`)
-
-    // PHASE 55: Automatic token refresh
-    let accessToken: string
-    try {
-      accessToken = await getModelAccessToken(modelId)
-      console.log('✅ Got valid access token (auto-refreshed if needed)')
-    } catch (error: any) {
+    if (!model.fanvue_user_uuid) {
       return {
         success: false,
         transactionsSynced: 0,
-        errors: [`Token error: ${error.message}`],
+        errors: ['Model has no Fanvue UUID. Import via agency first.'],
+      }
+    }
+
+    console.log(`🔄 Starting incremental sync for model ${model.id}...`)
+
+    // PHASE 59: Agency-wide token system
+    // Try to get model's own token first, fall back to agency admin token
+    let accessToken: string = ''
+    let useAgencyEndpoint = false
+
+    if (model.fanvue_access_token) {
+      // Model has its own token - use it with regular endpoint
+      try {
+        accessToken = await getModelAccessToken(modelId)
+        console.log('[✓] Using model own token')
+      } catch (error) {
+        console.log('[!] Model token refresh failed, falling back to agency token')
+        useAgencyEndpoint = true
+      }
+    } else {
+      // Model doesn't have a token - use agency admin token
+      useAgencyEndpoint = true
+    }
+
+    // If using agency endpoint, get the agency admin token
+    if (useAgencyEndpoint) {
+      try {
+        accessToken = await getAgencyAdminToken(model.agency_id)
+        console.log('[✓] Using agency admin token')
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        return {
+          success: false,
+          transactionsSynced: 0,
+          errors: [
+            `Agency token error: ${errorMessage}. Connect the agency admin via OAuth first.`,
+          ],
+        }
       }
     }
 
@@ -71,7 +133,15 @@ export async function syncModelTransactions(modelId: string): Promise<SyncResult
     console.log(`⏱️  Last synced ${hoursSinceLastSync} hours ago`)
 
     // Fetch earnings from Fanvue (with pagination)
-    let allEarnings: any[] = []
+    type EarningRecord = {
+      date: string
+      gross: number
+      net: number
+      currency: string | null
+      source: string
+      user: { uuid: string; handle: string; displayName: string } | null
+    }
+    let allEarnings: EarningRecord[] = []
     let cursor: string | null = null
     let hasMore = true
     let pageCount = 0
@@ -79,11 +149,18 @@ export async function syncModelTransactions(modelId: string): Promise<SyncResult
 
     while (hasMore && pageCount < maxPages) {
       try {
-        const response = await fanvueClient.getEarnings({
-          startDate: startDate.toISOString(), // Full ISO datetime: 2020-01-01T00:00:00.000Z
-          size: 50, // Max allowed by Fanvue API (1-50)
-          cursor: cursor || undefined,
-        })
+        // Use agency endpoint if model doesn't have its own token
+        const response = useAgencyEndpoint
+          ? await fanvueClient.getCreatorEarnings(model.fanvue_user_uuid, {
+              startDate: startDate.toISOString(),
+              size: 50,
+              cursor: cursor || undefined,
+            })
+          : await fanvueClient.getEarnings({
+              startDate: startDate.toISOString(),
+              size: 50,
+              cursor: cursor || undefined,
+            })
 
         allEarnings = [...allEarnings, ...(response.data || [])]
         cursor = response.nextCursor
