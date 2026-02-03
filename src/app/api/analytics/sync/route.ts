@@ -39,7 +39,33 @@ export async function POST(request: NextRequest) {
 
     // Parse request body
     const body = await request.json()
-    const { modelId } = body
+    const { modelId, forceAll } = body
+
+    // PHASE 58: Force full history sync by resetting cursor
+    if (forceAll) {
+      console.log('🔴 FORCE SYNC INITIATED: Resetting last_transaction_sync to 2020...')
+
+      const { createAdminClient } = await import('@/lib/supabase/server')
+      const adminClient = createAdminClient()
+
+      if (modelId) {
+        // Reset specific model
+        await adminClient
+          .from('models')
+          .update({ last_transaction_sync: '2020-01-01T00:00:00.000Z' })
+          .eq('id', modelId)
+
+        console.log(`✅ Reset cursor for model ${modelId}`)
+      } else {
+        // Reset all models in agency
+        await adminClient
+          .from('models')
+          .update({ last_transaction_sync: '2020-01-01T00:00:00.000Z' })
+          .eq('agency_id', profile.agency_id)
+
+        console.log(`✅ Reset cursor for all models in agency ${profile.agency_id}`)
+      }
+    }
 
     let result
 
