@@ -817,6 +817,82 @@ export class FanvueClient {
       }>
     >(`/creators/${creatorUserUuid}/chats/lists/smart`)
   }
+
+  /**
+   * Get top spending fans for a specific creator (agency endpoint)
+   * Returns VIP fans with their spending totals and message counts
+   * Requires agency admin token with read:creator, read:insights, and read:fan scopes
+   */
+  async getCreatorTopSpenders(
+    creatorUserUuid: string,
+    params?: {
+      startDate?: string
+      endDate?: string
+      page?: number
+      size?: number
+    }
+  ) {
+    const queryParams = new URLSearchParams()
+    if (params?.startDate) queryParams.set('startDate', params.startDate)
+    if (params?.endDate) queryParams.set('endDate', params.endDate)
+    if (params?.page) queryParams.set('page', String(params.page))
+    if (params?.size) queryParams.set('size', String(params.size))
+
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : ''
+    return this.request<{
+      data: Array<{
+        gross: number // In cents
+        net: number // In cents
+        messages: number
+        user: {
+          uuid: string
+          handle: string
+          displayName: string
+          nickname: string | null
+          isTopSpender: boolean
+          avatarUrl: string | null
+          registeredAt: string
+        }
+      }>
+      pagination: {
+        page: number
+        size: number
+        hasMore: boolean
+      }
+    }>(`/creators/${creatorUserUuid}/insights/top-spenders${query}`)
+  }
+
+  /**
+   * Get subscriber count history for a specific creator (agency endpoint)
+   * Returns daily subscriber metrics for trend analysis
+   * Requires agency admin token with read:creator and read:insights scopes
+   */
+  async getCreatorSubscriberHistory(
+    creatorUserUuid: string,
+    params?: {
+      startDate?: string
+      endDate?: string
+      size?: number
+      cursor?: string
+    }
+  ) {
+    const queryParams = new URLSearchParams()
+    if (params?.startDate) queryParams.set('startDate', params.startDate)
+    if (params?.endDate) queryParams.set('endDate', params.endDate)
+    if (params?.size) queryParams.set('size', String(params.size))
+    if (params?.cursor) queryParams.set('cursor', params.cursor)
+
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : ''
+    return this.request<{
+      data: Array<{
+        date: string // ISO 8601 date-time
+        total: number // Cumulative total from start date
+        newSubscribersCount: number
+        cancelledSubscribersCount: number
+      }>
+      nextCursor: string | null
+    }>(`/creators/${creatorUserUuid}/insights/subscribers${query}`)
+  }
 }
 
 export function createFanvueClient(accessToken: string) {

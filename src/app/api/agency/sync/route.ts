@@ -11,6 +11,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { getModelAccessToken } from '@/lib/services/fanvue-auth'
 import { syncModelTransactions } from '@/lib/services/transaction-syncer'
+import { syncAgencyTopSpenders } from '@/lib/services/top-spenders-syncer'
+import { syncAgencySubscriberHistory } from '@/lib/services/subscriber-history-syncer'
 
 const API_URL = 'https://api.fanvue.com'
 
@@ -270,6 +272,18 @@ export async function POST(request: NextRequest) {
     console.log('\n💰 STEP 3: TRANSACTION SYNC')
     const syncResults = await syncAllCreators(importResult.modelIds)
 
+    // STEP 4: Sync Top Spenders (Phase A)
+    console.log('\n🌟 STEP 4: TOP SPENDERS SYNC (VIP Analytics)')
+    const topSpendersResult = await syncAgencyTopSpenders(profile.agency_id, agencyToken)
+
+    // STEP 5: Sync Subscriber History (Phase A)
+    console.log('\n📈 STEP 5: SUBSCRIBER HISTORY SYNC (Trend Analytics)')
+    const subscriberHistoryResult = await syncAgencySubscriberHistory(
+      profile.agency_id,
+      agencyToken,
+      365
+    ) // 1 year
+
     // Calculate totals
     const totalSynced = syncResults.reduce((sum, r) => sum + r.transactionsSynced, 0)
     const successCount = syncResults.filter(r => r.success).length
@@ -281,18 +295,25 @@ export async function POST(request: NextRequest) {
     console.log(`   Creators updated: ${importResult.updated}`)
     console.log(`   Creators synced successfully: ${successCount}/${syncResults.length}`)
     console.log(`   Total transactions synced: ${totalSynced}`)
+    console.log(`   VIP fans tracked: ${topSpendersResult.totalSpenders}`)
+    console.log(`   History days synced: ${subscriberHistoryResult.totalDays}`)
 
     return NextResponse.json({
       success: true,
-      message: `✅ Synced ${successCount} creators: ${totalSynced} transactions`,
+      message: `✅ Synced ${successCount} creators: ${totalSynced} transactions, ${topSpendersResult.totalSpenders} VIP fans`,
       creatorsFound: creators.length,
       creatorsImported: importResult.imported,
       creatorsUpdated: importResult.updated,
       syncResults,
+      topSpendersResult,
+      subscriberHistoryResult,
       summary: {
         totalCreators: creators.length,
         successfulSyncs: successCount,
         totalTransactions: totalSynced,
+        totalVIPFans: topSpendersResult.totalSpenders,
+        totalVIPRevenue: topSpendersResult.totalRevenue,
+        totalHistoryDays: subscriberHistoryResult.totalDays,
         durationSeconds: parseFloat(duration),
       },
     })
