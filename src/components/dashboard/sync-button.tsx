@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { RefreshCcw, ChevronDown, Database } from 'lucide-react'
+import { RefreshCcw, ChevronDown, Database, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 
@@ -18,6 +18,55 @@ export function SyncButton() {
   const router = useRouter()
   const [isSyncing, setIsSyncing] = useState(false)
 
+  /**
+   * PHASE 59: Agency SaaS Loop
+   * Auto-discovers all creators and syncs their transactions
+   */
+  const handleAgencySync = async () => {
+    setIsSyncing(true)
+
+    toast.loading('🏢 Starting Agency Sync...', { id: 'sync-toast' })
+
+    try {
+      const response = await fetch('/api/agency/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        // Format creator names for display
+        const creatorNames = result.syncResults
+          ?.filter((r: { success: boolean }) => r.success)
+          .map((r: { creatorName: string }) => r.creatorName)
+          .join(', ')
+
+        toast.success(`✅ Agency Sync Complete!`, {
+          id: 'sync-toast',
+          description: `Synced ${result.summary.successfulSyncs} creators: ${creatorNames}\n💰 ${result.summary.totalTransactions} total transactions`,
+          duration: 5000,
+        })
+        router.refresh()
+      } else {
+        toast.error('Agency sync failed', {
+          id: 'sync-toast',
+          description: result.error || 'Please try again',
+        })
+      }
+    } catch (error) {
+      toast.error('Failed to sync agency', {
+        id: 'sync-toast',
+        description: 'Check your connection and try again',
+      })
+    } finally {
+      setIsSyncing(false)
+    }
+  }
+
+  /**
+   * Quick/Force sync for existing models
+   */
   const handleSync = async (forceAll = false) => {
     setIsSyncing(true)
 
@@ -43,7 +92,6 @@ export function SyncButton() {
           id: 'sync-toast',
           description: `Synced ${result.transactionsSynced} transactions`,
         })
-        // Refresh the page to show new data
         router.refresh()
       } else {
         toast.error('Sync failed', {
@@ -63,16 +111,16 @@ export function SyncButton() {
 
   return (
     <div className="flex gap-1">
-      {/* Quick Sync Button */}
+      {/* PHASE 59: Agency Sync Button - The main CTA */}
       <Button
-        onClick={() => handleSync(false)}
+        onClick={handleAgencySync}
         disabled={isSyncing}
-        variant="outline"
+        variant="default"
         className="gap-2"
-        title="Sync new Fanvue transactions"
+        title="Auto-discover and sync all agency creators"
       >
-        <RefreshCcw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-        {isSyncing ? 'Syncing...' : 'Sync Fanvue'}
+        <Users className={`w-4 h-4 ${isSyncing ? 'animate-pulse' : ''}`} />
+        {isSyncing ? 'Syncing Agency...' : 'Sync Agency'}
       </Button>
 
       {/* Dropdown for Advanced Options */}
@@ -82,8 +130,18 @@ export function SyncButton() {
             <ChevronDown className="w-4 h-4" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuContent align="end" className="w-64">
           <DropdownMenuLabel>Sync Options</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={handleAgencySync} className="gap-2">
+            <Users className="w-4 h-4" />
+            <div>
+              <div className="font-medium">🏢 Agency Sync (Recommended)</div>
+              <div className="text-xs text-muted-foreground">
+                Auto-discovers + syncs all creators
+              </div>
+            </div>
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => handleSync(false)} className="gap-2">
             <RefreshCcw className="w-4 h-4" />
