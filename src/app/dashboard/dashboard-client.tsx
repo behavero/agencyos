@@ -366,12 +366,11 @@ export default function DashboardClient({
   }
 
   // ===== DYNAMIC CALCULATIONS (from filtered API data) =====
-  // Use overview data if available (filtered by date), otherwise fallback to static models data
-  const totalGrossRevenue =
-    overviewData?.kpiMetrics?.totalRevenue ??
-    models.reduce((sum, m) => sum + Number(m.revenue_total || 0), 0)
-  const platformFee = totalGrossRevenue * 0.2
-  const afterPlatformFee = totalGrossRevenue - platformFee
+  // ALWAYS use overviewData (no fallbacks to static data!)
+  const totalGrossRevenue = overviewData?.kpiMetrics?.totalRevenue ?? 0
+  const totalNetRevenue = overviewData?.kpiMetrics?.netRevenue ?? 0
+  const platformFee = totalGrossRevenue - totalNetRevenue
+  const afterPlatformFee = totalNetRevenue
   const taxRate = agency?.tax_rate ?? 0.2
   const profitBeforeTax = afterPlatformFee - totalExpenses
   const taxes = Math.max(0, profitBeforeTax * taxRate)
@@ -390,10 +389,11 @@ export default function DashboardClient({
 
   // ===== DYNAMIC DATA FROM API (filtered by date range) =====
   // Format revenue + expense data for "Revenue vs Expenses" chart
+  // ALWAYS use dynamic overviewData (no static fallbacks!)
   const monthlyData = useMemo(() => {
     console.log('[monthlyData] overviewData:', overviewData)
 
-    // Use dynamic overview data if available (filtered by date)
+    // Use dynamic overview data (filtered by date)
     if (overviewData?.chartData && overviewData.chartData.length > 0) {
       console.log('[monthlyData] Using filtered overview data from API')
       return overviewData.chartData.map(point => ({
@@ -405,25 +405,10 @@ export default function DashboardClient({
       }))
     }
 
-    // Fallback to static props during initial load
-    if (revenueHistory.length > 0) {
-      console.log('[monthlyData] Using static revenueHistory fallback')
-      return revenueHistory.map(rev => {
-        const monthOnly = rev.date.split(' ')[0]
-        return {
-          month: monthOnly,
-          revenue: rev.total || 0,
-          expenses: 0,
-          subscribers: 0,
-          followers: 0,
-        }
-      })
-    }
-
-    // Empty state - no data yet
-    console.log('[monthlyData] No data available')
+    // No fallback - return empty if no data (show loading state in UI)
+    console.log('[monthlyData] No data available yet - still loading or no transactions')
     return []
-  }, [overviewData, revenueHistory])
+  }, [overviewData])
 
   // Model performance data from analytics service
   const modelPerformanceData = useMemo(() => {
@@ -671,6 +656,7 @@ export default function DashboardClient({
             </Card>
 
             {/* Subscriber Growth Line Chart */}
+            {/* TODO: Implement historical subscriber tracking (Fanvue API doesn't provide historical counts) */}
             <Card className="glass">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -681,17 +667,14 @@ export default function DashboardClient({
               </CardHeader>
               <CardContent>
                 <ChartContainer config={subscriberChartConfig} className="h-[250px] w-full">
-                  <LineChart
-                    data={subscriberGrowth.length > 0 ? subscriberGrowth : monthlyData}
-                    margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-                  >
+                  <LineChart data={monthlyData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                     <CartesianGrid
                       strokeDasharray="3 3"
                       className="stroke-muted"
                       vertical={false}
                     />
                     <XAxis
-                      dataKey={subscriberGrowth.length > 0 ? 'date' : 'month'}
+                      dataKey="month"
                       tickLine={false}
                       axisLine={false}
                       tickMargin={8}
