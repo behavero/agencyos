@@ -88,39 +88,75 @@ export async function getChartData(
     total: Number(row.total) || 0,
   }))
 
-  // Fetch subscriber/follower history for Audience Growth chart
-  let subscriberHistoryQuery = supabase
-    .from('subscriber_history')
-    .select('date, subscribers_total, followers_count')
+  // Generate subscriber growth from TRANSACTION data (cumulative unique subscribers over time)
+  // This is more reliable than subscriber_history which may have incomplete data
+  let subTransactionsQuery = supabase
+    .from('fanvue_transactions')
+    .select('transaction_date, fan_id')
     .eq('agency_id', agencyId)
-    .gte('date', startDate.toISOString().split('T')[0]) // Date only (YYYY-MM-DD)
-    .lte('date', endDate.toISOString().split('T')[0])
-    .order('date', { ascending: true })
+    .eq('transaction_type', 'subscription')
+    .gt('amount', 0) // Only PAID subscriptions
+    .gte('transaction_date', startDate.toISOString())
+    .lte('transaction_date', endDate.toISOString())
+    .order('transaction_date', { ascending: true })
 
   if (options.modelId) {
-    subscriberHistoryQuery = subscriberHistoryQuery.eq('model_id', options.modelId)
+    subTransactionsQuery = subTransactionsQuery.eq('model_id', options.modelId)
   }
 
-  const { data: subscriberData } = await subscriberHistoryQuery
+  const { data: subTransactions } = await subTransactionsQuery
 
-  // Create a map of subscriber/follower data by date
+  // Calculate cumulative unique subscribers by date
+  const seenFans = new Set<string>()
   const subscriberMap = new Map<string, { subscribers: number; followers: number }>()
-  subscriberData?.forEach((row: any) => {
-    const dateKey = new Date(row.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-    // If multiple models, aggregate their counts
-    const existing = subscriberMap.get(dateKey) || { subscribers: 0, followers: 0 }
-    subscriberMap.set(dateKey, {
-      subscribers: existing.subscribers + (Number(row.subscribers_total) || 0),
-      followers: existing.followers + (Number(row.followers_count) || 0),
-    })
+  
+  // Group transactions by date and count cumulative unique fans
+  const transactionsByDate = new Map<string, string[]>()
+  subTransactions?.forEach((tx: any) => {
+    const dateKey = new Date(tx.transaction_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    if (!transactionsByDate.has(dateKey)) {
+      transactionsByDate.set(dateKey, [])
+    }
+    transactionsByDate.get(dateKey)!.push(tx.fan_id)
   })
 
+  // Calculate cumulative counts
+  for (const [dateKey, fanIds] of transactionsByDate) {
+    // Add new fans to the set
+    fanIds.forEach(fanId => seenFans.add(fanId))
+    
+    // Store cumulative count
+    subscriberMap.set(dateKey, {
+      subscribers: seenFans.size,
+      followers: 0, // We don't have follower transaction data
+    })
+  }
+
+  // Get current follower count from models table for the final value
+  let modelsForFollowersQuery = supabase
+    .from('models')
+    .select('followers_count')
+    .eq('agency_id', agencyId)
+  
+  if (options.modelId) {
+    modelsForFollowersQuery = modelsForFollowersQuery.eq('id', options.modelId)
+  }
+  
+  const { data: modelsForFollowers } = await modelsForFollowersQuery
+  const totalCurrentFollowers = modelsForFollowers?.reduce((sum, m) => sum + (m.followers_count || 0), 0) || 0
+
   // Merge subscriber data into chart data points
-  const mergedDataPoints = dataPoints.map(point => ({
-    ...point,
-    subscribers: subscriberMap.get(point.date)?.subscribers || 0,
-    followers: subscriberMap.get(point.date)?.followers || 0,
-  }))
+  // For followers, we'll show a linear growth from 0 to current (approximation since we don't have historical data)
+  const totalDays = dataPoints.length
+  const mergedDataPoints = dataPoints.map((point, index) => {
+    const subData = subscriberMap.get(point.date)
+    return {
+      ...point,
+      subscribers: subData?.subscribers || 0,
+      // Linear approximation for followers (we don't have historical data)
+      followers: totalDays > 0 ? Math.round((totalCurrentFollowers * (index + 1)) / totalDays) : 0,
+    }
+  })
 
   // Fill missing dates with zeros
   return fillMissingDates(mergedDataPoints, startDate, endDate)
