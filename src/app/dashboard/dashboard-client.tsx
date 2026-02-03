@@ -244,11 +244,11 @@ export default function DashboardClient({
 
     fetchOverviewData()
 
-    // Auto-refresh every 5 minutes (300000ms) for live data
+    // Auto-refresh every 2 minutes (120000ms) for LIVE data
     const refreshInterval = setInterval(() => {
       console.log('[Overview] Auto-refreshing data...')
       fetchOverviewData()
-    }, 300000) // 5 minutes
+    }, 120000) // 2 minutes
 
     return () => clearInterval(refreshInterval)
   }, [dateRange, agency?.id])
@@ -308,23 +308,42 @@ export default function DashboardClient({
 
     fetchModelData()
 
-    // Auto-refresh every 5 minutes (300000ms) for live data
+    // Auto-refresh every 2 minutes (120000ms) for LIVE data
     const refreshInterval = setInterval(() => {
       console.log('[Fanvue] Auto-refreshing data...')
       fetchModelData()
-    }, 300000) // 5 minutes
+    }, 120000) // 2 minutes
 
     return () => clearInterval(refreshInterval)
   }, [selectedModelId, dateRange, agency?.id])
+
+  // Empty KPI metrics for initial load
+  const emptyKPIMetrics: KPIMetrics = {
+    totalRevenue: 0,
+    netRevenue: 0,
+    activeSubscribers: 0,
+    arpu: 0,
+    messageConversionRate: 0,
+    ppvConversionRate: 0,
+    tipAverage: 0,
+    transactionCount: 0,
+    revenueGrowth: 0,
+    ltv: 0,
+    goldenRatio: 0,
+    totalMessagesSent: 0,
+    totalPPVSent: 0,
+    newFans: 0,
+    unlockRate: 0,
+  }
 
   // ALWAYS use the dynamically fetched data (ignores stale server-side props)
   const filteredFanvueData = useMemo(() => {
     return {
       chartData: modelChartData,
-      kpiMetrics: modelKPIMetrics || fanvueKPIMetrics, // Fallback during initial load
+      kpiMetrics: modelKPIMetrics || emptyKPIMetrics, // Fallback during initial load
       categoryBreakdown: modelCategoryBreakdown,
     }
-  }, [modelChartData, modelKPIMetrics, fanvueKPIMetrics, modelCategoryBreakdown])
+  }, [modelChartData, modelKPIMetrics, modelCategoryBreakdown])
 
   // Handle OAuth success/error notifications
   useEffect(() => {
