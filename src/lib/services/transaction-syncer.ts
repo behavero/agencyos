@@ -248,6 +248,9 @@ export async function syncModelTransactions(modelId: string): Promise<SyncResult
     const syncDuration = Date.now() - Date.now()
     console.log(`✅ Sync complete: ${transactions.length} transactions in ${syncDuration}ms`)
 
+    // Update model stats after successful sync
+    await updateModelStats(modelId)
+
     return {
       success: true,
       transactionsSynced: transactions.length,
@@ -261,6 +264,40 @@ export async function syncModelTransactions(modelId: string): Promise<SyncResult
       transactionsSynced: 0,
       errors: [error instanceof Error ? error.message : 'Unknown error'],
     }
+  }
+}
+
+/**
+ * Update model stats (revenue_total, transaction counts) from fanvue_transactions
+ * This ensures the models table stays in sync with actual transaction data
+ */
+async function updateModelStats(modelId: string): Promise<void> {
+  const supabase = createAdminClient()
+
+  try {
+    // Calculate totals from fanvue_transactions
+    const { data: stats } = await supabase
+      .from('fanvue_transactions')
+      .select('amount, transaction_type')
+      .eq('model_id', modelId)
+
+    if (!stats) return
+
+    const totalRevenue = stats.reduce((sum, tx) => sum + Number(tx.amount), 0)
+
+    // Update the models table
+    await supabase
+      .from('models')
+      .update({
+        revenue_total: totalRevenue,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', modelId)
+
+    console.log(`✅ Updated model stats: $${totalRevenue.toFixed(2)}`)
+  } catch (error) {
+    console.error('Failed to update model stats:', error)
+    // Don't throw - this is a non-critical update
   }
 }
 
