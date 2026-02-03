@@ -243,6 +243,14 @@ export default function DashboardClient({
     }
 
     fetchOverviewData()
+
+    // Auto-refresh every 5 minutes (300000ms) for live data
+    const refreshInterval = setInterval(() => {
+      console.log('[Overview] Auto-refreshing data...')
+      fetchOverviewData()
+    }, 300000) // 5 minutes
+
+    return () => clearInterval(refreshInterval)
   }, [dateRange, agency?.id])
 
   // Fetch Fanvue tab data when model selection or date range changes
@@ -299,6 +307,14 @@ export default function DashboardClient({
     }
 
     fetchModelData()
+
+    // Auto-refresh every 5 minutes (300000ms) for live data
+    const refreshInterval = setInterval(() => {
+      console.log('[Fanvue] Auto-refreshing data...')
+      fetchModelData()
+    }, 300000) // 5 minutes
+
+    return () => clearInterval(refreshInterval)
   }, [selectedModelId, dateRange, agency?.id])
 
   // ALWAYS use the dynamically fetched data (ignores stale server-side props)
