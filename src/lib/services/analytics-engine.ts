@@ -292,7 +292,7 @@ export async function getKPIMetrics(
   const arpu = totalAudience > 0 ? totalRevenue / totalAudience : 0
 
   // Calculate conversion rates
-  // Get accurate message/PPV counts using COUNT queries
+  // Get accurate message/PPV/post TRANSACTION counts using COUNT queries
   const { count: messageCount } = await supabase
     .from('fanvue_transactions')
     .select('*', { count: 'exact', head: true })
@@ -320,11 +320,35 @@ export async function getKPIMetrics(
     .lte('transaction_date', endDate.toISOString())
     .then(r => ({ count: r.count || 0 }))
 
-  // Message Conv. Rate: Messages purchased / Total Subscribers * 100
-  const messageConversionRate = totalSubscribers > 0 ? (messageCount / totalSubscribers) * 100 : 0
+  // Get UNIQUE fans who purchased messages (for conversion rate)
+  const { data: uniqueMessageBuyers } = await supabase
+    .from('fanvue_transactions')
+    .select('fan_id')
+    .eq('agency_id', agencyId)
+    .eq('transaction_type', 'message')
+    .gte('transaction_date', startDate.toISOString())
+    .lte('transaction_date', endDate.toISOString())
+    .limit(50000)
 
-  // PPV Conv. Rate: PPV purchased / Total Subscribers * 100
-  const ppvConversionRate = totalSubscribers > 0 ? (ppvCount / totalSubscribers) * 100 : 0
+  const uniqueMessageFans = new Set(uniqueMessageBuyers?.map(t => t.fan_id).filter(Boolean)).size
+
+  // Get UNIQUE fans who purchased posts/PPV (for conversion rate)
+  const { data: uniquePostBuyers } = await supabase
+    .from('fanvue_transactions')
+    .select('fan_id')
+    .eq('agency_id', agencyId)
+    .in('transaction_type', ['post', 'ppv'])
+    .gte('transaction_date', startDate.toISOString())
+    .lte('transaction_date', endDate.toISOString())
+    .limit(50000)
+
+  const uniquePostFans = new Set(uniquePostBuyers?.map(t => t.fan_id).filter(Boolean)).size
+
+  // Message Purchase Rate: % of subscribers who bought at least 1 message
+  const messageConversionRate = totalSubscribers > 0 ? (uniqueMessageFans / totalSubscribers) * 100 : 0
+
+  // Post Purchase Rate: % of subscribers who bought at least 1 post/PPV
+  const ppvConversionRate = totalSubscribers > 0 ? (uniquePostFans / totalSubscribers) * 100 : 0
 
   // Calculate revenue growth
   const revenueGrowth =

@@ -1173,27 +1173,27 @@ export default function DashboardClient({
 
             <Card className="glass border-blue-500/20">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Messages Sent</CardTitle>
+                <CardTitle className="text-sm font-medium">PPV Messages</CardTitle>
                 <MessageSquare className="h-4 w-4 text-blue-400" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-blue-400">
                   {filteredFanvueData.kpiMetrics.totalMessagesSent.toLocaleString()}
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">Paid messages</p>
+                <p className="text-xs text-muted-foreground mt-1">Purchased by fans</p>
               </CardContent>
             </Card>
 
             <Card className="glass border-purple-500/20">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">PPV Sent</CardTitle>
+                <CardTitle className="text-sm font-medium">Posts Purchased</CardTitle>
                 <Eye className="h-4 w-4 text-purple-400" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-purple-400">
                   {filteredFanvueData.kpiMetrics.totalPPVSent.toLocaleString()}
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">Posts & PPV</p>
+                <p className="text-xs text-muted-foreground mt-1">Feed PPV bought</p>
               </CardContent>
             </Card>
 
@@ -1212,33 +1212,18 @@ export default function DashboardClient({
 
             <Card className="glass border-rose-500/20">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Unlock Rate</CardTitle>
+                <CardTitle className="text-sm font-medium">Click to Sub</CardTitle>
                 <TrendingUp className="h-4 w-4 text-rose-400" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-rose-400">
-                  {filteredFanvueData.kpiMetrics.unlockRate.toFixed(1)}%
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">N/A until chat tracking</p>
+                <div className="text-2xl font-bold text-rose-400">0.0%</div>
+                <p className="text-xs text-muted-foreground mt-1">Tracking links conversion</p>
               </CardContent>
             </Card>
           </div>
 
-          {/* Conversion Stats Row */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card className="glass border-teal-500/20">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-teal-400" />
-                  Click to Sub Rate
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-teal-400">0%</div>
-                <p className="text-xs text-muted-foreground mt-1">Requires tracking links</p>
-              </CardContent>
-            </Card>
-
+          {/* Conversion Stats Row - REMOVED redundant cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Card className="glass border-blue-500/20">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -1250,7 +1235,9 @@ export default function DashboardClient({
                 <div className="text-2xl font-bold text-blue-400">
                   {filteredFanvueData.kpiMetrics.messageConversionRate.toFixed(1)}%
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">Avg messages bought per sub</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  % of subs who bought messages
+                </p>
               </CardContent>
             </Card>
 
@@ -1258,14 +1245,16 @@ export default function DashboardClient({
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium flex items-center gap-2">
                   <Eye className="h-4 w-4 text-purple-400" />
-                  PPV Purchase Rate
+                  Post Purchase Rate
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-purple-400">
                   {filteredFanvueData.kpiMetrics.ppvConversionRate.toFixed(1)}%
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">Avg PPV bought per sub</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  % of subs who bought posts
+                </p>
               </CardContent>
             </Card>
           </div>
