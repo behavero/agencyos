@@ -112,19 +112,20 @@ export async function getKPIMetrics(
   const prevStartDate = new Date(startDate.getTime() - periodLength)
   const prevEndDate = startDate
 
-  // Build query for current period
+  // Build query for current period (fetch ALL transactions, not just 1000)
   let currentQuery = supabase
     .from('fanvue_transactions')
-    .select('amount, net_amount, transaction_type, fan_id')
+    .select('amount, net_amount, transaction_type, fan_id', { count: 'exact' })
     .eq('agency_id', agencyId)
     .gte('transaction_date', startDate.toISOString())
     .lte('transaction_date', endDate.toISOString())
+    .limit(100000) // Ensure we get all transactions (Supabase default is 1000)
 
   if (options.modelId) {
     currentQuery = currentQuery.eq('model_id', options.modelId)
   }
 
-  const { data: currentTransactions, error: currentError } = await currentQuery
+  const { data: currentTransactions, error: currentError, count } = await currentQuery
 
   if (currentError) {
     console.error('Error fetching KPI metrics:', currentError)
@@ -138,6 +139,7 @@ export async function getKPIMetrics(
     .eq('agency_id', agencyId)
     .gte('transaction_date', prevStartDate.toISOString())
     .lte('transaction_date', prevEndDate.toISOString())
+    .limit(100000) // Ensure we get all transactions
 
   if (options.modelId) {
     prevQuery = prevQuery.eq('model_id', options.modelId)
@@ -271,6 +273,7 @@ export async function getCategoryBreakdown(
     .eq('agency_id', agencyId)
     .gte('transaction_date', startDate.toISOString())
     .lte('transaction_date', endDate.toISOString())
+    .limit(100000) // Ensure we get all transactions for breakdown
 
   if (options.modelId) {
     query = query.eq('model_id', options.modelId)
