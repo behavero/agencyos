@@ -60,10 +60,22 @@ export function AgencyImportButton() {
         // Refresh the page
         router.refresh()
       } else {
-        toast.error('Import Failed', {
-          id: 'agency-import',
-          description: result.error || 'Check console for details',
-        })
+        const errorMessage = result.error || 'Check console for details'
+
+        // Check if it's the "no connection" error
+        if (errorMessage.includes('NO_FANVUE_CONNECTION')) {
+          toast.error('⚠️ No Fanvue Connection', {
+            id: 'agency-import',
+            description:
+              'Please connect at least one creator via "Connect with Fanvue" first, then try importing.',
+            duration: 8000,
+          })
+        } else {
+          toast.error('Import Failed', {
+            id: 'agency-import',
+            description: errorMessage,
+          })
+        }
 
         if (result.errors?.length > 0) {
           console.error('Import errors:', result.errors)
@@ -131,11 +143,18 @@ export function AgencyImportButton() {
               </div>
             </div>
 
-            <div className="flex items-start gap-2 text-sm text-orange-500 dark:text-orange-400 bg-orange-500/10 rounded-lg p-3 mt-4">
+            <div className="flex items-start gap-2 text-sm text-amber-500 dark:text-amber-400 bg-amber-500/10 rounded-lg p-3 mt-4">
               <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
               <div>
-                <strong>Note:</strong> This uses your agency credentials. All imported creators will
-                share the agency access token for API calls.
+                <strong>Prerequisites:</strong> At least one creator must be connected via "Connect
+                with Fanvue" first. Their token will be used to access the agency's creator list.
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/50 rounded-lg p-3">
+              <div>
+                💡 <strong>After importing:</strong> Each creator will need to individually connect
+                via "Connect with Fanvue" to enable their own data syncing.
               </div>
             </div>
           </DialogDescription>

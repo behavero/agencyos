@@ -1,12 +1,15 @@
 /**
  * Phase 59: Agency Auto-Discovery
  * Automatically imports all creators from the agency's Fanvue account
+ *
+ * IMPORTANT: This uses the logged-in admin's Fanvue token (not client credentials)
+ * The admin must have connected their Fanvue account via OAuth with read:creator scope
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
+import { getModelAccessToken } from '@/lib/services/fanvue-auth'
 
-const AUTH_URL = 'https://auth.fanvue.com/oauth2/token'
 const API_URL = 'https://api.fanvue.com'
 
 interface FanvueCreator {
@@ -19,54 +22,45 @@ interface FanvueCreator {
   role: string
 }
 
-interface AgencyTokenResponse {
-  access_token: string
-  token_type: string
-  expires_in: number
-  scope?: string
-}
-
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 /**
- * Get agency access token using client credentials
+ * Get a valid Fanvue access token for the agency
+ * Uses any connected creator's token (they all have read:creator scope)
  */
-async function getAgencyToken(): Promise<string> {
-  const clientId = process.env.NEXT_PUBLIC_FANVUE_CLIENT_ID
-  const clientSecret = process.env.FANVUE_CLIENT_SECRET
+async function getAgencyFanvueToken(agencyId: string): Promise<string> {
+  const adminClient = createAdminClient()
 
-  if (!clientId || !clientSecret) {
-    throw new Error('Fanvue agency credentials not configured')
+  // Find any model in this agency with a Fanvue token
+  const { data: models } = await adminClient
+    .from('models')
+    .select('id, name, fanvue_access_token, fanvue_refresh_token, fanvue_token_expires_at')
+    .eq('agency_id', agencyId)
+    .not('fanvue_access_token', 'is', null)
+    .order('fanvue_token_expires_at', { ascending: false, nullsFirst: false })
+    .limit(1)
+
+  if (!models || models.length === 0) {
+    throw new Error(
+      'NO_FANVUE_CONNECTION: No creators in this agency have connected their Fanvue account yet. ' +
+        'Click "Connect with Fanvue" for at least one creator first, then try again.'
+    )
   }
 
-  console.log('🔐 Getting agency token...')
+  const model = models[0]
+  console.log(`🔑 Using token from ${model.name} for agency operations`)
 
-  const response = await fetch(AUTH_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      Authorization: 'Basic ' + Buffer.from(`${clientId}:${clientSecret}`).toString('base64'),
-    },
-    body: new URLSearchParams({
-      grant_type: 'client_credentials',
-      scope: 'read:creator read:fan read:insights read:chat read:media read:post read:agency',
-    }),
-  })
-
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(`Agency auth failed: ${response.status} ${errorText}`)
+  // Use the existing token refresh logic
+  try {
+    const token = await getModelAccessToken(model.id)
+    return token
+  } catch (error: any) {
+    throw new Error(
+      `Failed to get valid Fanvue token from ${model.name}: ${error.message}. ` +
+        'Try reconnecting their Fanvue account.'
+    )
   }
-
-  const data: AgencyTokenResponse = await response.json()
-
-  if (!data.access_token) {
-    throw new Error('No access token in agency response')
-  }
-
-  console.log('✅ Agency token acquired')
-  return data.access_token
 }
 
 /**
@@ -115,11 +109,12 @@ async function fetchAgencyCreators(token: string): Promise<FanvueCreator[]> {
 
 /**
  * Import creators into the database
+ * NOTE: We don't store tokens for auto-imported creators
+ * They will need to connect individually via OAuth to enable syncing
  */
 async function importCreators(
   creators: FanvueCreator[],
-  agencyId: string,
-  agencyToken: string
+  agencyId: string
 ): Promise<{ imported: number; updated: number; errors: string[] }> {
   const adminClient = createAdminClient()
   let imported = 0
@@ -133,7 +128,7 @@ async function importCreators(
       // Check if creator already exists
       const { data: existing } = await adminClient
         .from('models')
-        .select('id')
+        .select('id, fanvue_access_token')
         .eq('fanvue_user_uuid', creator.uuid)
         .single()
 
@@ -143,20 +138,18 @@ async function importCreators(
         fanvue_username: creator.handle,
         fanvue_user_uuid: creator.uuid,
         avatar_url: creator.avatarUrl,
-        // Store agency token for this creator (they all share the agency token)
-        fanvue_access_token: agencyToken,
         status: 'active',
         updated_at: new Date().toISOString(),
       }
 
       if (existing) {
-        // Update existing creator
+        // Update existing creator (but don't overwrite their token if they have one)
         await adminClient.from('models').update(modelData).eq('id', existing.id)
 
         console.log(`   ✅ Updated: ${creator.displayName} (@${creator.handle})`)
         updated++
       } else {
-        // Create new creator
+        // Create new creator (without token - they'll need to connect via OAuth)
         await adminClient.from('models').insert(modelData)
 
         console.log(`   🆕 Imported: ${creator.displayName} (@${creator.handle})`)
@@ -203,8 +196,8 @@ export async function POST(request: NextRequest) {
 
     console.log(`\n🏢 AGENCY AUTO-DISCOVERY for agency ${profile.agency_id}`)
 
-    // Step 1: Get agency token
-    const agencyToken = await getAgencyToken()
+    // Step 1: Get a valid Fanvue token from any connected creator in this agency
+    const agencyToken = await getAgencyFanvueToken(profile.agency_id)
 
     // Step 2: Fetch all creators
     const creators = await fetchAgencyCreators(agencyToken)
@@ -219,8 +212,8 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Step 3: Import into database
-    const result = await importCreators(creators, profile.agency_id, agencyToken)
+    // Step 3: Import into database (without copying tokens)
+    const result = await importCreators(creators, profile.agency_id)
 
     return NextResponse.json({
       success: true,
