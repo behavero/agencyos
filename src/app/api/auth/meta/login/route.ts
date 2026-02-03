@@ -61,17 +61,15 @@ export async function GET(request: NextRequest) {
       })
     ).toString('base64')
 
-    // Build Facebook OAuth URL - Facebook Login for Business with Instagram
-    // Docs: https://developers.facebook.com/docs/instagram-platform/instagram-api-with-facebook-login/business-login-for-instagram
+    // Build Facebook OAuth URL - Standard OAuth Flow (Manual Flow)
+    // The IG_API_ONBOARDING flow has redirect issues, so we use standard OAuth
+    // Docs: https://developers.facebook.com/docs/facebook-login/guides/advanced/manual-flow
     const authUrl = new URL('https://www.facebook.com/v18.0/dialog/oauth')
     authUrl.searchParams.set('client_id', clientId)
     authUrl.searchParams.set('redirect_uri', redirectUri)
     authUrl.searchParams.set('scope', scopes)
     authUrl.searchParams.set('state', state)
     authUrl.searchParams.set('response_type', 'code')
-    authUrl.searchParams.set('display', 'page')
-    // Add Instagram onboarding extras for simplified flow
-    authUrl.searchParams.set('extras', JSON.stringify({ setup: { channel: 'IG_API_ONBOARDING' } }))
 
     console.log('[meta/login] Redirecting to Facebook OAuth:', {
       clientId,
