@@ -197,7 +197,23 @@ export default function DashboardClient({
           params.set('modelId', selectedModelId)
         }
 
-        // Add date range params
+        // Map preset to timeRange format
+        const timeRangeMap: Record<string, string> = {
+          all: 'all',
+          today: '7d', // Use 7d for today (will be filtered by startDate/endDate)
+          yesterday: '7d',
+          last7days: '7d',
+          last30days: '30d',
+          thisMonth: '30d',
+          thisYear: '1y',
+          custom: 'all', // For custom, use all and filter by dates
+        }
+
+        // Set timeRange (default to 'all' if not set)
+        const timeRange = dateRange.preset ? timeRangeMap[dateRange.preset] || 'all' : 'all'
+        params.set('timeRange', timeRange)
+
+        // Add date range params for custom filtering
         if (dateRange.startDate) {
           params.set('startDate', dateRange.startDate.toISOString())
         }
