@@ -437,7 +437,12 @@ export default function DashboardClient({
             {agency?.name || 'Your Agency'} • Level {currentLevel} • {currentStreak} day streak 🔥
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <DateRangeFilter
+            value={dateRange}
+            onChange={setDateRange}
+            className="border-primary/20"
+          />
           <SyncButton />
           <Button onClick={handleAddModel} className="gap-2 shadow-lg hover-lift">
             <Plus className="w-4 h-4" />

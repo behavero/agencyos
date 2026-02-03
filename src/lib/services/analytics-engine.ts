@@ -29,6 +29,13 @@ export interface KPIMetrics {
   tipAverage: number
   transactionCount: number
   revenueGrowth: number // Percentage change vs previous period
+  // New metrics (competitor parity)
+  ltv: number // Lifetime Value
+  goldenRatio: number // Ratio of message/ppv revenue to subscription revenue
+  totalMessagesSent: number
+  totalPPVSent: number
+  newFans: number // New subscribers in period
+  unlockRate: number // Percentage of PPV unlocks
 }
 
 export interface CategoryBreakdown {
@@ -181,6 +188,45 @@ export async function getKPIMetrics(
   const revenueGrowth =
     prevTotalRevenue > 0 ? ((totalRevenue - prevTotalRevenue) / prevTotalRevenue) * 100 : 0
 
+  // NEW METRICS for competitor parity:
+
+  // 1. LTV (Lifetime Value) = ARPU × Average lifetime (estimate 6 months)
+  const ltv = arpu * 6
+
+  // 2. Golden Ratio = (Message + PPV Revenue) / Subscription Revenue
+  const subscriptionRevenue =
+    currentTransactions
+      ?.filter(tx => tx.transaction_type === 'subscription' || tx.transaction_type === 'renewal')
+      .reduce((sum, tx) => sum + Number(tx.amount), 0) || 0
+  const interactionRevenue =
+    currentTransactions
+      ?.filter(
+        tx =>
+          tx.transaction_type === 'message' ||
+          tx.transaction_type === 'ppv' ||
+          tx.transaction_type === 'post' ||
+          tx.transaction_type === 'tip'
+      )
+      .reduce((sum, tx) => sum + Number(tx.amount), 0) || 0
+  const goldenRatio = subscriptionRevenue > 0 ? interactionRevenue / subscriptionRevenue : 0
+
+  // 3. Total Messages Sent (count of message transactions)
+  const totalMessagesSent =
+    currentTransactions?.filter(tx => tx.transaction_type === 'message').length || 0
+
+  // 4. Total PPV Sent (count of ppv + post transactions)
+  const totalPPVSent =
+    currentTransactions?.filter(
+      tx => tx.transaction_type === 'ppv' || tx.transaction_type === 'post'
+    ).length || 0
+
+  // 5. New Fans (estimate: unique fan_ids that appear for first time in period)
+  const uniqueFans = new Set(currentTransactions?.map(tx => tx.fan_id))
+  const newFans = uniqueFans.size // This is an approximation
+
+  // 6. Unlock Rate (PPV transactions / Total PPV Sent * 100)
+  const unlockRate = totalPPVSent > 0 ? (ppvTransactions.length / totalPPVSent) * 100 : 0
+
   return {
     totalRevenue: Math.round(totalRevenue),
     netRevenue: Math.round(netRevenue),
@@ -191,6 +237,13 @@ export async function getKPIMetrics(
     tipAverage: Math.round(tipAverage * 100) / 100, // Round to 2 decimal places
     transactionCount: currentTransactions?.length || 0,
     revenueGrowth: Math.round(revenueGrowth * 10) / 10,
+    // New metrics
+    ltv: Math.round(ltv * 100) / 100,
+    goldenRatio: Math.round(goldenRatio * 100) / 100,
+    totalMessagesSent,
+    totalPPVSent,
+    newFans,
+    unlockRate: Math.round(unlockRate * 10) / 10,
   }
 }
 
@@ -344,5 +397,11 @@ function getEmptyKPIMetrics(): KPIMetrics {
     tipAverage: 0,
     transactionCount: 0,
     revenueGrowth: 0,
+    ltv: 0,
+    goldenRatio: 0,
+    totalMessagesSent: 0,
+    totalPPVSent: 0,
+    newFans: 0,
+    unlockRate: 0,
   }
 }
