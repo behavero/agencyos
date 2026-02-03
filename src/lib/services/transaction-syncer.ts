@@ -206,23 +206,22 @@ export async function syncModelTransactions(modelId: string): Promise<SyncResult
       return {
         agency_id: model.agency_id,
         model_id: model.id,
-        fanvue_transaction_id: `${earning.date}_${earning.source}_${earning.gross}_${earning.user?.uuid || 'unknown'}`, // Generate unique ID
-        transaction_type: category,
-        amount: earning.gross / 100, // Convert cents to dollars
-        net_amount: earning.net / 100, // Convert cents to dollars
-        platform_fee: (earning.gross - earning.net) / 100, // Calculate fee
+        fanvue_id: `${earning.date}_${earning.source}_${earning.gross}_${earning.user?.uuid || 'unknown'}`, // Generate unique ID
+        fanvue_user_id: earning.user?.uuid || null, // The fan who made the transaction
+        amount: earning.gross / 100, // Convert cents to dollars (gross amount)
+        net_amount: earning.net / 100, // Convert cents to dollars (after platform fees)
         currency: earning.currency || 'USD',
-        fan_id: earning.user?.uuid || null,
-        fan_username: earning.user?.handle || null,
+        category: category, // Must match CHECK constraint: subscription, tip, message, post, referral, other
         description: earning.source,
-        transaction_date: fanvueCreatedAt,
+        fanvue_created_at: fanvueCreatedAt, // Original timestamp from Fanvue
         synced_at: new Date().toISOString(),
       }
     })
 
     // Upsert transactions (insert or update on conflict)
+    // The unique constraint is on (fanvue_id, model_id) per the schema
     const { error: upsertError } = await supabase.from('fanvue_transactions').upsert(transactions, {
-      onConflict: 'fanvue_transaction_id',
+      onConflict: 'fanvue_id,model_id',
       ignoreDuplicates: false,
     })
 
