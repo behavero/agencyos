@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import { Toaster } from '@/components/ui/sonner'
+import { SpeedInsights } from '@vercel/speed-insights/next'
 // import { AlfredFloatingChat } from '@/components/alfred/floating-chat' // TODO: Fix AI SDK v6 compatibility
 import './globals.css'
 
@@ -27,6 +28,7 @@ export default function RootLayout({
         {children}
         <Toaster />
         {/* <AlfredFloatingChat /> */}
+        <SpeedInsights />
       </body>
     </html>
   )
