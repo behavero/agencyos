@@ -450,12 +450,12 @@ export default function DashboardClient({
     }))
   }, [revenueBreakdown, models])
 
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = (amount: number, showCents = false) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: agency?.currency || 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
+      minimumFractionDigits: showCents ? 2 : 0,
+      maximumFractionDigits: showCents ? 2 : 0,
     }).format(amount)
   }
 
@@ -1075,7 +1075,7 @@ export default function DashboardClient({
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-violet-400">
-                  {formatCurrency(filteredFanvueData.kpiMetrics.arpu)}
+                  {formatCurrency(filteredFanvueData.kpiMetrics.arpu, true)}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">Average revenue per user</p>
               </CardContent>
@@ -1088,7 +1088,7 @@ export default function DashboardClient({
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-cyan-400">
-                  {formatCurrency(fanvueKPIMetrics.tipAverage)}
+                  {formatCurrency(filteredFanvueData.kpiMetrics.tipAverage, true)}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">Per tip transaction</p>
               </CardContent>
@@ -1104,7 +1104,7 @@ export default function DashboardClient({
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-amber-400">
-                  {formatCurrency(filteredFanvueData.kpiMetrics.ltv)}
+                  {formatCurrency(filteredFanvueData.kpiMetrics.ltv, true)}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">Lifetime value</p>
               </CardContent>
