@@ -32,6 +32,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import Link from 'next/link'
 import { AddCreatorDialog } from '@/components/creators/add-creator-dialog'
+import { AgencyImportButton } from '@/components/creators/agency-import-button'
 
 type Model = Database['public']['Tables']['models']['Row']
 
@@ -210,6 +211,7 @@ export default function CreatorManagementClient({
               Refresh All
             </Button>
           )}
+          <AgencyImportButton />
           <AddCreatorDialog agencyId={agencyId || ''} />
         </div>
       </div>
@@ -248,7 +250,10 @@ export default function CreatorManagementClient({
               Add your first creator to start managing their content and performance
             </p>
 
-            <AddCreatorDialog agencyId={agencyId || ''} />
+            <div className="flex gap-3 justify-center">
+              <AgencyImportButton />
+              <AddCreatorDialog agencyId={agencyId || ''} />
+            </div>
           </CardContent>
         </Card>
       ) : (
