@@ -71,6 +71,7 @@ import {
 import { AggregatedSocialGrid } from '@/components/dashboard/social-grid'
 import { BestSellersWidget } from '@/components/dashboard/best-sellers-widget'
 import { SyncButton } from '@/components/dashboard/sync-button'
+import { DateRangeFilter, type DateRangeValue } from '@/components/dashboard/date-range-filter'
 
 // Dark mode chart theme for Recharts
 const CHART_THEME = {
@@ -174,6 +175,11 @@ export default function DashboardClient({
   const [modelChartData, setModelChartData] = useState<ChartDataPoint[]>([])
   const [modelKPIMetrics, setModelKPIMetrics] = useState<KPIMetrics | null>(null)
   const [modelCategoryBreakdown, setModelCategoryBreakdown] = useState<CategoryBreakdown[]>([])
+
+  // Date range filter state (for both Overview and Fanvue tabs)
+  const [dateRange, setDateRange] = useState<DateRangeValue>({
+    preset: '30d',
+  })
 
   const selectedModel = models.find(m => m.id === selectedModelId)
 
@@ -305,7 +311,11 @@ export default function DashboardClient({
   // ===== REAL DATA FROM ANALYTICS SERVICE (Phase 48) =====
   // Format revenue + expense data for chart
   const monthlyData = useMemo(() => {
+    console.log('[monthlyData] revenueHistory:', revenueHistory)
+    console.log('[monthlyData] expenseHistory:', expenseHistory)
+
     if (revenueHistory.length === 0 && expenseHistory.length === 0) {
+      console.log('[monthlyData] No data found, using mock fallback')
       // Fallback to mock data if no real data
       const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun']
       const baseRevenue = totalGrossRevenue / 6
@@ -318,7 +328,24 @@ export default function DashboardClient({
       }))
     }
 
+    // If we have revenue history but no expense history, create combined data from revenue
+    if (revenueHistory.length > 0 && expenseHistory.length === 0) {
+      console.log('[monthlyData] Using revenue history only (no expenses)')
+      return revenueHistory.map(rev => {
+        // Extract month from "Sep 2025" format -> "Sep"
+        const monthOnly = rev.date.split(' ')[0]
+        return {
+          month: monthOnly,
+          revenue: rev.total || 0,
+          expenses: 0,
+          subscribers: 0,
+          followers: 0,
+        }
+      })
+    }
+
     // Combine revenue history with expense history
+    console.log('[monthlyData] Combining revenue and expense history')
     return expenseHistory.map(exp => {
       const revenueForMonth = revenueHistory.find(rev =>
         rev.date.includes(exp.month.substring(0, 3))
@@ -434,6 +461,11 @@ export default function DashboardClient({
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6 mt-0">
+          {/* Date Range Filter for Overview */}
+          <div className="flex justify-end mb-4">
+            <DateRangeFilter value={dateRange} onChange={setDateRange} />
+          </div>
+
           {/* Top KPI Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Gross Revenue */}
@@ -822,7 +854,7 @@ export default function DashboardClient({
 
         {/* Fanvue & Finance Tab */}
         <TabsContent value="fanvue" className="space-y-6 mt-0">
-          {/* Model Filter Selector */}
+          {/* Model Filter Selector & Date Range Filter */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <label htmlFor="model-filter" className="text-sm font-medium">
@@ -863,6 +895,7 @@ export default function DashboardClient({
                 </Badge>
               )}
             </div>
+            <DateRangeFilter value={dateRange} onChange={setDateRange} />
           </div>
 
           {/* Advanced Fanvue Analytics - Revenue Chart & Breakdown */}
@@ -992,7 +1025,7 @@ export default function DashboardClient({
           </div>
 
           {/* Conversion Stats Row */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card className="glass border-teal-500/20">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -1038,21 +1071,6 @@ export default function DashboardClient({
                   {conversionStats.ppvConversionRate}%
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">PPV purchases per subscriber</p>
-              </CardContent>
-            </Card>
-
-            <Card className="glass border-yellow-500/20">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <DollarSign className="h-4 w-4 text-yellow-400" />
-                  ARPU
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-yellow-400">
-                  {formatCurrency(conversionStats.avgRevenuePerSubscriber)}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">Avg revenue per user</p>
               </CardContent>
             </Card>
           </div>

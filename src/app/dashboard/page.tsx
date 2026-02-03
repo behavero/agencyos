@@ -75,14 +75,14 @@ export default async function DashboardPage() {
     fanvueKPIMetrics,
     fanvueCategoryBreakdown,
   ] = await Promise.all([
-    DashboardAnalytics.getRevenueHistory(agencyId, 30),
-    DashboardAnalytics.getRevenueBreakdown(agencyId, 30),
+    DashboardAnalytics.getRevenueHistory(agencyId, 365), // All-time data (last year)
+    DashboardAnalytics.getRevenueBreakdown(agencyId, 365),
     DashboardAnalytics.getConversionStats(agencyId),
     DashboardAnalytics.getTrafficSources(agencyId, 30),
     DashboardAnalytics.getSubscriberGrowth(agencyId, 30),
     DashboardAnalytics.getModelPerformance(agencyId),
     DashboardAnalytics.getDashboardKPIs(agencyId),
-    DashboardAnalytics.getExpenseHistory(agencyId, 6),
+    DashboardAnalytics.getExpenseHistory(agencyId, 12), // Last 12 months
     DashboardAnalytics.getEarningsByType(agencyId),
     DashboardAnalytics.getMonthlyEarningsList(agencyId, 12),
     getChartData(agencyId, { timeRange: '30d' }),

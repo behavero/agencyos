@@ -28,7 +28,8 @@ type Model = Database['public']['Tables']['models']['Row']
  */
 export async function getRevenueHistory(
   agencyId: string,
-  days: number = 30
+  days: number = 30,
+  modelId?: string
 ): Promise<RevenueDataPoint[]> {
   const supabase = await createClient()
 
@@ -38,7 +39,7 @@ export async function getRevenueHistory(
   startDate.setDate(startDate.getDate() - days)
 
   // FIXED: Query fanvue_transactions instead of transactions
-  const { data: transactions, error } = await supabase
+  let query = supabase
     .from('fanvue_transactions')
     .select('*')
     .eq('agency_id', agencyId)
@@ -46,22 +47,33 @@ export async function getRevenueHistory(
     .lte('transaction_date', endDate.toISOString())
     .order('transaction_date', { ascending: true })
 
+  if (modelId) {
+    query = query.eq('model_id', modelId)
+  }
+
+  const { data: transactions, error } = await query
+
   if (error || !transactions) {
     console.error('Error fetching revenue history:', error)
     return []
   }
 
-  // Group by date and type
+  console.log(
+    `[getRevenueHistory] Found ${transactions.length} transactions for agency ${agencyId}${modelId ? ` and model ${modelId}` : ''}`
+  )
+
+  // Group by MONTH and type (for monthly overview chart)
   const grouped = transactions.reduce(
     (acc, tx) => {
-      const date = new Date(tx.transaction_date).toLocaleDateString('en-US', {
+      const date = new Date(tx.transaction_date)
+      const monthKey = date.toLocaleDateString('en-US', {
         month: 'short',
-        day: 'numeric',
+        year: 'numeric',
       })
 
-      if (!acc[date]) {
-        acc[date] = {
-          date,
+      if (!acc[monthKey]) {
+        acc[monthKey] = {
+          date: monthKey,
           subscriptions: 0,
           tips: 0,
           messages: 0,
@@ -74,16 +86,16 @@ export async function getRevenueHistory(
 
       // Categorize by transaction_type from fanvue_transactions
       if (tx.transaction_type === 'subscription') {
-        acc[date].subscriptions += amount
+        acc[monthKey].subscriptions += amount
       } else if (tx.transaction_type === 'tip') {
-        acc[date].tips += amount
+        acc[monthKey].tips += amount
       } else if (tx.transaction_type === 'message') {
-        acc[date].messages += amount
+        acc[monthKey].messages += amount
       } else if (tx.transaction_type === 'ppv' || tx.transaction_type === 'post') {
-        acc[date].ppv += amount
+        acc[monthKey].ppv += amount
       }
 
-      acc[date].total += amount
+      acc[monthKey].total += amount
 
       return acc
     },
