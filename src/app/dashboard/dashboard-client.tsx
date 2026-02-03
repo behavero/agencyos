@@ -179,7 +179,7 @@ export default function DashboardClient({
 
   // Date range filter state (for both Overview and Fanvue tabs)
   const [dateRange, setDateRange] = useState<DateRangeValue>({
-    preset: 'last30days',
+    preset: 'all', // Default to "All Time" to show full history
   })
 
   const selectedModel = models.find(m => m.id === selectedModelId)
