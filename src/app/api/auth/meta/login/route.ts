@@ -1,25 +1,20 @@
 /**
- * Facebook Login for Business - Instagram Graph API
+ * Facebook Login - Server-Side OAuth for Instagram Insights
  *
- * Uses Facebook Login with Configuration ID for Instagram Insights.
- * Configuration ID: 1432619911747660
+ * Uses traditional server-side OAuth redirect flow with explicit scopes.
+ * This is the "Manual Flow" approach from Meta's documentation.
  *
- * Permissions granted:
- * - instagram_basic
- * - instagram_manage_insights
- * - pages_show_list
- * - pages_read_engagement
- * - read_insights
- * - business_management
+ * Required scopes:
+ * - instagram_basic: Basic Instagram account info
+ * - instagram_manage_insights: Insights data (reach, impressions, etc.)
+ * - pages_show_list: List Facebook Pages user manages
+ * - pages_read_engagement: Read Page engagement data
  *
  * Docs: https://developers.facebook.com/docs/facebook-login/guides/advanced/manual-flow
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-
-// Instagram Graph API Configuration ID from Meta Developer Console
-const META_CONFIG_ID = process.env.META_CONFIG_ID || '1432619911747660'
 
 export async function GET(request: NextRequest) {
   try {
@@ -39,7 +34,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Model ID required' }, { status: 400 })
     }
 
-    // Use Facebook App ID for Facebook Login
+    // Use Facebook App ID
     const clientId = process.env.NEXT_PUBLIC_META_APP_ID
     const redirectUri =
       process.env.META_REDIRECT_URI || `${request.nextUrl.origin}/api/auth/meta/callback`
@@ -47,6 +42,15 @@ export async function GET(request: NextRequest) {
     if (!clientId) {
       return NextResponse.json({ error: 'Meta App ID not configured' }, { status: 500 })
     }
+
+    // Required scopes for Instagram Insights via Facebook Login
+    // These must also be configured in your Facebook App's permissions
+    const scopes = [
+      'instagram_basic',
+      'instagram_manage_insights',
+      'pages_show_list',
+      'pages_read_engagement',
+    ].join(',')
 
     // Generate state parameter for CSRF protection (includes modelId)
     const state = Buffer.from(
@@ -57,16 +61,20 @@ export async function GET(request: NextRequest) {
       })
     ).toString('base64')
 
-    // Build Facebook OAuth URL with Configuration ID
-    // Using config_id instead of scope - this uses the pre-configured permissions
+    // Build Facebook OAuth URL - Manual Flow (server-side redirect)
+    // Docs: https://developers.facebook.com/docs/facebook-login/guides/advanced/manual-flow
     const authUrl = new URL('https://www.facebook.com/v18.0/dialog/oauth')
     authUrl.searchParams.set('client_id', clientId)
     authUrl.searchParams.set('redirect_uri', redirectUri)
-    authUrl.searchParams.set('config_id', META_CONFIG_ID) // Use Configuration ID!
+    authUrl.searchParams.set('scope', scopes)
     authUrl.searchParams.set('state', state)
     authUrl.searchParams.set('response_type', 'code')
 
-    console.log('[meta/login] Redirecting to Facebook OAuth with config_id:', META_CONFIG_ID)
+    console.log('[meta/login] Redirecting to Facebook OAuth:', {
+      clientId,
+      redirectUri,
+      scopes,
+    })
 
     return NextResponse.redirect(authUrl.toString())
   } catch (error) {
