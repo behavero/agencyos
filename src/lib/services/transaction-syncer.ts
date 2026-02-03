@@ -213,7 +213,7 @@ export async function syncModelTransactions(modelId: string): Promise<SyncResult
         fanvue_transaction_id: `${earning.date}_${earning.source}_${earning.gross}_${earning.user?.uuid || 'unknown'}`, // Generate unique ID
         transaction_type: category, // Must match CHECK constraint: subscription, tip, ppv, message, post, stream, other
         amount: earning.gross / 100, // Convert cents to dollars (gross amount)
-        net_amount: earning.net / 100, // Convert cents to dollars (after platform fees)
+        // net_amount is auto-calculated by DB: (amount - platform_fee)
         platform_fee: (earning.gross - earning.net) / 100, // Calculate platform fee
         currency: earning.currency || 'USD',
         fan_id: earning.user?.uuid || null, // The fan who made the transaction
