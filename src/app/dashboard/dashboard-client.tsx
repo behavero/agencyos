@@ -639,57 +639,70 @@ export default function DashboardClient({
                 <CardDescription>Monthly financial overview</CardDescription>
               </CardHeader>
               <CardContent>
-                <ChartContainer config={revenueChartConfig} className="h-[250px] w-full">
-                  <AreaChart data={monthlyData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#a3e635" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#a3e635" stopOpacity={0} />
-                      </linearGradient>
-                      <linearGradient id="colorExpenses" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#f87171" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#f87171" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      className="stroke-muted"
-                      vertical={false}
-                    />
-                    <XAxis
-                      dataKey="month"
-                      tickLine={false}
-                      axisLine={false}
-                      tickMargin={8}
-                      className="text-xs"
-                      stroke={CHART_THEME.stroke}
-                      tick={CHART_THEME.tick}
-                    />
-                    <YAxis
-                      tickLine={false}
-                      axisLine={false}
-                      tickFormatter={value => `$${(value / 1000).toFixed(0)}k`}
-                      stroke={CHART_THEME.stroke}
-                      tick={CHART_THEME.tick}
-                      className="text-xs"
-                    />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Area
-                      type="monotone"
-                      dataKey="revenue"
-                      stroke="#a3e635"
-                      strokeWidth={2}
-                      fill="url(#colorRevenue)"
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="expenses"
-                      stroke="#f87171"
-                      strokeWidth={2}
-                      fill="url(#colorExpenses)"
-                    />
-                  </AreaChart>
-                </ChartContainer>
+                {isLoadingOverview || monthlyData.length === 0 ? (
+                  <div className="h-[250px] flex items-center justify-center">
+                    <div className="text-muted-foreground">
+                      {isLoadingOverview
+                        ? 'Loading revenue data...'
+                        : 'No revenue data available yet'}
+                    </div>
+                  </div>
+                ) : (
+                  <ChartContainer config={revenueChartConfig} className="h-[250px] w-full">
+                    <AreaChart
+                      data={monthlyData}
+                      margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                    >
+                      <defs>
+                        <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#a3e635" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="#a3e635" stopOpacity={0} />
+                        </linearGradient>
+                        <linearGradient id="colorExpenses" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#f87171" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="#f87171" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        className="stroke-muted"
+                        vertical={false}
+                      />
+                      <XAxis
+                        dataKey="month"
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={8}
+                        className="text-xs"
+                        stroke={CHART_THEME.stroke}
+                        tick={CHART_THEME.tick}
+                      />
+                      <YAxis
+                        tickLine={false}
+                        axisLine={false}
+                        tickFormatter={value => `$${(value / 1000).toFixed(0)}k`}
+                        stroke={CHART_THEME.stroke}
+                        tick={CHART_THEME.tick}
+                        className="text-xs"
+                      />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <Area
+                        type="monotone"
+                        dataKey="revenue"
+                        stroke="#a3e635"
+                        strokeWidth={2}
+                        fill="url(#colorRevenue)"
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="expenses"
+                        stroke="#f87171"
+                        strokeWidth={2}
+                        fill="url(#colorExpenses)"
+                      />
+                    </AreaChart>
+                  </ChartContainer>
+                )}
               </CardContent>
             </Card>
 
