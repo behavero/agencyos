@@ -175,10 +175,40 @@ export async function getKPIMetrics(
   const { data: models } = await modelsQuery
   const activeSubscribers = models?.reduce((sum, m) => sum + (m.subscribers_count || 0), 0) || 0
 
-  // Calculate metrics
-  const totalRevenue = currentTransactions?.reduce((sum, tx) => sum + Number(tx.amount), 0) || 0
-  const netRevenue = currentTransactions?.reduce((sum, tx) => sum + Number(tx.net_amount), 0) || 0
-  const prevTotalRevenue = prevTransactions?.reduce((sum, tx) => sum + Number(tx.amount), 0) || 0
+  // Query 3: Get ALL transactions for revenue calculation (just amount columns, lightweight)
+  let allTransactionsQuery = supabase
+    .from('fanvue_transactions')
+    .select('amount, net_amount')
+    .eq('agency_id', agencyId)
+    .gte('transaction_date', startDate.toISOString())
+    .lte('transaction_date', endDate.toISOString())
+    .limit(50000) // Higher limit for revenue accuracy
+
+  if (options.modelId) {
+    allTransactionsQuery = allTransactionsQuery.eq('model_id', options.modelId)
+  }
+
+  const { data: allTransactions } = await allTransactionsQuery
+
+  // Query 4: Get previous period transactions for growth calculation
+  let prevAllQuery = supabase
+    .from('fanvue_transactions')
+    .select('amount')
+    .eq('agency_id', agencyId)
+    .gte('transaction_date', prevStartDate.toISOString())
+    .lte('transaction_date', prevEndDate.toISOString())
+    .limit(50000)
+
+  if (options.modelId) {
+    prevAllQuery = prevAllQuery.eq('model_id', options.modelId)
+  }
+
+  const { data: prevAllTransactions } = await prevAllQuery
+
+  // Calculate metrics from complete dataset
+  const totalRevenue = allTransactions?.reduce((sum, tx) => sum + Number(tx.amount), 0) || 0
+  const netRevenue = allTransactions?.reduce((sum, tx) => sum + Number(tx.net_amount), 0) || 0
+  const prevTotalRevenue = prevAllTransactions?.reduce((sum, tx) => sum + Number(tx.amount), 0) || 0
 
   const tipTransactions = currentTransactions?.filter(tx => tx.transaction_type === 'tip') || []
 
