@@ -17,6 +17,8 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Plus, Upload, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
+import { ConnectFanvueButton } from './connect-fanvue-button'
+import { Separator } from '@/components/ui/separator'
 
 interface AddCreatorDialogProps {
   agencyId: string
@@ -155,6 +157,26 @@ export function AddCreatorDialog({ agencyId }: AddCreatorDialogProps) {
           </DialogHeader>
 
           <div className="space-y-6 py-6">
+            {/* OAuth Connect Option */}
+            <div className="space-y-4">
+              <div className="rounded-lg border border-violet-500/20 bg-violet-500/5 p-4">
+                <h4 className="text-sm font-medium mb-2">✨ Recommended: Connect via Fanvue</h4>
+                <p className="text-xs text-muted-foreground mb-4">
+                  Securely connect your Fanvue creator account to automatically import profile data,
+                  earnings, and enable real-time sync.
+                </p>
+                <ConnectFanvueButton variant="default" size="sm" className="w-full" />
+              </div>
+
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <Separator />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-background px-2 text-muted-foreground">or add manually</span>
+                </div>
+              </div>
+            </div>
             {/* Avatar Upload */}
             <div className="flex flex-col items-center gap-4">
               <Avatar className="w-24 h-24 border-2 border-primary/20">

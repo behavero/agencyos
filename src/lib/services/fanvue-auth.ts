@@ -1,10 +1,11 @@
 /**
- * Fanvue OAuth Client Credentials Flow
- * Phase 54C - Official Authentication Service
+ * Fanvue OAuth Authentication Service
+ * Phase 57 - Official OAuth 2.0 Implementation
  * Based on: https://github.com/fanvue/fanvue-app-starter
  */
 
 import { createAdminClient } from '@/lib/supabase/server'
+import { refreshAccessToken } from '@/lib/fanvue/oauth'
 
 interface FanvueTokenResponse {
   access_token: string
@@ -189,6 +190,7 @@ export async function getModelAccessToken(modelId: string): Promise<string> {
 
 /**
  * Refreshes a Fanvue access token using a refresh token
+ * Uses the official OAuth helper from fanvue-app-starter
  */
 async function refreshFanvueToken(refreshToken: string): Promise<{
   access_token: string
@@ -203,38 +205,20 @@ async function refreshFanvueToken(refreshToken: string): Promise<{
     throw new Error('Fanvue OAuth credentials not configured')
   }
 
-  const authUrl = `${process.env.FANVUE_AUTH_URL || 'https://auth.fanvue.com'}/oauth/token`
+  console.log('🔄 Refreshing Fanvue access token using official OAuth helper...')
 
-  const response = await fetch(authUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({
-      grant_type: 'refresh_token',
-      refresh_token: refreshToken,
-      client_id: clientId,
-      client_secret: clientSecret,
-    }),
+  const tokenData = await refreshAccessToken({
+    refreshToken,
+    clientId,
+    clientSecret,
   })
 
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(
-      `Token refresh failed: ${response.status} ${response.statusText} - ${errorText}`
-    )
-  }
-
-  const data = await response.json()
-
-  if (!data.access_token) {
-    throw new Error('No access_token in refresh response')
-  }
+  console.log('✅ Token refreshed successfully')
 
   return {
-    access_token: data.access_token,
-    refresh_token: data.refresh_token,
-    expires_in: data.expires_in || 3600,
-    token_type: data.token_type || 'Bearer',
+    access_token: tokenData.access_token,
+    refresh_token: tokenData.refresh_token,
+    expires_in: tokenData.expires_in,
+    token_type: tokenData.token_type,
   }
 }
