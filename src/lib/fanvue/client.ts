@@ -676,6 +676,124 @@ export class FanvueClient {
       nextCursor: string | null
     }>(`/creators/${creatorUserUuid}/insights/earnings${query}`)
   }
+
+  /**
+   * Get followers for a specific creator (agency endpoint)
+   * Requires agency admin token with read:creator and read:fan scopes
+   */
+  async getCreatorFollowers(
+    creatorUserUuid: string,
+    params?: {
+      page?: number
+      size?: number
+    }
+  ) {
+    const queryParams = new URLSearchParams()
+    if (params?.page) queryParams.set('page', String(params.page))
+    if (params?.size) queryParams.set('size', String(params.size))
+
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : ''
+    return this.request<{
+      data: Array<{
+        uuid: string
+        handle: string
+        displayName: string
+        nickname: string | null
+        isTopSpender: boolean
+        avatarUrl: string | null
+        registeredAt: string
+      }>
+      pagination: {
+        page: number
+        size: number
+        hasMore: boolean
+      }
+    }>(`/creators/${creatorUserUuid}/followers${query}`)
+  }
+
+  /**
+   * Get subscribers for a specific creator (agency endpoint)
+   * Requires agency admin token with read:creator and read:fan scopes
+   */
+  async getCreatorSubscribers(
+    creatorUserUuid: string,
+    params?: {
+      page?: number
+      size?: number
+    }
+  ) {
+    const queryParams = new URLSearchParams()
+    if (params?.page) queryParams.set('page', String(params.page))
+    if (params?.size) queryParams.set('size', String(params.size))
+
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : ''
+    return this.request<{
+      data: Array<{
+        uuid: string
+        handle: string
+        displayName: string
+        nickname: string | null
+        isTopSpender: boolean
+        avatarUrl: string | null
+        registeredAt: string
+      }>
+      pagination: {
+        page: number
+        size: number
+        hasMore: boolean
+      }
+    }>(`/creators/${creatorUserUuid}/subscribers${query}`)
+  }
+
+  /**
+   * Get chats for a specific creator (agency endpoint)
+   * Requires agency admin token with read:creator and read:chat scopes
+   */
+  async getCreatorChats(
+    creatorUserUuid: string,
+    params?: {
+      page?: number
+      size?: number
+    }
+  ) {
+    const queryParams = new URLSearchParams()
+    if (params?.page) queryParams.set('page', String(params.page))
+    if (params?.size) queryParams.set('size', String(params.size))
+
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : ''
+    return this.request<{
+      data: Array<{
+        createdAt: string
+        lastMessageAt: string | null
+        isRead: boolean
+        isMuted: boolean
+        unreadMessagesCount: number
+        user: {
+          uuid: string
+          handle: string
+          displayName: string
+          nickname: string | null
+          isTopSpender: boolean
+          avatarUrl: string | null
+          registeredAt: string
+        }
+        lastMessage: {
+          text: string | null
+          type: string
+          uuid: string
+          sentAt: string
+          hasMedia: boolean | null
+          mediaType: string | null
+          senderUuid: string
+        } | null
+      }>
+      pagination: {
+        page: number
+        size: number
+        hasMore: boolean
+      }
+    }>(`/creators/${creatorUserUuid}/chats${query}`)
+  }
 }
 
 export function createFanvueClient(accessToken: string) {

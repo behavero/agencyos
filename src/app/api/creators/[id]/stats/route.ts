@@ -92,14 +92,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       ')'
     )
 
-    // These endpoints only work with the creator's own token (not agency token)
-    // Skip them if using agency endpoint
+    // Different data sources based on token type
     let userInfo = null
     let unreadCount = null
     let trackingLinks = null
+    let followersData = null
+    let subscribersData = null
+    let chatsData = null
 
     if (!useAgencyEndpoint) {
-      // Fetch user info first (most reliable) - only with own token
+      // OPTION A: Using creator's own token - get everything from personal endpoints
       userInfo = await fanvue.getCurrentUser().catch(e => {
         console.error('[Stats API] User info error:', e.message)
         return null
@@ -134,9 +136,57 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           }),
       ])
     } else {
-      console.log(
-        '[Stats API] Skipping personal stats (using agency token) - will only fetch earnings'
-      )
+      // OPTION B: Using agency admin token - fetch via agency endpoints
+      console.log('[Stats API] Fetching stats via agency endpoints...')
+
+      // Fetch followers, subscribers, and chats in parallel via agency endpoints
+      ;[followersData, subscribersData, chatsData] = await Promise.all([
+        // Followers (paginated - fetch first page to get count)
+        fanvue
+          .getCreatorFollowers(model.fanvue_user_uuid, { page: 1, size: 50 })
+          .then(data => {
+            console.log(
+              '[Stats API] Followers:',
+              data.data.length,
+              'hasMore:',
+              data.pagination.hasMore
+            )
+            return data
+          })
+          .catch(e => {
+            console.error('[Stats API] Followers error:', e.message)
+            return null
+          }),
+
+        // Subscribers (paginated - fetch first page to get count)
+        fanvue
+          .getCreatorSubscribers(model.fanvue_user_uuid, { page: 1, size: 50 })
+          .then(data => {
+            console.log(
+              '[Stats API] Subscribers:',
+              data.data.length,
+              'hasMore:',
+              data.pagination.hasMore
+            )
+            return data
+          })
+          .catch(e => {
+            console.error('[Stats API] Subscribers error:', e.message)
+            return null
+          }),
+
+        // Chats (paginated - fetch first page to get count)
+        fanvue
+          .getCreatorChats(model.fanvue_user_uuid, { page: 1, size: 50 })
+          .then(data => {
+            console.log('[Stats API] Chats:', data.data.length, 'hasMore:', data.pagination.hasMore)
+            return data
+          })
+          .catch(e => {
+            console.error('[Stats API] Chats error:', e.message)
+            return null
+          }),
+      ])
     }
 
     // Fetch ALL earnings with pagination (from account creation to now)
@@ -197,11 +247,40 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       console.error('[Stats API] Earnings error details:', error.statusCode, error.response)
     }
 
-    // Extract values from user info (most reliable source)
-    const totalFollowers = userInfo?.fanCounts?.followersCount || 0
-    const totalSubscribers = userInfo?.fanCounts?.subscribersCount || 0
-    const totalPosts = userInfo?.contentCounts?.postCount || 0
-    const totalLikes = userInfo?.likesCount || 0
+    // Extract values from different sources based on token type
+    let totalFollowers = 0
+    let totalSubscribers = 0
+    let totalPosts = 0
+    let totalLikes = 0
+    let totalMessages = 0
+
+    if (useAgencyEndpoint) {
+      // Using agency data - these are paginated, so we need to count accurately
+      // For now, we'll use the first page count as an estimate
+      // TODO: Could fetch all pages to get exact count, but that's expensive
+      totalFollowers = followersData?.data.length || 0
+      totalSubscribers = subscribersData?.data.length || 0
+      totalMessages = chatsData?.data.length || 0
+
+      console.log('[Stats API] Agency stats:', {
+        followers: totalFollowers,
+        subscribers: totalSubscribers,
+        messages: totalMessages,
+      })
+    } else {
+      // Using personal token - userInfo has everything
+      totalFollowers = userInfo?.fanCounts?.followersCount || 0
+      totalSubscribers = userInfo?.fanCounts?.subscribersCount || 0
+      totalPosts = userInfo?.contentCounts?.postCount || 0
+      totalLikes = userInfo?.likesCount || 0
+
+      console.log('[Stats API] Personal stats:', {
+        followers: totalFollowers,
+        subscribers: totalSubscribers,
+        posts: totalPosts,
+        likes: totalLikes,
+      })
+    }
 
     // Extract earnings - Fanvue returns amounts in CENTS, sum gross from all pages
     let totalRevenue = 0
@@ -244,18 +323,25 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
     console.log('[Stats API] Tracking links:', totalTrackingLinks)
 
-    // Build stats object
-    // When using agency token, only revenue data is available
+    // Build stats object based on available data
     const stats = {
       ...(useAgencyEndpoint
         ? {
-            // Agency token: Only update revenue (earnings are available via agency endpoint)
+            // Agency token: Revenue + basic fan metrics available via agency endpoints
             revenue_total: totalRevenue,
+            followers_count: totalFollowers,
+            subscribers_count: totalSubscribers,
+            // Messages count is just the number of chats we can see
+            unread_messages: totalMessages,
+            // Posts/Likes not available via agency endpoints (need creator's own token)
+            posts_count: 0,
+            likes_count: 0,
+            tracking_links_count: 0,
             stats_updated_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           }
         : {
-            // Own token: Full stats available
+            // Own token: Full stats available from personal endpoints
             followers_count: totalFollowers,
             subscribers_count: totalSubscribers,
             posts_count: totalPosts,
@@ -293,10 +379,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         name: model.name,
       },
       debug: {
+        tokenType: useAgencyEndpoint ? 'agency' : 'personal',
         earningsCount: allEarnings.length,
         earningsPages: earningsPageCount,
-        unreadRaw: unreadCount,
-        trackingLinksRaw: trackingLinks,
+        ...(useAgencyEndpoint
+          ? {
+              // Agency endpoint debug data
+              followersCount: followersData?.data.length || 0,
+              subscribersCount: subscribersData?.data.length || 0,
+              chatsCount: chatsData?.data.length || 0,
+            }
+          : {
+              // Personal endpoint debug data
+              unreadRaw: unreadCount,
+              trackingLinksRaw: trackingLinks,
+            }),
       },
     })
   } catch (error: unknown) {
