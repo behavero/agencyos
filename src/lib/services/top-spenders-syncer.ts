@@ -5,7 +5,7 @@
  */
 
 import { FanvueClient } from '@/lib/fanvue/client'
-import { supabaseAdmin } from '@/lib/supabase/admin'
+import { createAdminClient } from '@/lib/supabase/server'
 
 interface TopSpenderData {
   model_id: string
@@ -70,7 +70,8 @@ export async function syncCreatorTopSpenders(
     }))
 
     // Upsert to database (update existing, insert new)
-    const { error: upsertError } = await supabaseAdmin
+    const adminClient = createAdminClient()
+    const { error: upsertError } = await adminClient
       .from('creator_top_spenders')
       .upsert(topSpenders, {
         onConflict: 'model_id,fan_uuid',
@@ -127,7 +128,8 @@ export async function syncAgencyTopSpenders(
     console.log(`[Agency Top Spenders Sync] Starting for agency ${agencyId}...`)
 
     // Get all models in this agency with their fanvue_user_uuid
-    const { data: models, error: modelsError } = await supabaseAdmin
+    const adminClient = createAdminClient()
+    const { data: models, error: modelsError } = await adminClient
       .from('models')
       .select('id, name, fanvue_user_uuid')
       .eq('agency_id', agencyId)
@@ -186,7 +188,8 @@ export async function syncAgencyTopSpenders(
  */
 export async function getAgencyVIPFans(agencyId: string, limit = 50) {
   try {
-    const { data, error } = await supabaseAdmin.rpc('get_agency_vip_fans', {
+    const adminClient = createAdminClient()
+    const { data, error } = await adminClient.rpc('get_agency_vip_fans', {
       p_agency_id: agencyId,
       p_limit: limit,
     })

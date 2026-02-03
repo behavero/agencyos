@@ -5,7 +5,7 @@
  */
 
 import { FanvueClient } from '@/lib/fanvue/client'
-import { supabaseAdmin } from '@/lib/supabase/admin'
+import { createAdminClient } from '@/lib/supabase/server'
 
 interface SubscriberHistoryData {
   model_id: string
@@ -73,12 +73,11 @@ export async function syncCreatorSubscriberHistory(
     }
 
     // Upsert to database (update existing, insert new)
-    const { error: upsertError } = await supabaseAdmin
-      .from('subscriber_history')
-      .upsert(allHistory, {
-        onConflict: 'model_id,date',
-        ignoreDuplicates: false, // Update existing records
-      })
+    const adminClient = createAdminClient()
+    const { error: upsertError } = await adminClient.from('subscriber_history').upsert(allHistory, {
+      onConflict: 'model_id,date',
+      ignoreDuplicates: false, // Update existing records
+    })
 
     if (upsertError) {
       console.error('[Subscriber History Sync] Upsert error:', upsertError)
@@ -123,7 +122,8 @@ export async function syncAgencySubscriberHistory(
     console.log(`[Agency Subscriber History Sync] Starting for agency ${agencyId}...`)
 
     // Get all models in this agency with their fanvue_user_uuid
-    const { data: models, error: modelsError } = await supabaseAdmin
+    const adminClient = createAdminClient()
+    const { data: models, error: modelsError } = await adminClient
       .from('models')
       .select('id, name, fanvue_user_uuid')
       .eq('agency_id', agencyId)
@@ -178,7 +178,8 @@ export async function syncAgencySubscriberHistory(
  */
 export async function getCreatorSubscriberTrend(modelId: string, days = 30) {
   try {
-    const { data, error } = await supabaseAdmin.rpc('get_creator_subscriber_trend', {
+    const adminClient = createAdminClient()
+    const { data, error } = await adminClient.rpc('get_creator_subscriber_trend', {
       p_model_id: modelId,
       p_days: days,
     })
@@ -205,7 +206,8 @@ export async function getCreatorSubscriberTrend(modelId: string, days = 30) {
  */
 export async function getAgencySubscriberTrend(agencyId: string, days = 30) {
   try {
-    const { data, error } = await supabaseAdmin.rpc('get_agency_subscriber_trend', {
+    const adminClient = createAdminClient()
+    const { data, error } = await adminClient.rpc('get_agency_subscriber_trend', {
       p_agency_id: agencyId,
       p_days: days,
     })
