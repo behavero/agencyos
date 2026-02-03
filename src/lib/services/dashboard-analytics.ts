@@ -37,13 +37,14 @@ export async function getRevenueHistory(
   const startDate = new Date()
   startDate.setDate(startDate.getDate() - days)
 
+  // FIXED: Query fanvue_transactions instead of transactions
   const { data: transactions, error } = await supabase
-    .from('transactions')
+    .from('fanvue_transactions')
     .select('*')
     .eq('agency_id', agencyId)
-    .gte('created_at', startDate.toISOString())
-    .lte('created_at', endDate.toISOString())
-    .order('created_at', { ascending: true })
+    .gte('transaction_date', startDate.toISOString())
+    .lte('transaction_date', endDate.toISOString())
+    .order('transaction_date', { ascending: true })
 
   if (error || !transactions) {
     console.error('Error fetching revenue history:', error)
@@ -53,7 +54,7 @@ export async function getRevenueHistory(
   // Group by date and type
   const grouped = transactions.reduce(
     (acc, tx) => {
-      const date = new Date(tx.created_at!).toLocaleDateString('en-US', {
+      const date = new Date(tx.transaction_date).toLocaleDateString('en-US', {
         month: 'short',
         day: 'numeric',
       })
@@ -71,14 +72,14 @@ export async function getRevenueHistory(
 
       const amount = Number(tx.amount)
 
-      // Categorize by transaction type
-      if (tx.type === 'subscription' || tx.source === 'subscription') {
+      // Categorize by transaction_type from fanvue_transactions
+      if (tx.transaction_type === 'subscription') {
         acc[date].subscriptions += amount
-      } else if (tx.type === 'tip' || tx.source === 'tip') {
+      } else if (tx.transaction_type === 'tip') {
         acc[date].tips += amount
-      } else if (tx.type === 'message' || tx.source === 'message') {
+      } else if (tx.transaction_type === 'message') {
         acc[date].messages += amount
-      } else if (tx.type === 'ppv' || tx.source === 'ppv') {
+      } else if (tx.transaction_type === 'ppv' || tx.transaction_type === 'post') {
         acc[date].ppv += amount
       }
 
@@ -105,11 +106,12 @@ export async function getRevenueBreakdown(
   const startDate = new Date()
   startDate.setDate(startDate.getDate() - days)
 
+  // FIXED: Query fanvue_transactions instead of transactions
   const { data: transactions, error } = await supabase
-    .from('transactions')
-    .select('type, source, amount')
+    .from('fanvue_transactions')
+    .select('transaction_type, amount')
     .eq('agency_id', agencyId)
-    .gte('created_at', startDate.toISOString())
+    .gte('transaction_date', startDate.toISOString())
 
   if (error || !transactions) {
     console.error('Error fetching revenue breakdown:', error)
@@ -118,7 +120,7 @@ export async function getRevenueBreakdown(
 
   const breakdown = transactions.reduce(
     (acc, tx) => {
-      const type = tx.type || tx.source || 'other'
+      const type = tx.transaction_type || 'other'
       if (!acc[type]) {
         acc[type] = 0
       }
@@ -171,14 +173,16 @@ export async function getConversionStats(agencyId: string): Promise<ConversionSt
   const thirtyDaysAgo = new Date()
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
 
+  // FIXED: Query fanvue_transactions instead of transactions
   const { data: recentTransactions } = await supabase
-    .from('transactions')
-    .select('type, amount')
+    .from('fanvue_transactions')
+    .select('transaction_type, amount')
     .eq('agency_id', agencyId)
-    .gte('created_at', thirtyDaysAgo.toISOString())
+    .gte('transaction_date', thirtyDaysAgo.toISOString())
 
-  const messageRevenue = recentTransactions?.filter(tx => tx.type === 'message').length || 0
-  const ppvRevenue = recentTransactions?.filter(tx => tx.type === 'ppv').length || 0
+  const messageRevenue =
+    recentTransactions?.filter(tx => tx.transaction_type === 'message').length || 0
+  const ppvRevenue = recentTransactions?.filter(tx => tx.transaction_type === 'ppv').length || 0
   const totalRevenue = recentTransactions?.reduce((sum, tx) => sum + Number(tx.amount), 0) || 0
 
   // Get total subscribers
@@ -359,11 +363,12 @@ export async function getDashboardKPIs(agencyId: string): Promise<DashboardKPIs>
   const thirtyDaysAgo = new Date()
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
 
+  // FIXED: Query fanvue_transactions instead of transactions
   const { data: recentTransactions } = await supabase
-    .from('transactions')
+    .from('fanvue_transactions')
     .select('amount')
     .eq('agency_id', agencyId)
-    .gte('created_at', thirtyDaysAgo.toISOString())
+    .gte('transaction_date', thirtyDaysAgo.toISOString())
 
   const monthlyRevenue = recentTransactions?.reduce((sum, tx) => sum + Number(tx.amount), 0) || 0
 
