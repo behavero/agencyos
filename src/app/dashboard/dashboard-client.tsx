@@ -73,6 +73,7 @@ import { BestSellersWidget } from '@/components/dashboard/best-sellers-widget'
 import { SyncButton } from '@/components/dashboard/sync-button'
 import { DateRangeFilter, type DateRangeValue } from '@/components/dashboard/date-range-filter'
 import { NewFansAnalytics } from '@/components/dashboard/new-fans-analytics'
+import { TopTrackingLinksCard } from '@/components/dashboard/top-tracking-links-card'
 
 // Dark mode chart theme for Recharts
 const CHART_THEME = {
@@ -864,23 +865,10 @@ export default function DashboardClient({
             </Card>
           </div>
 
-          {/* Best Sellers Widget Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2">
-              {/* Placeholder for future widget - Alfred's Daily Brief */}
-              <Card className="glass h-full">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">🤖 Alfred's Daily Brief</CardTitle>
-                  <CardDescription>AI-powered insights and recommendations</CardDescription>
-                </CardHeader>
-                <CardContent className="py-8 text-center text-muted-foreground">
-                  <p className="text-sm">Coming soon: AI-powered daily briefings</p>
-                </CardContent>
-              </Card>
-            </div>
-            <div>
-              <BestSellersWidget />
-            </div>
+          {/* Top Tracking Links & Best Sellers Row */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <TopTrackingLinksCard modelId={selectedModelId === 'all' ? undefined : selectedModelId} />
+            <BestSellersWidget />
           </div>
 
           {/* Models Grid */}
