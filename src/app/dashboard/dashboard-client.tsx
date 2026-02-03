@@ -170,9 +170,48 @@ export default function DashboardClient({
 
   // Model filter state
   const [selectedModelId, setSelectedModelId] = useState<string>('all')
+  const [isLoadingModelData, setIsLoadingModelData] = useState(false)
+  const [modelChartData, setModelChartData] = useState<ChartDataPoint[]>([])
+  const [modelKPIMetrics, setModelKPIMetrics] = useState<KPIMetrics | null>(null)
+  const [modelCategoryBreakdown, setModelCategoryBreakdown] = useState<CategoryBreakdown[]>([])
+
   const selectedModel = models.find(m => m.id === selectedModelId)
 
-  // Filter Fanvue data based on selected model
+  // Fetch model-specific data when selection changes
+  useEffect(() => {
+    if (selectedModelId === 'all') {
+      // Reset to initial server-rendered data
+      setModelChartData([])
+      setModelKPIMetrics(null)
+      setModelCategoryBreakdown([])
+      return
+    }
+
+    // Fetch data for the selected model
+    const fetchModelData = async () => {
+      setIsLoadingModelData(true)
+      try {
+        const response = await fetch(
+          `/api/analytics/dashboard?modelId=${selectedModelId}&timeRange=30d`
+        )
+        if (!response.ok) throw new Error('Failed to fetch model data')
+
+        const data = await response.json()
+        setModelChartData(data.chartData || [])
+        setModelKPIMetrics(data.kpiMetrics)
+        setModelCategoryBreakdown(data.categoryBreakdown || [])
+      } catch (error) {
+        console.error('Error fetching model data:', error)
+        toast.error('Failed to load model data')
+      } finally {
+        setIsLoadingModelData(false)
+      }
+    }
+
+    fetchModelData()
+  }, [selectedModelId])
+
+  // Use the appropriate data source based on selection
   const filteredFanvueData = useMemo(() => {
     if (selectedModelId === 'all') {
       return {
@@ -182,11 +221,10 @@ export default function DashboardClient({
       }
     }
 
-    // For individual model, we would need to re-fetch data
-    // For now, show a message to run a filtered sync
+    // Use fetched model data
     return {
-      chartData: [],
-      kpiMetrics: {
+      chartData: modelChartData,
+      kpiMetrics: modelKPIMetrics || {
         totalRevenue: selectedModel?.revenue_total || 0,
         netRevenue: (selectedModel?.revenue_total || 0) * 0.8,
         activeSubscribers: selectedModel?.subscribers_count || 0,
@@ -197,9 +235,18 @@ export default function DashboardClient({
         transactionCount: 0,
         revenueGrowth: 0,
       },
-      categoryBreakdown: [],
+      categoryBreakdown: modelCategoryBreakdown,
     }
-  }, [selectedModelId, fanvueChartData, fanvueKPIMetrics, fanvueCategoryBreakdown, selectedModel])
+  }, [
+    selectedModelId,
+    fanvueChartData,
+    fanvueKPIMetrics,
+    fanvueCategoryBreakdown,
+    selectedModel,
+    modelChartData,
+    modelKPIMetrics,
+    modelCategoryBreakdown,
+  ])
 
   // Handle OAuth success/error notifications
   useEffect(() => {
