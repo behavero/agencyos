@@ -1149,7 +1149,7 @@ export default function DashboardClient({
                 <div className="text-2xl font-bold text-rose-400">
                   {filteredFanvueData.kpiMetrics.unlockRate.toFixed(1)}%
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">PPV conversion</p>
+                <p className="text-xs text-muted-foreground mt-1">N/A until chat tracking</p>
               </CardContent>
             </Card>
           </div>
@@ -1164,13 +1164,8 @@ export default function DashboardClient({
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-teal-400">
-                  {conversionStats.clickToSubscriberRate}%
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {conversionStats.trend > 0 ? '+' : ''}
-                  {conversionStats.trend}% vs last period
-                </p>
+                <div className="text-2xl font-bold text-teal-400">0%</div>
+                <p className="text-xs text-muted-foreground mt-1">Requires tracking links</p>
               </CardContent>
             </Card>
 
@@ -1178,14 +1173,14 @@ export default function DashboardClient({
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium flex items-center gap-2">
                   <MessageSquare className="h-4 w-4 text-blue-400" />
-                  Message Conv. Rate
+                  Message Purchase Rate
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-blue-400">
-                  {conversionStats.messageConversionRate}%
+                  {filteredFanvueData.kpiMetrics.messageConversionRate.toFixed(1)}%
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">Messages sold per subscriber</p>
+                <p className="text-xs text-muted-foreground mt-1">Avg messages bought per sub</p>
               </CardContent>
             </Card>
 
@@ -1193,14 +1188,14 @@ export default function DashboardClient({
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium flex items-center gap-2">
                   <Eye className="h-4 w-4 text-purple-400" />
-                  PPV Conv. Rate
+                  PPV Purchase Rate
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-purple-400">
-                  {conversionStats.ppvConversionRate}%
+                  {filteredFanvueData.kpiMetrics.ppvConversionRate.toFixed(1)}%
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">PPV purchases per subscriber</p>
+                <p className="text-xs text-muted-foreground mt-1">Avg PPV bought per sub</p>
               </CardContent>
             </Card>
           </div>

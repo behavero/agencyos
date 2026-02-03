@@ -164,7 +164,7 @@ export async function getKPIMetrics(
   // Get total subscribers count from models
   let modelsQuery = supabase
     .from('models')
-    .select('subscribers_count')
+    .select('subscribers_count, followers_count')
     .eq('agency_id', agencyId)
     .eq('status', 'active')
 
@@ -173,7 +173,9 @@ export async function getKPIMetrics(
   }
 
   const { data: models } = await modelsQuery
-  const activeSubscribers = models?.reduce((sum, m) => sum + (m.subscribers_count || 0), 0) || 0
+  const totalSubscribers = models?.reduce((sum, m) => sum + (m.subscribers_count || 0), 0) || 0
+  const totalFollowers = models?.reduce((sum, m) => sum + (m.followers_count || 0), 0) || 0
+  const totalAudience = totalFollowers + totalSubscribers
 
   // Query 3: Get ALL transactions for revenue calculation (just amount columns, lightweight)
   let allTransactionsQuery = supabase
@@ -210,27 +212,66 @@ export async function getKPIMetrics(
   const netRevenue = allTransactions?.reduce((sum, tx) => sum + Number(tx.net_amount), 0) || 0
   const prevTotalRevenue = prevAllTransactions?.reduce((sum, tx) => sum + Number(tx.amount), 0) || 0
 
-  const tipTransactions = currentTransactions?.filter(tx => tx.transaction_type === 'tip') || []
+  // Calculate Avg Tip from ALL tip transactions (not just sample)
+  const { count: tipCount } = await supabase
+    .from('fanvue_transactions')
+    .select('*', { count: 'exact', head: true })
+    .eq('agency_id', agencyId)
+    .eq('transaction_type', 'tip')
+    .gte('transaction_date', startDate.toISOString())
+    .lte('transaction_date', endDate.toISOString())
+    .then(r => ({ count: r.count || 0 }))
 
-  const tipAverage =
-    tipTransactions.length > 0
-      ? tipTransactions.reduce((sum, tx) => sum + Number(tx.amount), 0) / tipTransactions.length
-      : 0
+  const { data: tipData } = await supabase
+    .from('fanvue_transactions')
+    .select('amount')
+    .eq('agency_id', agencyId)
+    .eq('transaction_type', 'tip')
+    .gte('transaction_date', startDate.toISOString())
+    .lte('transaction_date', endDate.toISOString())
+    .limit(50000)
 
-  // Calculate ARPU (Average Revenue Per User) = Total Revenue / Total Subscribers
-  const arpu = activeSubscribers > 0 ? totalRevenue / activeSubscribers : 0
+  const totalTipAmount = tipData?.reduce((sum, tx) => sum + Number(tx.amount), 0) || 0
+  const tipAverage = tipCount > 0 ? totalTipAmount / tipCount : 0
+
+  // Calculate ARPU (Average Revenue Per User) = Total Revenue / Total Audience (Subscribers + Followers)
+  // Using totalAudience calculated earlier from models query
+  const arpu = totalAudience > 0 ? totalRevenue / totalAudience : 0
 
   // Calculate conversion rates
-  const messageTransactions =
-    currentTransactions?.filter(
-      tx => tx.transaction_type === 'message' || tx.transaction_type === 'ppv'
-    ) || []
-  const messageConversionRate =
-    activeSubscribers > 0 ? (messageTransactions.length / activeSubscribers) * 100 : 0
+  // Get accurate message/PPV counts using COUNT queries
+  const { count: messageCount } = await supabase
+    .from('fanvue_transactions')
+    .select('*', { count: 'exact', head: true })
+    .eq('agency_id', agencyId)
+    .eq('transaction_type', 'message')
+    .gte('transaction_date', startDate.toISOString())
+    .lte('transaction_date', endDate.toISOString())
+    .then(r => ({ count: r.count || 0 }))
 
-  const ppvTransactions = currentTransactions?.filter(tx => tx.transaction_type === 'ppv') || []
-  const ppvConversionRate =
-    activeSubscribers > 0 ? (ppvTransactions.length / activeSubscribers) * 100 : 0
+  const { count: ppvCount } = await supabase
+    .from('fanvue_transactions')
+    .select('*', { count: 'exact', head: true })
+    .eq('agency_id', agencyId)
+    .eq('transaction_type', 'ppv')
+    .gte('transaction_date', startDate.toISOString())
+    .lte('transaction_date', endDate.toISOString())
+    .then(r => ({ count: r.count || 0 }))
+
+  const { count: postCount } = await supabase
+    .from('fanvue_transactions')
+    .select('*', { count: 'exact', head: true })
+    .eq('agency_id', agencyId)
+    .eq('transaction_type', 'post')
+    .gte('transaction_date', startDate.toISOString())
+    .lte('transaction_date', endDate.toISOString())
+    .then(r => ({ count: r.count || 0 }))
+
+  // Message Conv. Rate: Messages purchased / Total Subscribers * 100
+  const messageConversionRate = totalSubscribers > 0 ? (messageCount / totalSubscribers) * 100 : 0
+
+  // PPV Conv. Rate: PPV purchased / Total Subscribers * 100
+  const ppvConversionRate = totalSubscribers > 0 ? (ppvCount / totalSubscribers) * 100 : 0
 
   // Calculate revenue growth
   const revenueGrowth =
@@ -238,10 +279,10 @@ export async function getKPIMetrics(
 
   // NEW METRICS for competitor parity:
 
-  // 1. LTV (Lifetime Value) = ARPU × Average lifetime (estimate 6 months)
-  const ltv = arpu * 6
+  // 1. LTV (Lifetime Value) = Total Revenue / Total Subscribers (actual average lifetime value)
+  const ltv = totalSubscribers > 0 ? totalRevenue / totalSubscribers : 0
 
-  // 2. Golden Ratio = (Message + PPV Revenue) / Subscription Revenue
+  // 2. Golden Ratio = (Message + PPV + Tip Revenue) / Subscription Revenue
   const subscriptionRevenue =
     currentTransactions
       ?.filter(tx => tx.transaction_type === 'subscription' || tx.transaction_type === 'renewal')
@@ -258,30 +299,27 @@ export async function getKPIMetrics(
       .reduce((sum, tx) => sum + Number(tx.amount), 0) || 0
   const goldenRatio = subscriptionRevenue > 0 ? interactionRevenue / subscriptionRevenue : 0
 
-  // 3. Total Messages Sent (count of message transactions)
-  const totalMessagesSent =
-    currentTransactions?.filter(tx => tx.transaction_type === 'message').length || 0
+  // 3. Total Messages Purchased (accurate count)
+  const totalMessagesSent = messageCount
 
-  // 4. Total PPV Sent (count of ppv + post transactions)
-  const totalPPVSent =
-    currentTransactions?.filter(
-      tx => tx.transaction_type === 'ppv' || tx.transaction_type === 'post'
-    ).length || 0
+  // 4. Total PPV/Posts Purchased (accurate count)
+  const totalPPVSent = ppvCount + postCount
 
-  // 5. New Fans (estimate: unique fan_ids that appear for first time in period)
-  const uniqueFans = new Set(currentTransactions?.map(tx => tx.fan_id))
-  const newFans = uniqueFans.size // This is an approximation
+  // 5. New Fans (unique fan_ids in period - this is unique buyers, not total subs/followers)
+  const uniqueFans = new Set(currentTransactions?.map(tx => tx.fan_id).filter(Boolean))
+  const newFans = uniqueFans.size
 
-  // 6. Unlock Rate (PPV transactions / Total PPV Sent * 100)
-  const unlockRate = totalPPVSent > 0 ? (ppvTransactions.length / totalPPVSent) * 100 : 0
+  // 6. Unlock Rate: N/A - Fanvue API doesn't provide "PPV sent" data (only "PPV purchased")
+  // This would require tracking from chatting tool
+  const unlockRate = 0 // Placeholder until we implement chat tracking
 
   return {
     totalRevenue: Math.round(totalRevenue),
     netRevenue: Math.round(netRevenue),
-    activeSubscribers: activeSubscribers,
+    activeSubscribers: totalSubscribers, // Use total subscribers from models table
     arpu: Math.round(arpu * 100) / 100, // Round to 2 decimal places
-    messageConversionRate: Math.round(messageConversionRate * 10) / 10, // Round to 1 decimal place
-    ppvConversionRate: Math.round(ppvConversionRate * 10) / 10, // Round to 1 decimal place
+    messageConversionRate: Math.round(messageConversionRate * 10) / 10, // Messages per subscriber (%)
+    ppvConversionRate: Math.round(ppvConversionRate * 10) / 10, // PPV per subscriber (%)
     tipAverage: Math.round(tipAverage * 100) / 100, // Round to 2 decimal places
     transactionCount: transactionCount || 0, // Use the COUNT query result, not array length!
     revenueGrowth: Math.round(revenueGrowth * 10) / 10,
@@ -291,7 +329,7 @@ export async function getKPIMetrics(
     totalMessagesSent,
     totalPPVSent,
     newFans,
-    unlockRate: Math.round(unlockRate * 10) / 10,
+    unlockRate: Math.round(unlockRate * 10) / 10, // N/A until chat tracking implemented
   }
 }
 
