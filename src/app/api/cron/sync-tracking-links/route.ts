@@ -15,12 +15,20 @@ export const maxDuration = 300 // 5 minutes max execution time
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: Request) {
-  // Verify cron secret for security
+  // Verify cron secret for security (optional)
   const authHeader = request.headers.get('authorization')
   const cronSecret = process.env.CRON_SECRET
+  const url = new URL(request.url)
+  const manualTrigger = url.searchParams.get('manual') === 'true'
   
-  // Allow access if no CRON_SECRET is set (development) or if it matches
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  // Allow access if:
+  // 1. No CRON_SECRET is set (development)
+  // 2. Authorization header matches CRON_SECRET
+  // 3. Manual trigger parameter is set (for testing)
+  const isVercelCron = request.headers.get('x-vercel-cron') === '1'
+  const isAuthorized = !cronSecret || authHeader === `Bearer ${cronSecret}` || isVercelCron || manualTrigger
+  
+  if (!isAuthorized) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
