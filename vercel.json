@@ -13,5 +13,37 @@
       "path": "/api/cron/daily-refresh",
       "schedule": "0 1 * * *"
     }
+  ],
+  "redirects": [
+    {
+      "source": "/dashboard/settings",
+      "destination": "/dashboard",
+      "permanent": false
+    },
+    {
+      "source": "/dashboard/finance/analytics",
+      "destination": "/dashboard",
+      "permanent": true
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/analytics/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "s-maxage=60, stale-while-revalidate=300"
+        }
+      ]
+    },
+    {
+      "source": "/api/agency/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "s-maxage=30, stale-while-revalidate=60"
+        }
+      ]
+    }
   ]
 }

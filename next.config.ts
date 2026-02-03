@@ -6,14 +6,21 @@ const nextConfig: NextConfig = {
   // Output mode - standalone for serverless deployment
   output: 'standalone',
 
-  // !! TEMPORARY FIX !!
-  // Allow build to complete even with type errors
-  // This lets us see the dashboard while we fix type issues
+  // !! TODO: FIX TYPE ERRORS !!
+  // These should be removed after fixing all TypeScript and ESLint errors
+  // Keeping them temporarily to maintain deployment stability
+  // Track progress in GitHub Issues
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: true, // TODO: Remove after fixing type errors
   },
   eslint: {
-    ignoreDuringBuilds: true,
+    ignoreDuringBuilds: true, // TODO: Remove after fixing lint errors
+  },
+
+  // Performance optimizations
+  experimental: {
+    optimizePackageImports: ['recharts', 'lucide-react', '@radix-ui/react-icons'],
+    webVitalsAttribution: ['CLS', 'LCP', 'FCP', 'FID', 'TTFB'],
   },
 
   // Security headers
