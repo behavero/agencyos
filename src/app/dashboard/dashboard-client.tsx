@@ -658,8 +658,7 @@ export default function DashboardClient({
               </CardContent>
             </Card>
 
-            {/* Subscriber Growth Line Chart */}
-            {/* TODO: Implement historical subscriber tracking (Fanvue API doesn't provide historical counts) */}
+            {/* Subscriber Growth Line Chart - Now with 2 lines: Subscribers & Followers */}
             <Card className="glass">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -669,45 +668,65 @@ export default function DashboardClient({
                 <CardDescription>Subscribers & followers over time</CardDescription>
               </CardHeader>
               <CardContent>
-                <ChartContainer config={subscriberChartConfig} className="h-[250px] w-full">
-                  <LineChart data={monthlyData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      className="stroke-muted"
-                      vertical={false}
-                    />
-                    <XAxis
-                      dataKey="month"
-                      tickLine={false}
-                      axisLine={false}
-                      tickMargin={8}
-                      stroke={CHART_THEME.stroke}
-                      tick={CHART_THEME.tick}
-                    />
-                    <YAxis
-                      tickLine={false}
-                      axisLine={false}
-                      tickFormatter={value => value.toLocaleString()}
-                      stroke={CHART_THEME.stroke}
-                      tick={CHART_THEME.tick}
-                    />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Line
-                      type="monotone"
-                      dataKey="subscribers"
-                      stroke="#2dd4bf"
-                      strokeWidth={2}
-                      dot={{ fill: '#2dd4bf', strokeWidth: 0 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="followers"
-                      stroke="#a3e635"
-                      strokeWidth={2}
-                      dot={{ fill: '#a3e635', strokeWidth: 0 }}
-                    />
-                  </LineChart>
-                </ChartContainer>
+                {isLoadingOverview ? (
+                  <div className="h-[250px] flex items-center justify-center">
+                    <div className="text-muted-foreground">Loading audience data...</div>
+                  </div>
+                ) : overviewData?.chartData && overviewData.chartData.length > 0 ? (
+                  <ChartContainer config={subscriberChartConfig} className="h-[250px] w-full">
+                    <LineChart
+                      data={overviewData.chartData.map(point => ({
+                        date: point.date,
+                        subscribers: point.subscribers || 0,
+                        followers: point.followers || 0,
+                      }))}
+                      margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                    >
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        className="stroke-muted"
+                        vertical={false}
+                      />
+                      <XAxis
+                        dataKey="date"
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={8}
+                        stroke={CHART_THEME.stroke}
+                        tick={CHART_THEME.tick}
+                      />
+                      <YAxis
+                        tickLine={false}
+                        axisLine={false}
+                        tickFormatter={value => value.toLocaleString()}
+                        stroke={CHART_THEME.stroke}
+                        tick={CHART_THEME.tick}
+                      />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <Line
+                        type="monotone"
+                        dataKey="subscribers"
+                        stroke="#2dd4bf"
+                        strokeWidth={2}
+                        dot={{ fill: '#2dd4bf', strokeWidth: 0 }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="followers"
+                        stroke="#a3e635"
+                        strokeWidth={2}
+                        dot={{ fill: '#a3e635', strokeWidth: 0 }}
+                      />
+                    </LineChart>
+                  </ChartContainer>
+                ) : (
+                  <div className="h-[250px] flex items-center justify-center">
+                    <div className="text-center text-muted-foreground">
+                      <p className="mb-2">No historical audience data yet</p>
+                      <p className="text-sm">Data will appear after daily sync runs</p>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
