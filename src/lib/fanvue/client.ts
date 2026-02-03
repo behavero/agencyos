@@ -794,6 +794,29 @@ export class FanvueClient {
       }
     }>(`/creators/${creatorUserUuid}/chats${query}`)
   }
+
+  /**
+   * Get smart lists for a specific creator (agency endpoint)
+   * Returns accurate counts for followers, subscribers, and other segments
+   * This is MUCH more efficient than paginating through all followers/subscribers!
+   * Requires agency admin token with read:creator, read:chat, and read:fan scopes
+   */
+  async getCreatorSmartLists(creatorUserUuid: string) {
+    return this.request<
+      Array<{
+        name: string
+        uuid:
+          | 'subscribers'
+          | 'auto_renewing'
+          | 'non_renewing'
+          | 'followers'
+          | 'free_trial_subscribers'
+          | 'expired_subscribers'
+          | 'spent_more_than_50'
+        count: number
+      }>
+    >(`/creators/${creatorUserUuid}/chats/lists/smart`)
+  }
 }
 
 export function createFanvueClient(accessToken: string) {

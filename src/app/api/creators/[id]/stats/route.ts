@@ -96,9 +96,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     let userInfo = null
     let unreadCount = null
     let trackingLinks = null
-    let followersData = null
-    let subscribersData = null
+    const followersData = null
+    const subscribersData = null
     let chatsData = null
+
+    // Initialize counters (will be populated based on token type)
+    let totalFollowers = 0
+    let totalSubscribers = 0
+    let totalMessages = 0
 
     if (!useAgencyEndpoint) {
       // OPTION A: Using creator's own token - get everything from personal endpoints
@@ -139,54 +144,67 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       // OPTION B: Using agency admin token - fetch via agency endpoints
       console.log('[Stats API] Fetching stats via agency endpoints...')
 
-      // Fetch followers, subscribers, and chats in parallel via agency endpoints
-      ;[followersData, subscribersData, chatsData] = await Promise.all([
-        // Followers (paginated - fetch first page to get count)
-        fanvue
-          .getCreatorFollowers(model.fanvue_user_uuid, { page: 1, size: 50 })
-          .then(data => {
-            console.log(
-              '[Stats API] Followers:',
-              data.data.length,
-              'hasMore:',
-              data.pagination.hasMore
-            )
-            return data
-          })
-          .catch(e => {
-            console.error('[Stats API] Followers error:', e.message)
-            return null
-          }),
+      // Use Smart Lists endpoint for ACCURATE follower/subscriber counts (single API call!)
+      const smartListsResponse = await fanvue
+        .getCreatorSmartLists(model.fanvue_user_uuid)
+        .catch(e => {
+          console.error('[Stats API] Smart lists error:', e.message)
+          return null
+        })
 
-        // Subscribers (paginated - fetch first page to get count)
-        fanvue
-          .getCreatorSubscribers(model.fanvue_user_uuid, { page: 1, size: 50 })
-          .then(data => {
-            console.log(
-              '[Stats API] Subscribers:',
-              data.data.length,
-              'hasMore:',
-              data.pagination.hasMore
-            )
-            return data
-          })
-          .catch(e => {
-            console.error('[Stats API] Subscribers error:', e.message)
-            return null
-          }),
+      if (smartListsResponse) {
+        const followersSmartList = smartListsResponse.find(list => list.uuid === 'followers')
+        const subscribersSmartList = smartListsResponse.find(list => list.uuid === 'subscribers')
 
-        // Chats (paginated - fetch first page to get count)
-        fanvue
-          .getCreatorChats(model.fanvue_user_uuid, { page: 1, size: 50 })
-          .then(data => {
-            console.log('[Stats API] Chats:', data.data.length, 'hasMore:', data.pagination.hasMore)
-            return data
-          })
+        totalFollowers = followersSmartList?.count || 0
+        totalSubscribers = subscribersSmartList?.count || 0
+
+        console.log('[Stats API] Smart Lists (accurate counts):', {
+          followers: totalFollowers,
+          subscribers: totalSubscribers,
+          allLists: smartListsResponse.map(l => `${l.name}: ${l.count}`).join(', '),
+        })
+      }
+
+      // For chats, we need to paginate through ALL pages to get exact count
+      console.log('[Stats API] Fetching ALL chats (full pagination)...')
+      let allChats: unknown[] = []
+      let page = 1
+      let hasMore = true
+      const maxPages = 100 // Safety limit
+
+      while (hasMore && page <= maxPages) {
+        const chatsPage = await fanvue
+          .getCreatorChats(model.fanvue_user_uuid, { page, size: 50 })
           .catch(e => {
-            console.error('[Stats API] Chats error:', e.message)
+            console.error(`[Stats API] Chats page ${page} error:`, e.message)
             return null
-          }),
-      ])
+          })
+
+        if (chatsPage?.data && chatsPage.data.length > 0) {
+          allChats = [...allChats, ...chatsPage.data]
+          hasMore = chatsPage.pagination.hasMore
+          page++
+          console.log(
+            `[Stats API] Chats page ${page - 1}: ${chatsPage.data.length} chats, total: ${allChats.length}`
+          )
+        } else {
+          hasMore = false
+        }
+
+        if (page > maxPages) {
+          console.warn('[Stats API] Reached max pages limit for chats')
+        }
+      }
+
+      totalMessages = allChats.length
+      console.log(`[Stats API] Total chats: ${totalMessages} (fetched across ${page - 1} pages)`)
+
+      // Store for debug output
+      chatsData = {
+        data: allChats,
+        pagination: { page: page - 1, size: allChats.length, hasMore: false },
+      } as any
     }
 
     // Fetch ALL earnings with pagination (from account creation to now)
@@ -248,39 +266,33 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
 
     // Extract values from different sources based on token type
-    let totalFollowers = 0
-    let totalSubscribers = 0
+    // Note: For agency endpoints, totalFollowers/totalSubscribers/totalMessages are already calculated above
     let totalPosts = 0
     let totalLikes = 0
-    let totalMessages = 0
 
-    if (useAgencyEndpoint) {
-      // Using agency data - these are paginated, so we need to count accurately
-      // For now, we'll use the first page count as an estimate
-      // TODO: Could fetch all pages to get exact count, but that's expensive
-      totalFollowers = followersData?.data.length || 0
-      totalSubscribers = subscribersData?.data.length || 0
-      totalMessages = chatsData?.data.length || 0
-
-      console.log('[Stats API] Agency stats:', {
-        followers: totalFollowers,
-        subscribers: totalSubscribers,
-        messages: totalMessages,
-      })
-    } else {
-      // Using personal token - userInfo has everything
+    if (!useAgencyEndpoint) {
+      // Using personal token - extract from userInfo
       totalFollowers = userInfo?.fanCounts?.followersCount || 0
       totalSubscribers = userInfo?.fanCounts?.subscribersCount || 0
       totalPosts = userInfo?.contentCounts?.postCount || 0
       totalLikes = userInfo?.likesCount || 0
 
-      console.log('[Stats API] Personal stats:', {
+      console.log('[Stats API] Personal stats from userInfo:', {
         followers: totalFollowers,
         subscribers: totalSubscribers,
         posts: totalPosts,
         likes: totalLikes,
       })
     }
+    // If useAgencyEndpoint, the counts were already set in the agency section above
+
+    console.log('[Stats API] Final counts:', {
+      followers: totalFollowers,
+      subscribers: totalSubscribers,
+      messages: totalMessages,
+      posts: totalPosts,
+      likes: totalLikes,
+    })
 
     // Extract earnings - Fanvue returns amounts in CENTS, sum gross from all pages
     let totalRevenue = 0
@@ -385,12 +397,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         ...(useAgencyEndpoint
           ? {
               // Agency endpoint debug data
-              followersCount: followersData?.data.length || 0,
-              subscribersCount: subscribersData?.data.length || 0,
-              chatsCount: chatsData?.data.length || 0,
+              dataSource: 'smart_lists + full_pagination',
+              followersCount: totalFollowers,
+              subscribersCount: totalSubscribers,
+              chatsCount: totalMessages,
+              chatsPagesScanned: chatsData?.pagination?.page || 0,
             }
           : {
               // Personal endpoint debug data
+              dataSource: 'personal_token',
               unreadRaw: unreadCount,
               trackingLinksRaw: trackingLinks,
             }),
