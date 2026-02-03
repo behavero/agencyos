@@ -360,16 +360,21 @@ export async function getKPIMetrics(
   })
 
   // Calculate Avg Tip from ALL tip transactions (not just sample)
-  const { count: tipCount } = await supabase
+  let tipCountQuery = supabase
     .from('fanvue_transactions')
     .select('*', { count: 'exact', head: true })
     .eq('agency_id', agencyId)
     .eq('transaction_type', 'tip')
     .gte('transaction_date', startDate.toISOString())
     .lte('transaction_date', endDate.toISOString())
-    .then(r => ({ count: r.count || 0 }))
+  
+  if (options.modelId) {
+    tipCountQuery = tipCountQuery.eq('model_id', options.modelId)
+  }
+  
+  const { count: tipCount } = await tipCountQuery.then(r => ({ count: r.count || 0 }))
 
-  const { data: tipData } = await supabase
+  let tipDataQuery = supabase
     .from('fanvue_transactions')
     .select('amount')
     .eq('agency_id', agencyId)
@@ -377,6 +382,12 @@ export async function getKPIMetrics(
     .gte('transaction_date', startDate.toISOString())
     .lte('transaction_date', endDate.toISOString())
     .limit(50000)
+  
+  if (options.modelId) {
+    tipDataQuery = tipDataQuery.eq('model_id', options.modelId)
+  }
+  
+  const { data: tipData } = await tipDataQuery
 
   const totalTipAmount = tipData?.reduce((sum, tx) => sum + Number(tx.amount), 0) || 0
   const tipAverage = tipCount > 0 ? totalTipAmount / tipCount : 0
@@ -387,35 +398,50 @@ export async function getKPIMetrics(
 
   // Calculate conversion rates
   // Get accurate message/PPV/post TRANSACTION counts using COUNT queries
-  const { count: messageCount } = await supabase
+  let messageCountQuery = supabase
     .from('fanvue_transactions')
     .select('*', { count: 'exact', head: true })
     .eq('agency_id', agencyId)
     .eq('transaction_type', 'message')
     .gte('transaction_date', startDate.toISOString())
     .lte('transaction_date', endDate.toISOString())
-    .then(r => ({ count: r.count || 0 }))
+  
+  if (options.modelId) {
+    messageCountQuery = messageCountQuery.eq('model_id', options.modelId)
+  }
+  
+  const { count: messageCount } = await messageCountQuery.then(r => ({ count: r.count || 0 }))
 
-  const { count: ppvCount } = await supabase
+  let ppvCountQuery = supabase
     .from('fanvue_transactions')
     .select('*', { count: 'exact', head: true })
     .eq('agency_id', agencyId)
     .eq('transaction_type', 'ppv')
     .gte('transaction_date', startDate.toISOString())
     .lte('transaction_date', endDate.toISOString())
-    .then(r => ({ count: r.count || 0 }))
+  
+  if (options.modelId) {
+    ppvCountQuery = ppvCountQuery.eq('model_id', options.modelId)
+  }
+  
+  const { count: ppvCount } = await ppvCountQuery.then(r => ({ count: r.count || 0 }))
 
-  const { count: postCount } = await supabase
+  let postCountQuery = supabase
     .from('fanvue_transactions')
     .select('*', { count: 'exact', head: true })
     .eq('agency_id', agencyId)
     .eq('transaction_type', 'post')
     .gte('transaction_date', startDate.toISOString())
     .lte('transaction_date', endDate.toISOString())
-    .then(r => ({ count: r.count || 0 }))
+  
+  if (options.modelId) {
+    postCountQuery = postCountQuery.eq('model_id', options.modelId)
+  }
+  
+  const { count: postCount } = await postCountQuery.then(r => ({ count: r.count || 0 }))
 
   // Get UNIQUE fans who purchased messages (for conversion rate)
-  const { data: uniqueMessageBuyers } = await supabase
+  let uniqueMessageBuyersQuery = supabase
     .from('fanvue_transactions')
     .select('fan_id')
     .eq('agency_id', agencyId)
@@ -423,11 +449,17 @@ export async function getKPIMetrics(
     .gte('transaction_date', startDate.toISOString())
     .lte('transaction_date', endDate.toISOString())
     .limit(50000)
+  
+  if (options.modelId) {
+    uniqueMessageBuyersQuery = uniqueMessageBuyersQuery.eq('model_id', options.modelId)
+  }
+  
+  const { data: uniqueMessageBuyers } = await uniqueMessageBuyersQuery
 
   const uniqueMessageFans = new Set(uniqueMessageBuyers?.map(t => t.fan_id).filter(Boolean)).size
 
   // Get UNIQUE fans who purchased posts/PPV (for conversion rate)
-  const { data: uniquePostBuyers } = await supabase
+  let uniquePostBuyersQuery = supabase
     .from('fanvue_transactions')
     .select('fan_id')
     .eq('agency_id', agencyId)
@@ -435,6 +467,12 @@ export async function getKPIMetrics(
     .gte('transaction_date', startDate.toISOString())
     .lte('transaction_date', endDate.toISOString())
     .limit(50000)
+  
+  if (options.modelId) {
+    uniquePostBuyersQuery = uniquePostBuyersQuery.eq('model_id', options.modelId)
+  }
+  
+  const { data: uniquePostBuyers } = await uniquePostBuyersQuery
 
   const uniquePostFans = new Set(uniquePostBuyers?.map(t => t.fan_id).filter(Boolean)).size
 
