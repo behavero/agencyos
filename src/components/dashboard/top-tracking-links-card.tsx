@@ -18,6 +18,7 @@ interface TrackingLink {
   conversionRate: number
   roi: number
   createdAt: string
+  modelName?: string
 }
 
 interface TrackingLinksStats {
@@ -26,8 +27,14 @@ interface TrackingLinksStats {
   clickToSubRate: number
 }
 
+interface Model {
+  id: string
+  name: string
+}
+
 interface TopTrackingLinksCardProps {
-  modelId?: string
+  models?: Model[]
+  initialModelId?: string
 }
 
 const platformIcons: Record<string, string> = {
@@ -54,8 +61,9 @@ const formatNumber = (num: number) => {
   return new Intl.NumberFormat('en-US').format(num)
 }
 
-export function TopTrackingLinksCard({ modelId }: TopTrackingLinksCardProps) {
+export function TopTrackingLinksCard({ models = [], initialModelId }: TopTrackingLinksCardProps) {
   const [sortBy, setSortBy] = useState<string>('total_revenue')
+  const [selectedModelId, setSelectedModelId] = useState<string>(initialModelId || 'all')
   const [links, setLinks] = useState<TrackingLink[]>([])
   const [stats, setStats] = useState<TrackingLinksStats | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -69,10 +77,10 @@ export function TopTrackingLinksCard({ modelId }: TopTrackingLinksCardProps) {
       try {
         const params = new URLSearchParams({
           sortBy,
-          limit: '5',
+          limit: '3', // Show top 3 only
         })
-        if (modelId) {
-          params.set('modelId', modelId)
+        if (selectedModelId && selectedModelId !== 'all') {
+          params.set('modelId', selectedModelId)
         }
         
         const response = await fetch(`/api/analytics/tracking-links?${params}`)
@@ -92,7 +100,7 @@ export function TopTrackingLinksCard({ modelId }: TopTrackingLinksCardProps) {
     }
 
     fetchData()
-  }, [sortBy, modelId])
+  }, [sortBy, selectedModelId])
 
   const getPlatformIcon = (platform: string | null) => {
     return platformIcons[platform?.toLowerCase() || 'other'] || '🔗'
@@ -107,7 +115,7 @@ export function TopTrackingLinksCard({ modelId }: TopTrackingLinksCardProps) {
 
   return (
     <Card className="glass">
-      <CardHeader>
+      <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="flex items-center gap-2">
@@ -118,8 +126,28 @@ export function TopTrackingLinksCard({ modelId }: TopTrackingLinksCardProps) {
               Traffic sources ranked by performance
             </CardDescription>
           </div>
+        </div>
+        
+        {/* Filters Row */}
+        <div className="flex items-center gap-2 mt-3">
+          {/* Model Filter */}
+          <Select value={selectedModelId} onValueChange={setSelectedModelId}>
+            <SelectTrigger className="w-[140px]">
+              <SelectValue placeholder="All Models" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Models</SelectItem>
+              {models.map((model) => (
+                <SelectItem key={model.id} value={model.id}>
+                  {model.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          
+          {/* Sort Filter */}
           <Select value={sortBy} onValueChange={setSortBy}>
-            <SelectTrigger className="w-[160px]">
+            <SelectTrigger className="w-[140px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

@@ -867,7 +867,10 @@ export default function DashboardClient({
 
           {/* Top Tracking Links & Best Sellers Row */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <TopTrackingLinksCard modelId={selectedModelId === 'all' ? undefined : selectedModelId} />
+            <TopTrackingLinksCard 
+              models={models.map(m => ({ id: m.id, name: m.name }))} 
+              initialModelId={selectedModelId === 'all' ? undefined : selectedModelId}
+            />
             <BestSellersWidget />
           </div>
 
