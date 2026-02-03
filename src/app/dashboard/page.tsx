@@ -53,51 +53,9 @@ export default async function DashboardPage() {
 
   const totalExpenses = totalMonthlyExpenses + yearlyToMonthly
 
-  // Fetch real-time analytics data (Phase 48)
+  // All analytics data is now fetched client-side via /api/analytics/dashboard
+  // This ensures Overview and Fanvue tabs use the SAME data source for consistency
   const agencyId = profile?.agency_id || ''
-
-  // Import analytics engine for Fanvue tab
-  const { getChartData, getKPIMetrics, getCategoryBreakdown } =
-    await import('@/lib/services/analytics-engine')
-
-  const [
-    revenueHistory,
-    revenueBreakdown,
-    conversionStats,
-    trafficSources,
-    subscriberGrowth,
-    modelPerformance,
-    dashboardKPIs,
-    expenseHistory,
-    earningsByType,
-    monthlyEarningsList,
-    fanvueChartData,
-    fanvueKPIMetrics,
-    fanvueCategoryBreakdown,
-  ] = await Promise.all([
-    DashboardAnalytics.getRevenueHistory(agencyId, 365), // All-time data (last year)
-    DashboardAnalytics.getRevenueBreakdown(agencyId, 365),
-    DashboardAnalytics.getConversionStats(agencyId),
-    DashboardAnalytics.getTrafficSources(agencyId, 30),
-    DashboardAnalytics.getSubscriberGrowth(agencyId, 30),
-    DashboardAnalytics.getModelPerformance(agencyId),
-    DashboardAnalytics.getDashboardKPIs(agencyId),
-    DashboardAnalytics.getExpenseHistory(agencyId, 12), // Last 12 months
-    DashboardAnalytics.getEarningsByType(agencyId),
-    DashboardAnalytics.getMonthlyEarningsList(agencyId, 12),
-    getChartData(agencyId, { timeRange: 'all' }), // Default to all-time data
-    getKPIMetrics(agencyId, { timeRange: 'all' }), // Default to all-time data
-    getCategoryBreakdown(agencyId, { timeRange: 'all' }), // Default to all-time data
-  ])
-
-  // DEBUG: Log dashboard data (Phase 51D - Data Pipeline Verification)
-  console.log('=== DASHBOARD DATA DEBUG ===')
-  console.log('Agency ID:', agencyId)
-  console.log('Revenue History:', JSON.stringify(revenueHistory, null, 2))
-  console.log('Revenue Breakdown:', JSON.stringify(revenueBreakdown, null, 2))
-  console.log('Dashboard KPIs:', JSON.stringify(dashboardKPIs, null, 2))
-  console.log('Expense History:', JSON.stringify(expenseHistory, null, 2))
-  console.log('=========================')
 
   return (
     <div className="flex min-h-screen bg-zinc-950">
@@ -111,19 +69,6 @@ export default async function DashboardPage() {
             agency={agency}
             models={models || []}
             totalExpenses={totalExpenses}
-            revenueHistory={revenueHistory}
-            revenueBreakdown={revenueBreakdown}
-            conversionStats={conversionStats}
-            trafficSources={trafficSources}
-            subscriberGrowth={subscriberGrowth}
-            modelPerformance={modelPerformance}
-            dashboardKPIs={dashboardKPIs}
-            expenseHistory={expenseHistory}
-            earningsByType={earningsByType}
-            monthlyEarningsList={monthlyEarningsList}
-            fanvueChartData={fanvueChartData}
-            fanvueKPIMetrics={fanvueKPIMetrics}
-            fanvueCategoryBreakdown={fanvueCategoryBreakdown}
           />
         </main>
       </div>

@@ -95,26 +95,8 @@ interface DashboardClientProps {
   agency: Agency | null
   models: Model[]
   totalExpenses: number
-  revenueHistory: RevenueDataPoint[]
-  revenueBreakdown: RevenueBreakdownItem[]
-  conversionStats: ConversionStats
-  trafficSources: TrafficSource[]
-  subscriberGrowth: SubscriberGrowthPoint[]
-  modelPerformance: ModelPerformanceItem[]
-  dashboardKPIs: DashboardKPIs
-  expenseHistory: ExpenseHistoryPoint[]
-  earningsByType: Array<{ category: string; amount: number; color: string }>
-  monthlyEarningsList: Array<{
-    month: string
-    year: number
-    net: number
-    gross: number
-    fees: number
-    transactions: Array<{ category: string; amount: number; count: number }>
-  }>
-  fanvueChartData: ChartDataPoint[]
-  fanvueKPIMetrics: KPIMetrics
-  fanvueCategoryBreakdown: CategoryBreakdown[]
+  // All analytics data is now fetched client-side via /api/analytics/dashboard
+  // This ensures Overview and Fanvue tabs use the SAME data source
 }
 
 // Chart configs - Lime Theme
@@ -153,22 +135,29 @@ export default function DashboardClient({
   agency,
   models,
   totalExpenses,
-  revenueHistory,
-  revenueBreakdown,
-  conversionStats,
-  trafficSources,
-  subscriberGrowth,
-  modelPerformance,
-  dashboardKPIs,
-  expenseHistory,
-  earningsByType,
-  monthlyEarningsList,
-  fanvueChartData,
-  fanvueKPIMetrics,
-  fanvueCategoryBreakdown,
 }: DashboardClientProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
+
+  // Default empty arrays for removed server-side props (now fetched client-side)
+  const revenueHistory: RevenueDataPoint[] = []
+  const revenueBreakdown: RevenueBreakdownItem[] = []
+  const conversionStats = {
+    clickToSubscriberRate: 0,
+    messageConversionRate: 0,
+    ppvConversionRate: 0,
+    trend: 0,
+  }
+  const trafficSources: TrafficSource[] = []
+  const subscriberGrowth: SubscriberGrowthPoint[] = []
+  const modelPerformance: ModelPerformanceItem[] = []
+  const dashboardKPIs = {
+    totalRevenue: 0,
+    activeSubscribers: 0,
+    averageRevenuePerUser: 0,
+    conversionRate: 0,
+  }
+  const expenseHistory: ExpenseHistoryPoint[] = []
 
   // Model filter state
   const [selectedModelId, setSelectedModelId] = useState<string>('all')
@@ -222,10 +211,24 @@ export default function DashboardClient({
           params.set('endDate', dateRange.endDate.toISOString())
         }
 
+        console.log('[Overview] Fetching data with params:', {
+          preset: dateRange.preset,
+          timeRange,
+          startDate: dateRange.startDate?.toISOString(),
+          endDate: dateRange.endDate?.toISOString(),
+          url: `/api/analytics/dashboard?${params.toString()}`,
+        })
+
         const response = await fetch(`/api/analytics/dashboard?${params.toString()}`)
         if (!response.ok) throw new Error('Failed to fetch overview data')
 
         const data = await response.json()
+        console.log('[Overview] Received data:', {
+          totalRevenue: data.kpiMetrics?.totalRevenue,
+          transactionCount: data.kpiMetrics?.transactionCount,
+          chartDataPoints: data.chartData?.length,
+        })
+
         setOverviewData({
           chartData: data.chartData || [],
           kpiMetrics: data.kpiMetrics,
