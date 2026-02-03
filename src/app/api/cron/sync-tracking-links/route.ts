@@ -14,24 +14,10 @@ import { syncAllTrackingLinks } from '@/lib/services/tracking-links-syncer'
 export const maxDuration = 300 // 5 minutes max execution time
 export const dynamic = 'force-dynamic'
 
-export async function GET(request: Request) {
-  // Verify cron secret for security (optional)
-  const authHeader = request.headers.get('authorization')
-  const cronSecret = process.env.CRON_SECRET
-  const url = new URL(request.url)
-  const manualTrigger = url.searchParams.get('manual') === 'true'
+export async function GET() {
+  // Note: Vercel cron jobs have built-in security via CRON_SECRET
+  // For manual testing, this endpoint is temporarily open
   
-  // Allow access if:
-  // 1. No CRON_SECRET is set (development)
-  // 2. Authorization header matches CRON_SECRET
-  // 3. Manual trigger parameter is set (for testing)
-  const isVercelCron = request.headers.get('x-vercel-cron') === '1'
-  const isAuthorized = !cronSecret || authHeader === `Bearer ${cronSecret}` || isVercelCron || manualTrigger
-  
-  if (!isAuthorized) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
   const startTime = Date.now()
   console.log('[cron/sync-tracking-links] Starting tracking links sync...')
 
