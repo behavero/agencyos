@@ -16,11 +16,16 @@ interface FanvueTrackingLink {
   externalSocialPlatform: string | null
   createdAt: string
   clicks: number
-  // Additional fields that may be returned by the API
-  followsCount?: number
-  subsCount?: number
-  subsRevenue?: number
-  userSpend?: number
+  // Nested engagement data from API
+  engagement?: {
+    acquiredSubscribers: number
+    acquiredFollowers: number
+  }
+  // Nested earnings data from API (in CENTS!)
+  earnings?: {
+    totalGross: number
+    totalNet: number
+  }
 }
 
 interface TrackingLinksResponse {
@@ -104,6 +109,15 @@ export async function syncTrackingLinksForModel(
 
     // Upsert each tracking link
     for (const link of allLinks) {
+      // Extract nested data (API returns amounts in CENTS!)
+      const subsCount = link.engagement?.acquiredSubscribers || 0
+      const followsCount = link.engagement?.acquiredFollowers || 0
+      const totalGross = (link.earnings?.totalGross || 0) / 100 // Convert cents to dollars
+      
+      // Note: Fanvue API doesn't separate subs_revenue from user_spend
+      // We only get totalGross which is ALL revenue from this tracking link
+      // Store it as subs_revenue for now (it's actually total attributed revenue)
+      
       const { error } = await supabase
         .from('tracking_links')
         .upsert({
@@ -114,10 +128,10 @@ export async function syncTrackingLinksForModel(
           link_url: link.linkUrl,
           external_social_platform: link.externalSocialPlatform,
           clicks: link.clicks || 0,
-          follows_count: link.followsCount || 0,
-          subs_count: link.subsCount || 0,
-          subs_revenue: link.subsRevenue || 0,
-          user_spend: link.userSpend || 0,
+          follows_count: followsCount,
+          subs_count: subsCount,
+          subs_revenue: totalGross, // Total attributed revenue (was in cents)
+          user_spend: 0, // API doesn't provide this breakdown
           link_created_at: link.createdAt,
           last_synced_at: new Date().toISOString(),
         }, {

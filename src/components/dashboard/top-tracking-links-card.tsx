@@ -247,12 +247,12 @@ export function TopTrackingLinksCard({ models = [], initialModelId }: TopTrackin
                     </div>
                   </div>
                   
-                  {/* Revenue Breakdown */}
-                  <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-                    <span>Subs: {formatCurrency(link.subsRevenue)}</span>
-                    <span>•</span>
-                    <span>PPV/Tips: {formatCurrency(link.userSpend)}</span>
-                  </div>
+                  {/* Additional info */}
+                  {link.followsCount > 0 && (
+                    <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                      <span>+{link.followsCount} followers</span>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
