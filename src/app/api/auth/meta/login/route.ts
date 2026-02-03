@@ -1,12 +1,8 @@
 /**
- * Meta OAuth Login Route
+ * Instagram OAuth Login Route
  * 
- * Redirects user to Facebook Login dialog to authorize Instagram access.
- * Required scopes:
- * - instagram_basic: Access to basic Instagram account info
- * - instagram_manage_insights: Access to Instagram Insights API
- * - pages_show_list: List Facebook Pages connected to account
- * - pages_read_engagement: Read Page engagement metrics
+ * Redirects user to Instagram OAuth dialog to authorize access.
+ * Uses Instagram Business Login API for insights access.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -28,21 +24,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Model ID required' }, { status: 400 })
     }
 
-    // Meta OAuth configuration
-    const clientId = process.env.NEXT_PUBLIC_META_APP_ID
+    // Instagram OAuth configuration
+    // Use Instagram App ID (not Facebook App ID)
+    const clientId = process.env.INSTAGRAM_APP_ID || process.env.NEXT_PUBLIC_META_APP_ID
     const redirectUri = process.env.META_REDIRECT_URI || `${request.nextUrl.origin}/api/auth/meta/callback`
     
     if (!clientId) {
-      return NextResponse.json({ error: 'Meta App ID not configured' }, { status: 500 })
+      return NextResponse.json({ error: 'Instagram App ID not configured' }, { status: 500 })
     }
 
-    // Required scopes for Instagram Business insights
+    // Required scopes for Instagram Business API
     const scopes = [
-      'instagram_basic',
-      'instagram_manage_insights', 
-      'pages_show_list',
-      'pages_read_engagement',
-      'business_management', // For accessing business accounts
+      'instagram_business_basic',
+      'instagram_business_manage_insights',
     ].join(',')
 
     // Generate state parameter for CSRF protection (includes modelId)
@@ -52,19 +46,20 @@ export async function GET(request: NextRequest) {
       timestamp: Date.now(),
     })).toString('base64')
 
-    // Build Facebook OAuth URL
-    const authUrl = new URL('https://www.facebook.com/v18.0/dialog/oauth')
+    // Build Instagram OAuth URL (not Facebook!)
+    const authUrl = new URL('https://www.instagram.com/oauth/authorize')
     authUrl.searchParams.set('client_id', clientId)
     authUrl.searchParams.set('redirect_uri', redirectUri)
     authUrl.searchParams.set('scope', scopes)
     authUrl.searchParams.set('state', state)
     authUrl.searchParams.set('response_type', 'code')
+    authUrl.searchParams.set('force_reauth', 'true') // Always show login
 
-    console.log('[meta/login] Redirecting to Meta OAuth:', authUrl.toString())
+    console.log('[instagram/login] Redirecting to Instagram OAuth:', authUrl.toString())
 
     return NextResponse.redirect(authUrl.toString())
   } catch (error) {
-    console.error('[meta/login] Error:', error)
+    console.error('[instagram/login] Error:', error)
     return NextResponse.json({
       error: error instanceof Error ? error.message : 'Unknown error',
     }, { status: 500 })

@@ -1,36 +1,38 @@
 /**
- * Meta OAuth Callback Route
+ * Instagram OAuth Callback Route
  * 
- * Handles the OAuth callback from Facebook/Meta:
+ * Handles the OAuth callback from Instagram:
  * 1. Exchange authorization code for short-lived token
  * 2. Exchange short-lived token for long-lived token (60 days)
- * 3. Fetch connected Instagram Business Accounts
+ * 3. Fetch Instagram account info
  * 4. Save credentials to the models table
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 
-const META_GRAPH_API = 'https://graph.facebook.com/v18.0'
+const INSTAGRAM_API = 'https://api.instagram.com'
+const INSTAGRAM_GRAPH_API = 'https://graph.instagram.com'
 
 interface TokenResponse {
   access_token: string
-  token_type: string
-  expires_in?: number
+  user_id: number
+  permissions?: string[]
+  error_type?: string
+  error_message?: string
 }
 
-interface InstagramAccount {
+interface LongLivedTokenResponse {
+  access_token: string
+  token_type: string
+  expires_in: number
+}
+
+interface InstagramUser {
   id: string
   username: string
-  name?: string
-  profile_picture_url?: string
-}
-
-interface FacebookPage {
-  id: string
-  name: string
-  instagram_business_account?: InstagramAccount
-  access_token: string
+  account_type?: string
+  media_count?: number
 }
 
 export async function GET(request: NextRequest) {
@@ -38,11 +40,11 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get('code')
   const state = searchParams.get('state')
   const error = searchParams.get('error')
-  const errorDescription = searchParams.get('error_description')
+  const errorDescription = searchParams.get('error_description') || searchParams.get('error_reason')
 
   // Handle OAuth errors
   if (error) {
-    console.error('[meta/callback] OAuth error:', error, errorDescription)
+    console.error('[instagram/callback] OAuth error:', error, errorDescription)
     return NextResponse.redirect(
       new URL(`/dashboard?error=${encodeURIComponent(errorDescription || error)}`, request.url)
     )
@@ -65,7 +67,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const { modelId, userId } = stateData
+    const { modelId } = stateData
 
     // Check state age (max 10 minutes)
     if (Date.now() - stateData.timestamp > 10 * 60 * 1000) {
@@ -74,95 +76,77 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const clientId = process.env.NEXT_PUBLIC_META_APP_ID
-    const clientSecret = process.env.META_APP_SECRET
+    // Use Instagram App credentials
+    const clientId = process.env.INSTAGRAM_APP_ID || process.env.NEXT_PUBLIC_META_APP_ID
+    const clientSecret = process.env.INSTAGRAM_APP_SECRET || process.env.META_APP_SECRET
     const redirectUri = process.env.META_REDIRECT_URI || `${request.nextUrl.origin}/api/auth/meta/callback`
 
     if (!clientId || !clientSecret) {
-      throw new Error('Meta credentials not configured')
+      throw new Error('Instagram credentials not configured')
     }
 
     // Step 1: Exchange code for short-lived token
-    console.log('[meta/callback] Exchanging code for short-lived token...')
-    const tokenUrl = new URL(`${META_GRAPH_API}/oauth/access_token`)
-    tokenUrl.searchParams.set('client_id', clientId)
-    tokenUrl.searchParams.set('client_secret', clientSecret)
-    tokenUrl.searchParams.set('redirect_uri', redirectUri)
-    tokenUrl.searchParams.set('code', code)
+    console.log('[instagram/callback] Exchanging code for short-lived token...')
+    
+    const tokenResponse = await fetch(`${INSTAGRAM_API}/oauth/access_token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        grant_type: 'authorization_code',
+        redirect_uri: redirectUri,
+        code: code,
+      }),
+    })
 
-    const tokenResponse = await fetch(tokenUrl.toString())
     const tokenData: TokenResponse = await tokenResponse.json()
 
     if (!tokenResponse.ok || !tokenData.access_token) {
-      console.error('[meta/callback] Token exchange failed:', tokenData)
-      throw new Error('Failed to exchange authorization code')
+      console.error('[instagram/callback] Token exchange failed:', tokenData)
+      throw new Error(tokenData.error_message || 'Failed to exchange authorization code')
     }
+
+    console.log('[instagram/callback] Got short-lived token for user:', tokenData.user_id)
 
     // Step 2: Exchange for long-lived token (60 days)
-    console.log('[meta/callback] Exchanging for long-lived token...')
-    const longLivedUrl = new URL(`${META_GRAPH_API}/oauth/access_token`)
-    longLivedUrl.searchParams.set('grant_type', 'fb_exchange_token')
-    longLivedUrl.searchParams.set('client_id', clientId)
+    console.log('[instagram/callback] Exchanging for long-lived token...')
+    const longLivedUrl = new URL(`${INSTAGRAM_GRAPH_API}/access_token`)
+    longLivedUrl.searchParams.set('grant_type', 'ig_exchange_token')
     longLivedUrl.searchParams.set('client_secret', clientSecret)
-    longLivedUrl.searchParams.set('fb_exchange_token', tokenData.access_token)
+    longLivedUrl.searchParams.set('access_token', tokenData.access_token)
 
     const longLivedResponse = await fetch(longLivedUrl.toString())
-    const longLivedData: TokenResponse = await longLivedResponse.json()
+    const longLivedData: LongLivedTokenResponse = await longLivedResponse.json()
 
     if (!longLivedResponse.ok || !longLivedData.access_token) {
-      console.error('[meta/callback] Long-lived token exchange failed:', longLivedData)
-      throw new Error('Failed to get long-lived token')
+      console.error('[instagram/callback] Long-lived token exchange failed:', longLivedData)
+      // Fall back to short-lived token if long-lived fails
+      console.log('[instagram/callback] Using short-lived token as fallback')
     }
 
-    const longLivedToken = longLivedData.access_token
-    // Default to 60 days if expires_in not provided
-    const expiresIn = longLivedData.expires_in || 60 * 24 * 60 * 60
+    const accessToken = longLivedData.access_token || tokenData.access_token
+    // Default to 60 days for long-lived, 1 hour for short-lived
+    const expiresIn = longLivedData.expires_in || 60 * 60
     const expiresAt = new Date(Date.now() + expiresIn * 1000)
 
-    // Step 3: Get Facebook Pages with Instagram Business Accounts
-    console.log('[meta/callback] Fetching connected Instagram accounts...')
-    const pagesUrl = new URL(`${META_GRAPH_API}/me/accounts`)
-    pagesUrl.searchParams.set('access_token', longLivedToken)
-    pagesUrl.searchParams.set('fields', 'id,name,instagram_business_account{id,username,name,profile_picture_url},access_token')
+    // Step 3: Get Instagram account info
+    console.log('[instagram/callback] Fetching Instagram account info...')
+    const userUrl = new URL(`${INSTAGRAM_GRAPH_API}/me`)
+    userUrl.searchParams.set('fields', 'id,username,account_type,media_count')
+    userUrl.searchParams.set('access_token', accessToken)
 
-    const pagesResponse = await fetch(pagesUrl.toString())
-    const pagesData = await pagesResponse.json()
+    const userResponse = await fetch(userUrl.toString())
+    const userData: InstagramUser = await userResponse.json()
 
-    if (!pagesResponse.ok) {
-      console.error('[meta/callback] Failed to fetch pages:', pagesData)
-      throw new Error('Failed to fetch connected pages')
+    if (!userResponse.ok || !userData.id) {
+      console.error('[instagram/callback] Failed to fetch user info:', userData)
+      throw new Error('Failed to fetch Instagram account info')
     }
 
-    // Find pages with Instagram Business accounts
-    const pages: FacebookPage[] = pagesData.data || []
-    const instagramAccounts: Array<{
-      pageId: string
-      pageName: string
-      pageToken: string
-      instagram: InstagramAccount
-    }> = []
-
-    for (const page of pages) {
-      if (page.instagram_business_account) {
-        instagramAccounts.push({
-          pageId: page.id,
-          pageName: page.name,
-          pageToken: page.access_token,
-          instagram: page.instagram_business_account,
-        })
-      }
-    }
-
-    console.log(`[meta/callback] Found ${instagramAccounts.length} Instagram Business accounts`)
-
-    if (instagramAccounts.length === 0) {
-      return NextResponse.redirect(
-        new URL('/dashboard?error=No+Instagram+Business+accounts+found.+Make+sure+your+Instagram+is+connected+to+a+Facebook+Page.', request.url)
-      )
-    }
-
-    // Use the first Instagram account (could add UI to select if multiple)
-    const primaryAccount = instagramAccounts[0]
+    console.log(`[instagram/callback] Found Instagram account: @${userData.username}`)
 
     // Step 4: Save to database
     const supabase = await createAdminClient()
@@ -170,26 +154,26 @@ export async function GET(request: NextRequest) {
     const { error: updateError } = await supabase
       .from('models')
       .update({
-        instagram_access_token: primaryAccount.pageToken, // Use page token for insights
-        instagram_business_id: primaryAccount.instagram.id,
-        instagram_username: primaryAccount.instagram.username,
+        instagram_access_token: accessToken,
+        instagram_business_id: userData.id,
+        instagram_username: userData.username,
         instagram_token_expires_at: expiresAt.toISOString(),
       })
       .eq('id', modelId)
 
     if (updateError) {
-      console.error('[meta/callback] Database update failed:', updateError)
+      console.error('[instagram/callback] Database update failed:', updateError)
       throw new Error('Failed to save Instagram credentials')
     }
 
-    console.log(`[meta/callback] Successfully connected @${primaryAccount.instagram.username} to model ${modelId}`)
+    console.log(`[instagram/callback] Successfully connected @${userData.username} to model ${modelId}`)
 
-    // Redirect back to dashboard with success message
+    // Redirect back to creator page with success message
     return NextResponse.redirect(
-      new URL(`/dashboard?success=Instagram+connected+successfully!+@${primaryAccount.instagram.username}`, request.url)
+      new URL(`/dashboard/creator-management/${modelId}?success=Instagram+connected!+@${userData.username}`, request.url)
     )
   } catch (error) {
-    console.error('[meta/callback] Error:', error)
+    console.error('[instagram/callback] Error:', error)
     return NextResponse.redirect(
       new URL(`/dashboard?error=${encodeURIComponent(error instanceof Error ? error.message : 'Unknown error')}`, request.url)
     )
