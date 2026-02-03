@@ -7,6 +7,13 @@ import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
@@ -160,6 +167,39 @@ export default function DashboardClient({
 }: DashboardClientProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
+
+  // Model filter state
+  const [selectedModelId, setSelectedModelId] = useState<string>('all')
+  const selectedModel = models.find(m => m.id === selectedModelId)
+
+  // Filter Fanvue data based on selected model
+  const filteredFanvueData = useMemo(() => {
+    if (selectedModelId === 'all') {
+      return {
+        chartData: fanvueChartData,
+        kpiMetrics: fanvueKPIMetrics,
+        categoryBreakdown: fanvueCategoryBreakdown,
+      }
+    }
+
+    // For individual model, we would need to re-fetch data
+    // For now, show a message to run a filtered sync
+    return {
+      chartData: [],
+      kpiMetrics: {
+        totalRevenue: selectedModel?.revenue_total || 0,
+        netRevenue: (selectedModel?.revenue_total || 0) * 0.8,
+        activeSubscribers: selectedModel?.subscribers_count || 0,
+        arpu: 0,
+        messageConversionRate: 0,
+        ppvConversionRate: 0,
+        tipAverage: 0,
+        transactionCount: 0,
+        revenueGrowth: 0,
+      },
+      categoryBreakdown: [],
+    }
+  }, [selectedModelId, fanvueChartData, fanvueKPIMetrics, fanvueCategoryBreakdown, selectedModel])
 
   // Handle OAuth success/error notifications
   useEffect(() => {
@@ -735,6 +775,49 @@ export default function DashboardClient({
 
         {/* Fanvue & Finance Tab */}
         <TabsContent value="fanvue" className="space-y-6 mt-0">
+          {/* Model Filter Selector */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <label htmlFor="model-filter" className="text-sm font-medium">
+                View Stats For:
+              </label>
+              <Select value={selectedModelId} onValueChange={setSelectedModelId}>
+                <SelectTrigger id="model-filter" className="w-[240px]">
+                  <SelectValue placeholder="Select a model..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">
+                    <span className="font-medium">All Models</span>
+                    <span className="text-xs text-muted-foreground ml-2">(Agency-wide)</span>
+                  </SelectItem>
+                  {models.length > 0 && (
+                    <>
+                      <div className="h-px bg-border my-1" />
+                      {models.map(model => (
+                        <SelectItem key={model.id} value={model.id}>
+                          <div className="flex items-center gap-2">
+                            <span>{model.name}</span>
+                            {model.fanvue_username && (
+                              <span className="text-xs text-muted-foreground">
+                                @{model.fanvue_username}
+                              </span>
+                            )}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </>
+                  )}
+                </SelectContent>
+              </Select>
+              {selectedModelId !== 'all' && selectedModel && (
+                <Badge variant="outline" className="gap-1">
+                  <Users className="w-3 h-3" />
+                  Individual Stats
+                </Badge>
+              )}
+            </div>
+          </div>
+
           {/* Advanced Fanvue Analytics - Revenue Chart & Breakdown */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
             {/* Revenue Over Time Chart (Takes 4 columns) */}
@@ -745,11 +828,23 @@ export default function DashboardClient({
                   Revenue Over Time
                 </CardTitle>
                 <CardDescription>
-                  Last 30 days • {fanvueKPIMetrics.transactionCount.toLocaleString()} transactions
+                  Last 30 days • {filteredFanvueData.kpiMetrics.transactionCount.toLocaleString()}{' '}
+                  transactions
                 </CardDescription>
               </CardHeader>
               <CardContent className="pl-2">
-                <RevenueChart data={fanvueChartData} />
+                {filteredFanvueData.chartData.length > 0 ? (
+                  <RevenueChart data={filteredFanvueData.chartData} />
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-[200px] text-center p-6">
+                    <p className="text-muted-foreground mb-2">No revenue data available yet.</p>
+                    <p className="text-sm text-muted-foreground">
+                      {selectedModelId === 'all'
+                        ? 'Sync your Fanvue transactions to see charts.'
+                        : 'Individual model filtering requires transaction-level data.'}
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -763,7 +858,21 @@ export default function DashboardClient({
                 <CardDescription>Revenue breakdown with transaction counts</CardDescription>
               </CardHeader>
               <CardContent>
-                <EarningsBreakdown data={fanvueCategoryBreakdown} currency={agency?.currency} />
+                {filteredFanvueData.categoryBreakdown.length > 0 ? (
+                  <EarningsBreakdown
+                    data={filteredFanvueData.categoryBreakdown}
+                    currency={agency?.currency}
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-[200px] text-center p-6">
+                    <p className="text-muted-foreground mb-2">No earnings data available yet.</p>
+                    <p className="text-sm text-muted-foreground">
+                      {selectedModelId === 'all'
+                        ? 'Sync your Fanvue transactions to see breakdown.'
+                        : 'Run a sync to populate transaction data for this model.'}
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -777,19 +886,19 @@ export default function DashboardClient({
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-primary">
-                  {formatCurrency(fanvueKPIMetrics.totalRevenue)}
+                  {formatCurrency(filteredFanvueData.kpiMetrics.totalRevenue)}
                 </div>
                 <div className="flex items-center gap-1 mt-1">
-                  {fanvueKPIMetrics.revenueGrowth >= 0 ? (
+                  {filteredFanvueData.kpiMetrics.revenueGrowth >= 0 ? (
                     <ArrowUpRight className="h-3 w-3 text-green-400" />
                   ) : (
                     <ArrowDownRight className="h-3 w-3 text-red-400" />
                   )}
                   <span
-                    className={`text-xs ${fanvueKPIMetrics.revenueGrowth >= 0 ? 'text-green-400' : 'text-red-400'}`}
+                    className={`text-xs ${filteredFanvueData.kpiMetrics.revenueGrowth >= 0 ? 'text-green-400' : 'text-red-400'}`}
                   >
-                    {fanvueKPIMetrics.revenueGrowth >= 0 ? '+' : ''}
-                    {fanvueKPIMetrics.revenueGrowth}% vs previous period
+                    {filteredFanvueData.kpiMetrics.revenueGrowth >= 0 ? '+' : ''}
+                    {filteredFanvueData.kpiMetrics.revenueGrowth}% vs previous period
                   </span>
                 </div>
               </CardContent>
@@ -802,7 +911,7 @@ export default function DashboardClient({
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-green-400">
-                  {formatCurrency(fanvueKPIMetrics.netRevenue)}
+                  {formatCurrency(filteredFanvueData.kpiMetrics.netRevenue)}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">After platform fees</p>
               </CardContent>
@@ -815,7 +924,7 @@ export default function DashboardClient({
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-violet-400">
-                  {formatCurrency(fanvueKPIMetrics.arpu)}
+                  {formatCurrency(filteredFanvueData.kpiMetrics.arpu)}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">Average revenue per user</p>
               </CardContent>

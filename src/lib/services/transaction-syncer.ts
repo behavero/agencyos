@@ -206,21 +206,23 @@ export async function syncModelTransactions(modelId: string): Promise<SyncResult
       return {
         agency_id: model.agency_id,
         model_id: model.id,
-        fanvue_id: `${earning.date}_${earning.source}_${earning.gross}`, // Generate unique ID
-        fanvue_user_id: earning.user?.uuid || null,
+        fanvue_transaction_id: `${earning.date}_${earning.source}_${earning.gross}_${earning.user?.uuid || 'unknown'}`, // Generate unique ID
+        transaction_type: category,
         amount: earning.gross / 100, // Convert cents to dollars
         net_amount: earning.net / 100, // Convert cents to dollars
+        platform_fee: (earning.gross - earning.net) / 100, // Calculate fee
         currency: earning.currency || 'USD',
-        category,
+        fan_id: earning.user?.uuid || null,
+        fan_username: earning.user?.handle || null,
         description: earning.source,
-        fanvue_created_at: fanvueCreatedAt,
+        transaction_date: fanvueCreatedAt,
         synced_at: new Date().toISOString(),
       }
     })
 
     // Upsert transactions (insert or update on conflict)
     const { error: upsertError } = await supabase.from('fanvue_transactions').upsert(transactions, {
-      onConflict: 'fanvue_id,model_id',
+      onConflict: 'fanvue_transaction_id',
       ignoreDuplicates: false,
     })
 
