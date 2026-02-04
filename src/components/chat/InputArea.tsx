@@ -7,7 +7,16 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Send, Image as ImageIcon, Video, DollarSign, X, Sparkles, FolderOpen } from 'lucide-react'
+import {
+  Send,
+  Image as ImageIcon,
+  Video,
+  DollarSign,
+  X,
+  Sparkles,
+  FolderOpen,
+  Wand2,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useChatStore } from '@/store/chatStore'
 import { toast } from 'sonner'
@@ -35,6 +44,12 @@ interface InputAreaProps {
   vaultAssets?: VaultAsset[]
   macros?: Macro[]
   className?: string
+  // AI Copilot props
+  conversationHistory?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
+  userModel?: string // Creator/model name
+  subscriberTier?: 'whale' | 'spender' | 'free' | 'unknown'
+  fanUuid?: string
+  modelId?: string
 }
 
 /**
@@ -55,6 +70,11 @@ export function InputArea({
   vaultAssets = [],
   macros = [],
   className,
+  conversationHistory = [],
+  userModel,
+  subscriberTier = 'unknown',
+  fanUuid,
+  modelId,
 }: InputAreaProps) {
   const [text, setText] = useState('')
   const [isPPV, setIsPPV] = useState(false)
@@ -62,6 +82,7 @@ export function InputArea({
   const [selectedMedia, setSelectedMedia] = useState<string[]>([])
   const [vaultOpen, setVaultOpen] = useState(false)
   const [macrosOpen, setMacrosOpen] = useState(false)
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const chatStore = useChatStore()
 
@@ -158,6 +179,57 @@ export function InputArea({
       setPpvPrice((macro.price / 100).toString())
     }
     setMacrosOpen(false)
+  }
+
+  const handleGenerateAI = async () => {
+    if (!conversationHistory || conversationHistory.length === 0 || !userModel) {
+      toast.error('Need conversation history to generate AI reply')
+      return
+    }
+
+    setIsGeneratingAI(true)
+
+    try {
+      const response = await fetch('/api/ai/generate-reply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationHistory,
+          userModel,
+          subscriberTier,
+          fanUuid,
+          modelId,
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to generate reply')
+      }
+
+      const data = await response.json()
+
+      if (data.suggestedText) {
+        setText(data.suggestedText)
+        // Focus the textarea
+        if (textareaRef.current) {
+          textareaRef.current.focus()
+          // Move cursor to end
+          textareaRef.current.setSelectionRange(
+            data.suggestedText.length,
+            data.suggestedText.length
+          )
+        }
+        toast.success('AI suggestion generated!')
+      } else {
+        toast.error('No suggestion generated')
+      }
+    } catch (error) {
+      console.error('[InputArea] AI generation error:', error)
+      toast.error(error instanceof Error ? error.message : 'Failed to generate AI reply')
+    } finally {
+      setIsGeneratingAI(false)
+    }
   }
 
   const handleMediaSelect = (assetId: string) => {
@@ -264,10 +336,32 @@ export function InputArea({
           <DollarSign className="w-4 h-4" />
         </Button>
 
+        {/* Magic Wand - AI Copilot */}
+        {conversationHistory && conversationHistory.length > 0 && userModel && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleGenerateAI}
+            disabled={isGeneratingAI || isLoading}
+            className="shrink-0"
+            title="Generate AI reply suggestion"
+          >
+            <Wand2
+              className={`w-4 h-4 ${isGeneratingAI ? 'animate-spin' : ''} ${
+                subscriberTier === 'whale'
+                  ? 'text-yellow-400'
+                  : subscriberTier === 'spender'
+                    ? 'text-blue-400'
+                    : 'text-zinc-400'
+              }`}
+            />
+          </Button>
+        )}
+
         {/* Send Button */}
         <Button
           onClick={handleSend}
-          disabled={isLoading || (!text.trim() && selectedMedia.length === 0)}
+          disabled={isLoading || isGeneratingAI || (!text.trim() && selectedMedia.length === 0)}
           className="shrink-0"
         >
           <Send className="w-4 h-4" />

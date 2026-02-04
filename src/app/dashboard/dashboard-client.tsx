@@ -74,6 +74,8 @@ import { NewFansAnalytics } from '@/components/dashboard/new-fans-analytics'
 import { TopTrackingLinksCard } from '@/components/dashboard/top-tracking-links-card'
 import { InstagramInsightsCard } from '@/components/dashboard/instagram-insights-card'
 import { useAgencyData } from '@/providers/agency-data-provider'
+import { LiveRevenueIndicator } from '@/components/dashboard/live-revenue-indicator'
+import { useQuery } from '@tanstack/react-query'
 
 // Dark mode chart theme for Recharts
 const CHART_THEME = {
@@ -429,7 +431,10 @@ export default function DashboardClient() {
 
   // ===== DYNAMIC CALCULATIONS (from filtered API data) =====
   // ALWAYS use overviewData (no fallbacks to static data!)
-  const totalGrossRevenue = overviewData?.kpiMetrics?.totalRevenue ?? 0
+  // Use live models revenue if available (from heartbeat), otherwise use overviewData
+  const liveTotalRevenue = displayModels.reduce((sum, m) => sum + Number(m.revenue_total || 0), 0)
+  const totalGrossRevenue =
+    liveTotalRevenue > 0 ? liveTotalRevenue : (overviewData?.kpiMetrics?.totalRevenue ?? 0)
   const totalNetRevenue = overviewData?.kpiMetrics?.netRevenue ?? 0
   const platformFee = totalGrossRevenue - totalNetRevenue
   const afterPlatformFee = totalNetRevenue
@@ -585,7 +590,14 @@ export default function DashboardClient() {
             <Card className="glass border-primary/20 card-interactive">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Gross Revenue</CardTitle>
-                <DollarSign className="h-4 w-4 text-primary" />
+                <div className="flex items-center gap-2">
+                  <LiveRevenueIndicator
+                    isLive={isRevenueLive}
+                    isSyncing={isRevenueSyncing}
+                    timeSinceUpdate={timeSinceUpdate}
+                  />
+                  <DollarSign className="h-4 w-4 text-primary" />
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-primary">
@@ -1425,7 +1437,7 @@ export default function DashboardClient() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {models.map(model => {
+                {displayModels.map(model => {
                   const modelRevenue = Number(model.revenue_total || 0)
                   const modelSubs = Number(model.subscribers_count || 0)
                   const revenuePercent =
@@ -1452,6 +1464,14 @@ export default function DashboardClient() {
                           </div>
                         </div>
                         <div className="text-right">
+                          <div className="flex items-center gap-2 justify-end mb-1">
+                            <LiveRevenueIndicator
+                              isLive={isRevenueLive}
+                              isSyncing={isRevenueSyncing}
+                              timeSinceUpdate={timeSinceUpdate}
+                              className="scale-75"
+                            />
+                          </div>
                           <p className="text-lg font-bold text-primary">
                             {formatCurrency(modelRevenue)}
                           </p>

@@ -370,17 +370,14 @@ export function AgencyProvider({
     }
   }, [timeRange, selectedModelId]) // When filters change
 
-  // Auto-refresh every 2 minutes
+  // Revenue Heartbeat: Auto-refresh every 60 seconds for live updates
   useEffect(() => {
     if (!agency?.id) return
 
-    const interval = setInterval(
-      () => {
-        console.log('[AgencyProvider] Auto-refreshing data...')
-        refreshData()
-      },
-      2 * 60 * 1000
-    ) // 2 minutes
+    const interval = setInterval(() => {
+      console.log('[AgencyProvider] Revenue heartbeat - refreshing data...')
+      refreshData()
+    }, 60 * 1000) // 60 seconds (Revenue Heartbeat)
 
     return () => clearInterval(interval)
   }, [agency?.id, refreshData])

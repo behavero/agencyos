@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -31,16 +31,18 @@ import {
   Crown,
   ImageIcon as VaultIcon,
 } from 'lucide-react'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { toast } from 'sonner'
-import { useChatRoster, ChatThread } from '@/hooks/use-chat-roster'
+import {
+  useChatRosterWithWhalePriority,
+  ChatThreadWithTier,
+} from '@/hooks/useChatRosterWithWhalePriority'
 import { useChatMessages, ChatMessage } from '@/hooks/use-chat-messages'
+import { useFanvueChat } from '@/hooks/useFanvueChat'
+import { VirtualMessageList } from '@/components/chat/VirtualMessageList'
+import { InputArea } from '@/components/chat/InputArea'
+import { useChatStore } from '@/store/chatStore'
 
 type Model = Database['public']['Tables']['models']['Row']
 
@@ -84,7 +86,7 @@ function formatRelativeTime(dateStr: string | null): string {
 
 export default function MessagesClient({ models, vaultAssets = [] }: MessagesClientProps) {
   const [selectedModel, setSelectedModel] = useState<Model | null>(models[0] || null)
-  const [selectedChat, setSelectedChat] = useState<ChatThread | null>(null)
+  const [selectedChat, setSelectedChat] = useState<ChatThreadWithTier | null>(null)
   const [messageInput, setMessageInput] = useState('')
   const [sendingMessage, setSendingMessage] = useState(false)
   const [filter, setFilter] = useState<'all' | 'unread'>('all')
@@ -94,31 +96,75 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
   const [selectedAttachment, setSelectedAttachment] = useState<VaultAsset | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // Chat roster hook
+  // Chat roster hook with Whale Priority sorting
   const {
     chats,
     loading: chatsLoading,
     error: chatsError,
     refresh: refreshChats,
-  } = useChatRoster({
+  } = useChatRosterWithWhalePriority({
     creatorId: selectedModel?.id || null,
     filter,
     search: searchQuery,
   })
 
-  // Chat messages hook with 10-second polling
+  // Use new high-performance chat hook (TanStack Query + optimistic UI)
   const {
-    messages,
+    messages: fanvueMessages,
     loading: messagesLoading,
     error: messagesError,
     sendMessage: sendMessageApi,
     refresh: refreshMessages,
     creatorUuid,
-  } = useChatMessages({
+  } = useFanvueChat({
     creatorId: selectedModel?.id || null,
     userUuid: selectedChat?.user.uuid || null,
     pollingInterval: 10000, // 10 seconds
+    enabled: !!selectedChat?.user.uuid, // Only fetch when chat is selected
   })
+
+  // Fallback to old hook if new one fails (for compatibility)
+  const { messages: fallbackMessages, sendMessage: fallbackSendMessage } = useChatMessages({
+    creatorId: selectedModel?.id || null,
+    userUuid: selectedChat?.user.uuid || null,
+    pollingInterval: 0, // Disabled, only used as fallback
+  })
+
+  // Use new messages if available, otherwise fallback
+  const messages = fanvueMessages.length > 0 ? fanvueMessages : fallbackMessages
+
+  // Wrapper to handle both new and old sendMessage signatures
+  const sendMessage = useCallback(
+    async (payload: { text?: string; mediaUuids?: string[]; price?: number } | string) => {
+      if (typeof payload === 'string') {
+        // Old signature (string) - convert to new format
+        if (sendMessageApi) {
+          return await sendMessageApi({ text: payload })
+        }
+        if (fallbackSendMessage) {
+          return await fallbackSendMessage(payload)
+        }
+        return false
+      } else {
+        // New signature (object)
+        if (sendMessageApi) {
+          return await sendMessageApi(payload)
+        }
+        // Fallback doesn't support object format, convert to string
+        if (fallbackSendMessage && payload.text) {
+          return await fallbackSendMessage(payload.text)
+        }
+        return false
+      }
+    },
+    [sendMessageApi, fallbackSendMessage]
+  )
+
+  // Update chat store with selected conversation
+  const chatStore = useChatStore()
+  useEffect(() => {
+    chatStore.setSelectedConversation(selectedModel?.id || null, selectedChat?.user.uuid || null)
+  }, [selectedModel?.id, selectedChat?.user.uuid, chatStore])
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -141,20 +187,20 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
 
   const handleSendMessage = async () => {
     if (!messageInput.trim() || sendingMessage) return
-    
+
     setSendingMessage(true)
     const text = messageInput
     setMessageInput('')
 
     const success = await sendMessageApi(text)
-    
+
     if (success) {
       toast.success('Message sent!')
     } else {
       toast.error('Failed to send message')
       setMessageInput(text) // Restore on failure
     }
-    
+
     setSendingMessage(false)
   }
 
@@ -178,7 +224,7 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
             <p className="text-muted-foreground mb-4">
               Connect a Fanvue creator to start managing messages.
             </p>
-            <Button onClick={() => window.location.href = '/dashboard/creator-management'}>
+            <Button onClick={() => (window.location.href = '/dashboard/creator-management')}>
               Go to Creator Management
             </Button>
           </CardContent>
@@ -193,7 +239,7 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
       <div className="w-80 border-r border-zinc-800 flex flex-col bg-[#0d1321]">
         {/* Model Tabs */}
         <div className="flex items-center gap-2 p-3 border-b border-zinc-800 bg-[#0a0f1a] overflow-x-auto">
-          {models.map((model) => (
+          {models.map(model => (
             <button
               key={model.id}
               onClick={() => {
@@ -208,9 +254,7 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
             >
               <Avatar className="w-6 h-6">
                 <AvatarImage src={model.avatar_url || undefined} />
-                <AvatarFallback className="bg-violet-600 text-xs">
-                  {model.name?.[0]}
-                </AvatarFallback>
+                <AvatarFallback className="bg-violet-600 text-xs">{model.name?.[0]}</AvatarFallback>
               </Avatar>
               <span className="truncate max-w-[100px]">{model.name}</span>
               {model.unread_messages && model.unread_messages > 0 && (
@@ -257,7 +301,7 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
             <Input
               placeholder="Search fans..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={e => setSearchQuery(e.target.value)}
               className="pl-9 bg-zinc-800/50 border-zinc-700 text-white placeholder:text-zinc-500"
             />
           </div>
@@ -283,7 +327,7 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
             </div>
           ) : (
             <div className="p-2">
-              {filteredChats.map((chat) => (
+              {filteredChats.map(chat => (
                 <button
                   key={chat.user.uuid}
                   onClick={() => setSelectedChat(chat)}
@@ -306,17 +350,39 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium text-white truncate">
-                        {chat.user.nickname || chat.user.displayName}
-                      </span>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-medium text-white truncate">
+                          {chat.user.nickname || chat.user.displayName}
+                        </span>
+                        {chat.tier && (
+                          <Badge
+                            className={`text-xs shrink-0 ${
+                              chat.tier === 'whale'
+                                ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+                                : chat.tier === 'spender'
+                                  ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                                  : 'bg-zinc-700/50 text-zinc-400 border-zinc-600'
+                            }`}
+                          >
+                            {chat.tier === 'whale' ? '🐋' : chat.tier === 'spender' ? '💰' : '👤'}{' '}
+                            {chat.tier}
+                          </Badge>
+                        )}
+                        {chat.ltv !== undefined && chat.ltv > 0 && (
+                          <Badge
+                            variant="outline"
+                            className="text-xs shrink-0 bg-zinc-800/50 border-zinc-700 text-zinc-300"
+                          >
+                            ${(chat.ltv / 100).toFixed(0)}
+                          </Badge>
+                        )}
+                      </div>
                       <span className="text-xs text-zinc-500 flex-shrink-0">
                         {formatRelativeTime(chat.lastMessageAt)}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-sm text-zinc-400 truncate">
-                        @{chat.user.handle}
-                      </span>
+                      <span className="text-sm text-zinc-400 truncate">@{chat.user.handle}</span>
                     </div>
                     {chat.lastMessage && (
                       <div className="flex items-center gap-2 mt-1">
@@ -356,9 +422,7 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
                     <span className="font-semibold text-white">
                       {selectedChat.user.nickname || selectedChat.user.displayName}
                     </span>
-                    <span className="text-zinc-400 text-sm">
-                      @{selectedChat.user.handle}
-                    </span>
+                    <span className="text-zinc-400 text-sm">@{selectedChat.user.handle}</span>
                     {selectedChat.user.isTopSpender && (
                       <Badge className="bg-yellow-500/20 text-yellow-500 text-xs gap-1">
                         <Crown className="w-3 h-3" />
@@ -390,157 +454,88 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
               </div>
             </div>
 
-            {/* Messages Area */}
-            <ScrollArea className="flex-1 p-4">
-              <div className="space-y-4 max-w-3xl mx-auto">
-                {messagesLoading && messages.length === 0 ? (
-                  <div className="flex items-center justify-center py-8">
-                    <RefreshCw className="w-6 h-6 animate-spin text-zinc-500" />
+            {/* Virtualized Message List - Handles 5,000+ messages at 60fps */}
+            <div className="flex-1 overflow-hidden">
+              {messagesLoading && messages.length === 0 ? (
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-center">
+                    <RefreshCw className="w-8 h-8 mx-auto mb-2 animate-spin text-zinc-500" />
+                    <p className="text-zinc-400">Loading messages...</p>
                   </div>
-                ) : messagesError ? (
-                  <div className="text-center py-8">
+                </div>
+              ) : messagesError ? (
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-center">
                     <AlertCircle className="w-8 h-8 mx-auto mb-2 text-red-500" />
                     <p className="text-red-400">{messagesError}</p>
-                  </div>
-                ) : messages.length === 0 ? (
-                  <div className="text-center py-8 text-zinc-500">
-                    <MessageCircle className="w-12 h-12 mx-auto mb-3" />
-                    <p>No messages yet. Start the conversation!</p>
-                  </div>
-                ) : (
-                  messages.map((message) => (
-                    <div
-                      key={message.uuid}
-                      className={`flex ${message.isFromCreator ? 'justify-end' : 'justify-start'}`}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-4"
+                      onClick={() => refreshMessages()}
                     >
-                      {!message.isFromCreator && (
-                        <Avatar className="w-8 h-8 mr-2 flex-shrink-0">
-                          <AvatarImage src={selectedChat.user.avatarUrl || undefined} />
-                          <AvatarFallback className="bg-zinc-700 text-xs">
-                            {selectedChat.user.displayName?.[0]?.toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                      )}
-                      <div className="max-w-[70%]">
-                        <div
-                          className={`rounded-2xl px-4 py-2.5 ${
-                            message.isFromCreator
-                              ? message.isPending
-                                ? 'bg-violet-600/50 text-white/70'
-                                : message.isFailed
-                                ? 'bg-red-600/50 text-white'
-                                : 'bg-violet-600 text-white'
-                              : 'bg-zinc-700 text-white'
-                          }`}
-                        >
-                          {message.hasMedia && (
-                            <div className="flex items-center gap-1 text-sm opacity-75 mb-1">
-                              <ImageIcon className="w-4 h-4" />
-                              <span>{message.mediaType || 'Media'}</span>
-                            </div>
-                          )}
-                          {message.pricing && (
-                            <div className="flex items-center gap-1 text-sm text-yellow-300 mb-1">
-                              <DollarSign className="w-4 h-4" />
-                              <span>${message.pricing.USD.price} PPV</span>
-                              {message.purchasedAt && <Check className="w-4 h-4" />}
-                            </div>
-                          )}
-                          <p className="text-sm whitespace-pre-wrap">{message.text || ''}</p>
-                        </div>
-                        <div className="flex items-center gap-2 mt-1 px-1">
-                          <span className="text-xs text-zinc-500">
-                            {formatTime(message.sentAt)}
-                          </span>
-                          {message.isFromCreator && (
-                            <>
-                              {message.isPending ? (
-                                <Clock className="w-3 h-3 text-zinc-500" />
-                              ) : message.isFailed ? (
-                                <AlertCircle className="w-3 h-3 text-red-500" />
-                              ) : (
-                                <CheckCheck className="w-3 h-3 text-blue-400" />
-                              )}
-                            </>
-                          )}
-                        </div>
-                      </div>
-                      {message.isFromCreator && (
-                        <Avatar className="w-8 h-8 ml-2 flex-shrink-0">
-                          <AvatarImage src={selectedModel?.avatar_url || undefined} />
-                          <AvatarFallback className="bg-violet-600 text-xs">
-                            {selectedModel?.name?.[0]}
-                          </AvatarFallback>
-                        </Avatar>
-                      )}
-                    </div>
-                  ))
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-            </ScrollArea>
-
-            {/* Message Input */}
-            <div className="p-4 border-t border-zinc-800 bg-[#0d1321]">
-              <div className="flex items-center gap-2">
-                <Button variant="ghost" size="icon" className="text-zinc-400 hover:text-white">
-                  <Smile className="w-5 h-5" />
-                </Button>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  className={`text-zinc-400 hover:text-white ${selectedAttachment ? 'text-primary' : ''}`}
-                  onClick={() => setIsVaultOpen(true)}
-                  title="Attach from Vault"
-                >
-                  <VaultIcon className="w-5 h-5" />
-                </Button>
-                {selectedAttachment && (
-                  <div className="flex items-center gap-2 px-2 py-1 bg-zinc-800 rounded-lg">
-                    <ImageIcon className="w-4 h-4 text-primary" />
-                    <span className="text-xs text-zinc-300 max-w-20 truncate">
-                      {selectedAttachment.title || selectedAttachment.file_name}
-                    </span>
-                    <button 
-                      onClick={() => setSelectedAttachment(null)}
-                      className="text-zinc-500 hover:text-red-400"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
+                      Retry
+                    </Button>
                   </div>
-                )}
-                <Button variant="ghost" size="icon" className="text-zinc-400 hover:text-white">
-                  <DollarSign className="w-5 h-5" />
-                </Button>
-                <Input
-                  placeholder="Type a message..."
-                  value={messageInput}
-                  onChange={(e) => setMessageInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault()
-                      handleSendMessage()
+                </div>
+              ) : (
+                <VirtualMessageList
+                  messages={messages}
+                  creatorUuid={creatorUuid}
+                  className="h-full"
+                  onRetryMessage={tempId => {
+                    // Retry failed message
+                    const optimisticMsg = chatStore.optimisticMessages.get(tempId)
+                    if (optimisticMsg && selectedChat) {
+                      sendMessage({
+                        text: optimisticMsg.text || undefined,
+                        mediaUuids:
+                          optimisticMsg.mediaUuids.length > 0
+                            ? optimisticMsg.mediaUuids
+                            : undefined,
+                        price: optimisticMsg.price || undefined,
+                      })
                     }
                   }}
-                  className="flex-1 bg-zinc-800/50 border-zinc-700 text-white placeholder:text-zinc-500"
-                  disabled={sendingMessage}
+                  onUnlockPPV={messageUuid => {
+                    toast.info('PPV unlock feature coming soon!')
+                  }}
                 />
-                <Button
-                  onClick={handleSendMessage}
-                  disabled={!messageInput.trim() || sendingMessage}
-                  className="bg-violet-600 hover:bg-violet-700 gap-2"
-                >
-                  {sendingMessage ? (
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <>
-                      Send
-                      <Send className="w-4 h-4" />
-                    </>
-                  )}
-                </Button>
-              </div>
+              )}
             </div>
+
+            {/* High-Performance Input Area with PPV/Vault/Macros */}
+            {selectedChat && (
+              <InputArea
+                onSend={async payload => {
+                  if (!sendMessage) return false
+                  return await sendMessage(payload)
+                }}
+                isLoading={sendingMessage}
+                placeholder="Type a message..."
+                vaultAssets={vaultAssets.map(asset => ({
+                  id: asset.id,
+                  title: asset.title,
+                  file_name: asset.file_name,
+                  file_type: asset.file_type as 'image' | 'video',
+                  file_url: asset.url,
+                  thumbnail_url: asset.url,
+                }))}
+                macros={[
+                  { id: '1', name: 'Good Morning', text: 'Good morning baby! 💕' },
+                  { id: '2', name: 'Good Night', text: 'Good night, sweet dreams! 😘' },
+                  { id: '3', name: 'Thank You', text: "Thank you so much! You're amazing! ❤️" },
+                ]}
+                conversationHistory={messages.slice(-10).map(msg => ({
+                  role: msg.isFromCreator ? 'assistant' : 'user',
+                  content: msg.text || (msg.hasMedia ? '[Media]' : ''),
+                }))}
+                userModel={selectedModel?.name || undefined}
+                subscriberTier={selectedChat.tier || 'unknown'}
+                fanUuid={selectedChat.user.uuid}
+                modelId={selectedModel?.id || undefined}
+              />
+            )}
           </>
         ) : (
           <div className="flex-1 flex items-center justify-center">
@@ -598,7 +593,7 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
                     <div className="bg-zinc-800/50 rounded-lg p-3">
                       <p className="text-xs text-zinc-500">Last Message</p>
                       <p className="text-sm text-white">
-                        {selectedChat.lastMessageAt 
+                        {selectedChat.lastMessageAt
                           ? formatRelativeTime(selectedChat.lastMessageAt)
                           : 'Never'}
                       </p>
@@ -618,16 +613,22 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
                 <div>
                   <h3 className="font-medium text-white mb-3">Quick Actions</h3>
                   <div className="space-y-2">
-                    <Button variant="outline" className="w-full justify-start border-zinc-700 text-zinc-300">
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start border-zinc-700 text-zinc-300"
+                    >
                       <DollarSign className="w-4 h-4 mr-2" />
                       Send PPV Content
                     </Button>
-                    <Button variant="outline" className="w-full justify-start border-zinc-700 text-zinc-300">
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start border-zinc-700 text-zinc-300"
+                    >
                       <Sparkles className="w-4 h-4 mr-2" />
                       Use AI Script
                     </Button>
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       className="w-full justify-start border-zinc-700 text-zinc-300"
                       onClick={() => setIsVaultOpen(true)}
                     >
@@ -646,7 +647,7 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
                   <Textarea
                     placeholder="Add notes about this fan..."
                     value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
+                    onChange={e => setNotes(e.target.value)}
                     className="bg-zinc-800/50 border-zinc-700 text-white placeholder:text-zinc-500 min-h-[100px]"
                   />
                   <Button
@@ -693,9 +694,9 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
           <DialogHeader>
             <DialogTitle>Select from Vault</DialogTitle>
           </DialogHeader>
-          
+
           <div className="grid grid-cols-3 gap-3 max-h-96 overflow-y-auto py-4">
-            {vaultAssets.map((asset) => (
+            {vaultAssets.map(asset => (
               <button
                 key={asset.id}
                 onClick={() => {
@@ -728,7 +729,7 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
                 <Button
                   variant="outline"
                   className="mt-4"
-                  onClick={() => window.location.href = '/dashboard/content/vault'}
+                  onClick={() => (window.location.href = '/dashboard/content/vault')}
                 >
                   Go to Vault
                 </Button>
