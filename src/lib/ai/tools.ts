@@ -2830,40 +2830,495 @@ export const checkCampaignStatus = tool({
   },
 })
 
+// ============================================================================
+// PHASE 71: CLAW-SPECIFIC TOOLS
+// Direct data access for the AI agent
+// ============================================================================
+
+/**
+ * Tool: Get CLAW Financial Report
+ * Phase 71 - Optimized financial summary for CLAW with real-time data
+ */
+export const getClawFinancialReport = tool({
+  description:
+    'Get a comprehensive financial report with revenue breakdown by model, ARPU, and profitability. Use this for any finance, revenue, or money question.',
+  parameters: z.object({
+    period: z
+      .enum(['today', 'last_7_days', 'last_30_days', 'all_time'])
+      .default('all_time')
+      .describe('Time period for the report'),
+    modelName: z.string().optional().describe('Filter by specific model name'),
+  }),
+  execute: async ({ period, modelName }: { period: string; modelName?: string }) => {
+    try {
+      const supabase = createAdminClient()
+
+      // Get agency
+      const { data: agencies } = await supabase.from('agencies').select('id, name').limit(1)
+      if (!agencies || agencies.length === 0) return { error: 'No agency found' }
+      const agencyId = agencies[0].id
+
+      // Calculate date range
+      const now = new Date()
+      let startDate: Date
+      switch (period) {
+        case 'today':
+          startDate = new Date(now.toISOString().split('T')[0])
+          break
+        case 'last_7_days':
+          startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+          break
+        case 'last_30_days':
+          startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+          break
+        default:
+          startDate = new Date('2020-01-01')
+      }
+
+      // Get models with revenue
+      let modelsQuery = supabase
+        .from('models')
+        .select('id, name, revenue_total, subscribers_count, followers_count')
+        .eq('agency_id', agencyId)
+        .eq('status', 'active')
+
+      if (modelName) {
+        modelsQuery = modelsQuery.ilike('name', `%${modelName}%`)
+      }
+
+      const { data: models } = await modelsQuery
+
+      // Get transactions for the period
+      let txQuery = supabase
+        .from('fanvue_transactions')
+        .select('model_id, amount, transaction_type')
+        .eq('agency_id', agencyId)
+        .gte('transaction_date', startDate.toISOString())
+
+      if (modelName && models && models.length > 0) {
+        txQuery = txQuery.eq('model_id', models[0].id)
+      }
+
+      // Paginate to get all transactions
+      let allTransactions: { model_id: string; amount: number; transaction_type: string }[] = []
+      let offset = 0
+      let hasMore = true
+
+      while (hasMore) {
+        const { data } = await txQuery.range(offset, offset + 999)
+        if (!data || data.length === 0) {
+          hasMore = false
+        } else {
+          allTransactions = allTransactions.concat(data)
+          offset += 1000
+          if (data.length < 1000) hasMore = false
+        }
+      }
+
+      // Calculate totals
+      const totalRevenue = allTransactions.reduce((sum, tx) => sum + Number(tx.amount || 0), 0)
+      const totalSubscribers = models?.reduce((sum, m) => sum + (m.subscribers_count || 0), 0) || 0
+      const totalFollowers = models?.reduce((sum, m) => sum + (m.followers_count || 0), 0) || 0
+
+      // Revenue by type
+      const revenueByType = allTransactions.reduce(
+        (acc, tx) => {
+          const type = tx.transaction_type || 'other'
+          acc[type] = (acc[type] || 0) + Number(tx.amount || 0)
+          return acc
+        },
+        {} as Record<string, number>
+      )
+
+      // Revenue by model
+      const modelRevenue: Record<string, number> = {}
+      allTransactions.forEach(tx => {
+        const modelId = tx.model_id
+        modelRevenue[modelId] = (modelRevenue[modelId] || 0) + Number(tx.amount || 0)
+      })
+
+      const modelPerformance =
+        models?.map(m => ({
+          name: m.name,
+          revenue: `$${(modelRevenue[m.id] || 0).toLocaleString()}`,
+          storedRevenue: `$${Number(m.revenue_total || 0).toLocaleString()}`,
+          subscribers: m.subscribers_count || 0,
+          followers: m.followers_count || 0,
+        })) || []
+
+      // Sort by revenue
+      modelPerformance.sort(
+        (a, b) =>
+          parseFloat(b.revenue.replace(/[$,]/g, '')) - parseFloat(a.revenue.replace(/[$,]/g, ''))
+      )
+
+      // ARPU calculation
+      const arpu = totalSubscribers > 0 ? totalRevenue / totalSubscribers : 0
+
+      return {
+        period,
+        agencyName: agencies[0].name,
+        summary: {
+          totalRevenue: `$${totalRevenue.toLocaleString()}`,
+          transactionCount: allTransactions.length,
+          totalSubscribers,
+          totalFollowers,
+          arpu: `$${arpu.toFixed(2)}`,
+        },
+        revenueByType: Object.entries(revenueByType).map(([type, amount]) => ({
+          type: type.charAt(0).toUpperCase() + type.slice(1),
+          amount: `$${amount.toLocaleString()}`,
+          percentage: totalRevenue > 0 ? `${((amount / totalRevenue) * 100).toFixed(1)}%` : '0%',
+        })),
+        modelPerformance,
+        topEarner: modelPerformance[0]?.name || 'N/A',
+        insight:
+          modelPerformance.length > 1
+            ? `${modelPerformance[0]?.name} is generating the most revenue this period.`
+            : modelPerformance[0]?.name
+              ? `${modelPerformance[0]?.name} is your only active model.`
+              : 'No active models found.',
+      }
+    } catch (error) {
+      console.error('getClawFinancialReport error:', error)
+      return { error: 'Failed to generate financial report' }
+    }
+  },
+})
+
+/**
+ * Tool: Get Slave Network Status
+ * Phase 71 - Check the status of the Ghost/Slave account network
+ */
+export const getSlaveNetworkStatus = tool({
+  description:
+    'Check the status and reach of the Instagram Slave/Backup network (Ghost Tracker). Use when asked about slave accounts, ghost network, backup accounts, or traffic sources.',
+  parameters: z.object({
+    accountType: z
+      .enum(['all', 'slave', 'backup', 'competitor'])
+      .default('slave')
+      .describe('Type of accounts to check'),
+    platform: z
+      .enum(['all', 'instagram', 'tiktok', 'x'])
+      .default('all')
+      .describe('Platform filter'),
+  }),
+  execute: async ({ accountType, platform }: { accountType: string; platform: string }) => {
+    try {
+      const supabase = createAdminClient()
+
+      let query = supabase
+        .from('watched_accounts')
+        .select('*')
+        .eq('is_active', true)
+        .order('last_scanned_at', { ascending: false })
+
+      if (accountType !== 'all') {
+        query = query.eq('account_type', accountType)
+      }
+
+      if (platform !== 'all') {
+        query = query.eq('platform', platform)
+      }
+
+      const { data: accounts } = await query.limit(50)
+
+      if (!accounts || accounts.length === 0) {
+        return {
+          message: 'No slave/backup accounts found in the Ghost Tracker.',
+          totalAccounts: 0,
+          totalReach: 0,
+          suggestion: 'Add slave accounts via the Ghost Tracker page to diversify traffic sources.',
+        }
+      }
+
+      // Calculate network stats
+      const slaves = accounts.filter(a => a.account_type === 'slave')
+      const backups = accounts.filter(a => a.account_type === 'backup')
+      const competitors = accounts.filter(a => a.account_type === 'competitor')
+
+      const totalSlaveReach = slaves.reduce((sum, a) => {
+        const stats = a.last_stats as { followers?: number } | null
+        return sum + (stats?.followers || 0)
+      }, 0)
+
+      const totalBackupReach = backups.reduce((sum, a) => {
+        const stats = a.last_stats as { followers?: number } | null
+        return sum + (stats?.followers || 0)
+      }, 0)
+
+      // Format account details
+      const accountDetails = accounts.slice(0, 15).map(a => {
+        const stats = a.last_stats as { followers?: number; postsCount?: number } | null
+        return {
+          username: `@${a.username}`,
+          platform: a.platform,
+          type: a.account_type,
+          followers: stats?.followers?.toLocaleString() || 'Unknown',
+          posts: stats?.postsCount || 'Unknown',
+          lastScanned: a.last_scanned_at
+            ? new Date(a.last_scanned_at).toLocaleDateString()
+            : 'Never',
+          status: a.scan_error ? '⚠️ Error' : '✅ Active',
+          notes: a.notes || null,
+        }
+      })
+
+      // Calculate health score
+      const recentScans = accounts.filter(a => {
+        if (!a.last_scanned_at) return false
+        const daysSinceScan =
+          (Date.now() - new Date(a.last_scanned_at).getTime()) / (1000 * 60 * 60 * 24)
+        return daysSinceScan < 7
+      }).length
+
+      const healthScore = Math.round((recentScans / accounts.length) * 100)
+
+      return {
+        summary: {
+          totalAccounts: accounts.length,
+          slaveAccounts: slaves.length,
+          backupAccounts: backups.length,
+          competitorAccounts: competitors.length,
+          totalSlaveReach: totalSlaveReach.toLocaleString(),
+          totalBackupReach: totalBackupReach.toLocaleString(),
+          networkHealthScore: `${healthScore}%`,
+        },
+        accountDetails,
+        insights: [
+          slaves.length > 0
+            ? `Your ${slaves.length} slave account(s) have a combined reach of ${totalSlaveReach.toLocaleString()} followers`
+            : '⚠️ No slave accounts configured - add some to diversify traffic',
+          backups.length > 0
+            ? `${backups.length} backup account(s) ready with ${totalBackupReach.toLocaleString()} reach`
+            : null,
+          healthScore < 50 ? '⚠️ Many accounts havent been scanned recently - run a refresh' : null,
+        ].filter(Boolean),
+        recommendation:
+          slaves.length < 3
+            ? 'Add more slave accounts to increase traffic diversification'
+            : 'Network is healthy. Consider adding competitor accounts for intel.',
+      }
+    } catch (error) {
+      console.error('getSlaveNetworkStatus error:', error)
+      return { error: 'Failed to fetch slave network status' }
+    }
+  },
+})
+
+/**
+ * Tool: Get User Psychology Profile
+ * Phase 71 - CLAW learns user preferences and adapts communication
+ */
+export const getUserPsychologyProfile = tool({
+  description:
+    'Get the psychology profile and preferences of the current user. CLAW uses this to adapt its communication style. Use when asked about user preferences or to personalize responses.',
+  parameters: z.object({
+    userId: z.string().uuid().optional().describe('User ID to look up (optional)'),
+  }),
+  execute: async ({ userId }: { userId?: string }) => {
+    try {
+      const supabase = createAdminClient()
+
+      // If no userId provided, try to get first profile
+      let targetUserId = userId
+      if (!targetUserId) {
+        const { data: profiles } = await supabase.from('profiles').select('id').limit(1)
+        if (profiles && profiles.length > 0) {
+          targetUserId = profiles[0].id
+        }
+      }
+
+      if (!targetUserId) {
+        return {
+          isNewUser: true,
+          message:
+            'New user - no psychology profile yet. CLAW will learn your preferences over time.',
+          defaultSettings: {
+            communicationStyle: 'professional',
+            preferredMetrics: ['revenue', 'conversion'],
+            psych_traits: [],
+          },
+        }
+      }
+
+      const { data: profile } = await supabase
+        .from('ai_user_profiles')
+        .select('*')
+        .eq('user_id', targetUserId)
+        .single()
+
+      if (!profile) {
+        return {
+          isNewUser: true,
+          userId: targetUserId,
+          message: 'New user - building psychology profile. CLAW adapts to your style over time.',
+          defaultSettings: {
+            communicationStyle: 'professional',
+            preferredMetrics: ['revenue', 'conversion'],
+          },
+        }
+      }
+
+      return {
+        isNewUser: false,
+        userId: profile.user_id,
+        psychology: {
+          traits: profile.psych_traits || [],
+          communicationStyle: profile.communication_style || 'professional',
+          preferredMetrics: profile.preferred_metrics || [],
+          favoriteTools: profile.favorite_tools || [],
+        },
+        engagement: {
+          totalInteractions: profile.total_interactions || 0,
+          avgSessionLength: profile.avg_session_length_seconds
+            ? `${Math.round(profile.avg_session_length_seconds / 60)} minutes`
+            : 'Unknown',
+          lastInteraction: profile.last_interaction_at
+            ? new Date(profile.last_interaction_at).toLocaleDateString()
+            : 'Never',
+        },
+        adaptations: {
+          shouldBeVerbose: profile.communication_style === 'detailed',
+          shouldUseTechnicalTerms: profile.psych_traits?.includes('data_focused'),
+          shouldBeAggressive: profile.psych_traits?.includes('aggressive_growth'),
+          shouldBeConservative: profile.psych_traits?.includes('risk_averse'),
+        },
+        recommendation: `Based on ${profile.total_interactions || 0} interactions, this user prefers ${profile.communication_style || 'professional'} communication.`,
+      }
+    } catch (error) {
+      console.error('getUserPsychologyProfile error:', error)
+      return { error: 'Failed to fetch user psychology profile' }
+    }
+  },
+})
+
+/**
+ * Tool: Get Model Quick Stats
+ * Phase 71 - Fast lookup for model performance (simplified for CLAW)
+ */
+export const getModelQuickStats = tool({
+  description:
+    'Get quick performance stats for a specific model by name. Faster than get_model_stats. Use when asked "how is Lana doing?" or similar.',
+  parameters: z.object({
+    modelName: z.string().describe('Name of the model (can be partial match)'),
+  }),
+  execute: async ({ modelName }: { modelName: string }) => {
+    try {
+      const supabase = createAdminClient()
+
+      // Find model
+      const { data: models } = await supabase
+        .from('models')
+        .select('*')
+        .ilike('name', `%${modelName}%`)
+        .limit(1)
+
+      if (!models || models.length === 0) {
+        return { error: `No model found matching "${modelName}"` }
+      }
+
+      const model = models[0]
+
+      // Get recent transaction stats
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+      const { data: recentTx, count: txCount } = await supabase
+        .from('fanvue_transactions')
+        .select('amount', { count: 'exact' })
+        .eq('model_id', model.id)
+        .gte('transaction_date', thirtyDaysAgo.toISOString())
+        .limit(1000)
+
+      const recentRevenue = recentTx?.reduce((sum, tx) => sum + Number(tx.amount || 0), 0) || 0
+
+      return {
+        model: {
+          name: model.name,
+          status: model.status || 'active',
+          fanvueUsername: model.fanvue_username || 'Not linked',
+        },
+        stats: {
+          totalRevenue: `$${Number(model.revenue_total || 0).toLocaleString()}`,
+          last30DaysRevenue: `$${recentRevenue.toLocaleString()}`,
+          last30DaysTransactions: txCount || 0,
+          subscribers: model.subscribers_count || 0,
+          followers: model.followers_count || 0,
+          unreadMessages: model.unread_messages || 0,
+          trackingLinks: model.tracking_links_count || 0,
+        },
+        health: {
+          isConnected: !!model.fanvue_access_token,
+          lastSync: model.last_transaction_sync
+            ? new Date(model.last_transaction_sync).toLocaleDateString()
+            : 'Never',
+          instagramConnected: !!model.instagram_access_token,
+        },
+        summary: `${model.name} has earned $${Number(model.revenue_total || 0).toLocaleString()} all-time, $${recentRevenue.toLocaleString()} in the last 30 days, with ${model.subscribers_count || 0} active subscribers.`,
+      }
+    } catch (error) {
+      console.error('getModelQuickStats error:', error)
+      return { error: 'Failed to fetch model stats' }
+    }
+  },
+})
+
 /**
  * Export all tools as a single object for use in streamText
  */
 export const alfredTools = {
+  // Core Financial Tools
   get_agency_financials: getAgencyFinancials,
+  get_claw_financial_report: getClawFinancialReport,
   get_model_stats: getModelStats,
-  check_quest_status: checkQuestStatus,
+  get_model_quick_stats: getModelQuickStats,
   get_expense_summary: getExpenseSummary,
   get_payroll_overview: getPayrollOverview,
   get_payroll_estimate: getPayrollEstimate,
+
+  // CLAW Phase 71 Tools
+  get_slave_network_status: getSlaveNetworkStatus,
+  get_user_psychology: getUserPsychologyProfile,
+
+  // Quest & Team Tools
+  check_quest_status: checkQuestStatus,
+  get_team_attendance: getTeamAttendance,
+  get_shift_schedule: getShiftSchedule,
+  create_flash_quest: createFlashQuestTool,
+  get_leaderboard: getLeaderboardTool,
+  get_quest_progress: getUserQuestProgress,
+
+  // Web & Research Tools
   scrape_web: scrapeWeb,
   analyze_social_profile: analyzeSocialProfile,
   get_watched_accounts: getWatchedAccounts,
   analyze_business_health: analyzeBusinessHealth,
+
+  // Content Tools
   get_upcoming_posts: getUpcomingPosts,
   log_post_completion: logPostCompletion,
   get_missed_posts: getMissedPosts,
+  find_best_content: findBestContentTool,
+
+  // CRM Tools
   update_fan_attribute: updateFanAttribute,
   get_fan_brief: getFanBrief,
   get_top_fans: getTopFans,
-  get_team_attendance: getTeamAttendance,
-  get_shift_schedule: getShiftSchedule,
+
+  // Link Tools
   create_tracking_link: createTrackingLink,
   get_link_performance: getLinkPerformance,
   get_bio_page_stats: getBioPageStats,
+
+  // System Tools
   run_system_diagnostics: runSystemDiagnostics,
   get_public_roadmap: getPublicRoadmap,
   search_knowledge_base: searchKnowledgeBase,
+
+  // Script Tools
   add_winning_script: addWinningScript,
   draft_sales_script: draftSalesScript,
-  create_flash_quest: createFlashQuestTool,
-  get_leaderboard: getLeaderboardTool,
-  get_quest_progress: getUserQuestProgress,
+
+  // Campaign Tools
   launch_mass_dm: launchMassDM,
   check_campaign_status: checkCampaignStatus,
-  find_best_content: findBestContentTool,
 }
