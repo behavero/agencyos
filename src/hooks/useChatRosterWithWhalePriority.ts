@@ -117,34 +117,37 @@ export function useChatRosterWithWhalePriority(
         }
 
         // Transform API response to ChatThread format
-        const threads: ChatThread[] = (data.data || []).map((chat: any) => ({
-          uuid: chat.user?.uuid || '',
-          user: {
+        // Safety: Filter out chats without user data
+        const threads: ChatThread[] = (data.data || [])
+          .filter((chat: any) => chat?.user?.uuid) // Only include chats with valid user
+          .map((chat: any) => ({
             uuid: chat.user?.uuid || '',
-            handle: chat.user?.handle || '',
-            displayName: chat.user?.displayName || chat.user?.handle || 'Unknown',
-            nickname: chat.user?.nickname || null,
-            avatarUrl: chat.user?.avatarUrl || null,
-            isTopSpender: chat.user?.isTopSpender || false,
-            registeredAt: chat.user?.registeredAt || '',
-          },
-          lastMessage: chat.lastMessage
-            ? {
-                uuid: chat.lastMessage.uuid || '',
-                text: chat.lastMessage.text || null,
-                type: chat.lastMessage.type || 'text',
-                sentAt: chat.lastMessage.sentAt || '',
-                hasMedia: chat.lastMessage.hasMedia || false,
-                mediaType: chat.lastMessage.mediaType || null,
-                senderUuid: chat.lastMessage.senderUuid || '',
-              }
-            : null,
-          lastMessageAt: chat.lastMessageAt || chat.lastMessage?.sentAt || null,
-          unreadMessagesCount: chat.unreadMessagesCount || 0,
-          isRead: chat.isRead ?? true,
-          isMuted: chat.isMuted ?? false,
-          createdAt: chat.createdAt || '',
-        }))
+            user: {
+              uuid: chat.user?.uuid || '',
+              handle: chat.user?.handle || '',
+              displayName: chat.user?.displayName || chat.user?.handle || 'Unknown',
+              nickname: chat.user?.nickname || null,
+              avatarUrl: chat.user?.avatarUrl || null,
+              isTopSpender: chat.user?.isTopSpender || false,
+              registeredAt: chat.user?.registeredAt || '',
+            },
+            lastMessage: chat.lastMessage
+              ? {
+                  uuid: chat.lastMessage.uuid || '',
+                  text: chat.lastMessage.text || null,
+                  type: chat.lastMessage.type || 'text',
+                  sentAt: chat.lastMessage.sentAt || '',
+                  hasMedia: chat.lastMessage.hasMedia || false,
+                  mediaType: chat.lastMessage.mediaType || null,
+                  senderUuid: chat.lastMessage.senderUuid || '',
+                }
+              : null,
+            lastMessageAt: chat.lastMessageAt || chat.lastMessage?.sentAt || null,
+            unreadMessagesCount: chat.unreadMessagesCount || 0,
+            isRead: chat.isRead ?? true,
+            isMuted: chat.isMuted ?? false,
+            createdAt: chat.createdAt || '',
+          }))
 
         // Fetch fan insights for each user to determine tier
         const fanUuids = threads.map(t => t.user.uuid).filter(Boolean)
@@ -215,16 +218,19 @@ export function useChatRosterWithWhalePriority(
           filter === 'unread' ? sortedThreads.filter(t => t.unreadMessagesCount > 0) : sortedThreads
 
         // Add tier metadata to threads (for UI display)
-        const threadsWithTier: ChatThreadWithTier[] = filteredThreads.map(thread => {
-          const insights = fanInsightsMap.get(thread.user.uuid)
-          const tier = getUserTier(insights || null)
-          return {
-            ...thread,
-            tier,
-            ltv: insights?.total_spend || 0,
-            whaleScore: insights?.whaleScore || 0,
-          }
-        })
+        // Safety: Only process threads with valid user data
+        const threadsWithTier: ChatThreadWithTier[] = filteredThreads
+          .filter(thread => thread?.user?.uuid) // Safety check
+          .map(thread => {
+            const insights = fanInsightsMap.get(thread.user?.uuid || '')
+            const tier = getUserTier(insights || null)
+            return {
+              ...thread,
+              tier,
+              ltv: insights?.total_spend || 0,
+              whaleScore: insights?.whaleScore || 0,
+            }
+          })
 
         if (append) {
           setChats(prev => [...prev, ...threadsWithTier])

@@ -207,10 +207,11 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
   // Filter chats based on search
   const filteredChats = chats.filter(chat => {
     if (!searchQuery) return true
+    if (!chat?.user) return false // Safety check
     const query = searchQuery.toLowerCase()
     return (
-      chat.user.displayName.toLowerCase().includes(query) ||
-      chat.user.handle.toLowerCase().includes(query)
+      (chat.user.displayName?.toLowerCase() || '').includes(query) ||
+      (chat.user.handle?.toLowerCase() || '').includes(query)
     )
   })
 
@@ -327,78 +328,96 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
             </div>
           ) : (
             <div className="p-2">
-              {filteredChats.map(chat => (
-                <button
-                  key={chat.user.uuid}
-                  onClick={() => setSelectedChat(chat)}
-                  className={`w-full flex items-start gap-3 p-3 rounded-lg transition-colors text-left ${
-                    selectedChat?.user.uuid === chat.user.uuid
-                      ? 'bg-zinc-800'
-                      : 'hover:bg-zinc-800/50'
-                  }`}
-                >
-                  <div className="relative">
-                    <Avatar className="w-10 h-10 flex-shrink-0">
-                      <AvatarImage src={chat.user.avatarUrl || undefined} />
-                      <AvatarFallback className="bg-zinc-700 text-white">
-                        {chat.user.displayName?.[0]?.toUpperCase() || 'U'}
-                      </AvatarFallback>
-                    </Avatar>
-                    {chat.user.isTopSpender && (
-                      <Crown className="absolute -top-1 -right-1 w-4 h-4 text-yellow-500" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="font-medium text-white truncate">
-                          {chat.user.nickname || chat.user.displayName}
-                        </span>
-                        {chat.tier && (
-                          <Badge
-                            className={`text-xs shrink-0 ${
-                              chat.tier === 'whale'
-                                ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
-                                : chat.tier === 'spender'
-                                  ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
-                                  : 'bg-zinc-700/50 text-zinc-400 border-zinc-600'
-                            }`}
-                          >
-                            {chat.tier === 'whale' ? '🐋' : chat.tier === 'spender' ? '💰' : '👤'}{' '}
-                            {chat.tier}
-                          </Badge>
-                        )}
-                        {chat.ltv !== undefined && chat.ltv > 0 && (
-                          <Badge
-                            variant="outline"
-                            className="text-xs shrink-0 bg-zinc-800/50 border-zinc-700 text-zinc-300"
-                          >
-                            ${(chat.ltv / 100).toFixed(0)}
-                          </Badge>
-                        )}
-                      </div>
-                      <span className="text-xs text-zinc-500 flex-shrink-0">
-                        {formatRelativeTime(chat.lastMessageAt)}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-sm text-zinc-400 truncate">@{chat.user.handle}</span>
-                    </div>
-                    {chat.lastMessage && (
-                      <div className="flex items-center gap-2 mt-1">
-                        {chat.unreadMessagesCount > 0 && (
-                          <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
-                        )}
-                        <p className="text-sm text-zinc-400 truncate">
-                          {chat.lastMessage.hasMedia && !chat.lastMessage.text
-                            ? '📷 Media'
-                            : chat.lastMessage.text || 'No message'}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </button>
-              ))}
+              {
+                filteredChats
+                  .filter(chat => chat?.user?.uuid) // Safety: Filter out chats without user
+                  .map(chat => {
+                    // Defensive checks
+                    if (!chat?.user) return null
+                    const user = chat.user
+                    const userUuid = user.uuid || ''
+                    const displayName = user.displayName || user.handle || 'Unknown'
+                    const handle = user.handle || 'unknown'
+
+                    return (
+                      <button
+                        key={userUuid}
+                        onClick={() => setSelectedChat(chat)}
+                        className={`w-full flex items-start gap-3 p-3 rounded-lg transition-colors text-left ${
+                          selectedChat?.user?.uuid === userUuid
+                            ? 'bg-zinc-800'
+                            : 'hover:bg-zinc-800/50'
+                        }`}
+                      >
+                        <div className="relative">
+                          <Avatar className="w-10 h-10 flex-shrink-0">
+                            <AvatarImage src={user.avatarUrl || undefined} />
+                            <AvatarFallback className="bg-zinc-700 text-white">
+                              {displayName[0]?.toUpperCase() || 'U'}
+                            </AvatarFallback>
+                          </Avatar>
+                          {user.isTopSpender && (
+                            <Crown className="absolute -top-1 -right-1 w-4 h-4 text-yellow-500" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="font-medium text-white truncate">
+                                {user.nickname || displayName}
+                              </span>
+                              {chat.tier && (
+                                <Badge
+                                  className={`text-xs shrink-0 ${
+                                    chat.tier === 'whale'
+                                      ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+                                      : chat.tier === 'spender'
+                                        ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                                        : 'bg-zinc-700/50 text-zinc-400 border-zinc-600'
+                                  }`}
+                                >
+                                  {chat.tier === 'whale'
+                                    ? '🐋'
+                                    : chat.tier === 'spender'
+                                      ? '💰'
+                                      : '👤'}{' '}
+                                  {chat.tier}
+                                </Badge>
+                              )}
+                              {chat.ltv !== undefined && chat.ltv !== null && chat.ltv > 0 && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs shrink-0 bg-zinc-800/50 border-zinc-700 text-zinc-300"
+                                >
+                                  ${(chat.ltv / 100).toFixed(0)}
+                                </Badge>
+                              )}
+                            </div>
+                            <span className="text-xs text-zinc-500 flex-shrink-0">
+                              {formatRelativeTime(chat.lastMessageAt)}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-sm text-zinc-400 truncate">@{handle}</span>
+                          </div>
+                          {chat.lastMessage && (
+                            <div className="flex items-center gap-2 mt-1">
+                              {(chat.unreadMessagesCount || 0) > 0 && (
+                                <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
+                              )}
+                              <p className="text-sm text-zinc-400 truncate">
+                                {chat.lastMessage.hasMedia && !chat.lastMessage.text
+                                  ? '📷 Media'
+                                  : chat.lastMessage.text || 'No message'}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </button>
+                    )
+                  })
+                  .filter(Boolean) // Remove any null entries
+              }
             </div>
           )}
         </ScrollArea>

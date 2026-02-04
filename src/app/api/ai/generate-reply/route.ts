@@ -46,10 +46,20 @@ export async function POST(request: NextRequest) {
     }
 
     if (!GROQ_API_KEY) {
-      return NextResponse.json({ error: 'GROQ_API_KEY not configured' }, { status: 500 })
+      console.error('[Generate Reply] GROQ_API_KEY not configured')
+      return NextResponse.json(
+        { error: 'AI service unavailable', message: 'GROQ_API_KEY not configured' },
+        { status: 503 }
+      )
     }
 
-    const body: GenerateReplyRequest = await request.json()
+    let body: GenerateReplyRequest
+    try {
+      body = await request.json()
+    } catch (parseError) {
+      console.error('[Generate Reply] JSON parse error:', parseError)
+      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+    }
     const { conversationHistory, userModel, subscriberTier, fanUuid, modelId } = body
 
     if (!conversationHistory || conversationHistory.length === 0) {
