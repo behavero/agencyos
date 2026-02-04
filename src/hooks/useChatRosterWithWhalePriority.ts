@@ -1,7 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useState, useEffect, useCallback } from 'react'
 import type { ChatThread } from './use-chat-roster'
 
 // Extended ChatThread with whale priority metadata
@@ -216,7 +215,7 @@ export function useChatRosterWithWhalePriority(
           filter === 'unread' ? sortedThreads.filter(t => t.unreadMessagesCount > 0) : sortedThreads
 
         // Add tier metadata to threads (for UI display)
-        const threadsWithTier = filteredThreads.map(thread => {
+        const threadsWithTier: ChatThreadWithTier[] = filteredThreads.map(thread => {
           const insights = fanInsightsMap.get(thread.user.uuid)
           const tier = getUserTier(insights || null)
           return {

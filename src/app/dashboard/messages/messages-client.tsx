@@ -526,13 +526,25 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
                   { id: '2', name: 'Good Night', text: 'Good night, sweet dreams! 😘' },
                   { id: '3', name: 'Thank You', text: "Thank you so much! You're amazing! ❤️" },
                 ]}
-                conversationHistory={messages.slice(-10).map(msg => ({
-                  role: msg.isFromCreator ? 'assistant' : 'user',
-                  content: msg.text || (msg.hasMedia ? '[Media]' : ''),
-                }))}
+                conversationHistory={
+                  Array.isArray(messages)
+                    ? messages
+                        .slice(-10)
+                        .map(msg => ({
+                          role: (msg.isFromCreator ? 'assistant' : 'user') as
+                            | 'user'
+                            | 'assistant'
+                            | 'system',
+                          content: msg.text || (msg.hasMedia ? '[Media]' : ''),
+                        }))
+                        .filter(msg => msg.content) // Filter out empty messages
+                    : []
+                }
                 userModel={selectedModel?.name || undefined}
-                subscriberTier={selectedChat.tier || 'unknown'}
-                fanUuid={selectedChat.user.uuid}
+                subscriberTier={
+                  (selectedChat?.tier as 'whale' | 'spender' | 'free' | 'unknown') || 'unknown'
+                }
+                fanUuid={selectedChat?.user?.uuid}
                 modelId={selectedModel?.id || undefined}
               />
             )}
