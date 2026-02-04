@@ -3194,6 +3194,306 @@ export const getUserPsychologyProfile = tool({
 })
 
 /**
+ * Tool: Update User Psychology
+ * Phase 72 - CLAW learns and saves user psychological traits
+ * Enables active learning from conversation patterns
+ */
+export const updateUserPsychology = tool({
+  description:
+    'Save or update a psychological trait about the user. CLAW uses this silently to adapt communication style over time. Use when you detect user patterns like impatience (add "concise"), data requests (add "data_driven"), or risk preferences.',
+  parameters: z.object({
+    userId: z
+      .string()
+      .uuid()
+      .optional()
+      .describe('User ID to update (optional - uses current user if not provided)'),
+    trait: z
+      .string()
+      .describe(
+        'Psychological trait to save (e.g., "risk_averse", "concise", "visual_learner", "data_driven", "aggressive_growth", "night_owl", "whale_focused")'
+      ),
+    action: z.enum(['add', 'remove']).describe('Whether to add or remove the trait'),
+  }),
+  execute: async ({
+    userId,
+    trait,
+    action,
+  }: {
+    userId?: string
+    trait: string
+    action: 'add' | 'remove'
+  }) => {
+    try {
+      const supabase = createAdminClient()
+
+      // Get target user ID
+      let targetUserId = userId
+      if (!targetUserId) {
+        const { data: profiles } = await supabase.from('profiles').select('id').limit(1)
+        if (profiles && profiles.length > 0) {
+          targetUserId = profiles[0].id
+        }
+      }
+
+      if (!targetUserId) {
+        return { error: 'No user found to update' }
+      }
+
+      // Get current profile
+      const { data: profile } = await supabase
+        .from('ai_user_profiles')
+        .select('psych_traits, agency_id')
+        .eq('user_id', targetUserId)
+        .single()
+
+      let traits: string[] = profile?.psych_traits || []
+
+      // Modify traits based on action
+      if (action === 'add' && !traits.includes(trait)) {
+        traits.push(trait)
+      } else if (action === 'remove') {
+        traits = traits.filter(t => t !== trait)
+      }
+
+      // Get agency ID if needed
+      let agencyId = profile?.agency_id
+      if (!agencyId) {
+        const { data: agencies } = await supabase.from('agencies').select('id').limit(1)
+        agencyId = agencies?.[0]?.id
+      }
+
+      // Upsert the profile
+      const { error } = await supabase.from('ai_user_profiles').upsert(
+        {
+          user_id: targetUserId,
+          agency_id: agencyId,
+          psych_traits: traits,
+          updated_at: new Date().toISOString(),
+          total_interactions: (profile as { total_interactions?: number } | null)
+            ?.total_interactions
+            ? (profile as { total_interactions: number }).total_interactions + 1
+            : 1,
+          last_interaction_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id' }
+      )
+
+      if (error) throw error
+
+      return {
+        success: true,
+        action,
+        trait,
+        currentTraits: traits,
+        message: `Psychology profile updated: ${action === 'add' ? 'Added' : 'Removed'} trait "${trait}"`,
+      }
+    } catch (error) {
+      console.error('updateUserPsychology error:', error)
+      return { error: 'Failed to update user psychology' }
+    }
+  },
+})
+
+/**
+ * Tool: Save Viral Knowledge
+ * Phase 72 - CLAW stores successful strategies and viral hooks to long-term memory
+ * Uses ai_memory table for RAG-based retrieval
+ */
+export const saveViralKnowledge = tool({
+  description:
+    'Save a successful strategy, viral hook, sales script, or agency rule to long-term memory. CLAW uses this to accumulate wisdom. Use when the user shares something that worked well or provides a rule/strategy worth remembering.',
+  parameters: z.object({
+    content: z.string().describe('The knowledge to save (script, strategy, hook, rule)'),
+    category: z
+      .enum([
+        'viral_hook',
+        'sales_script',
+        'agency_rule',
+        'negotiation_tactic',
+        'content_strategy',
+        'whale_handling',
+      ])
+      .describe('Category for organizing the knowledge'),
+    tags: z
+      .array(z.string())
+      .optional()
+      .describe('Optional tags for filtering (e.g., ["spicy", "opener", "whale"])'),
+    importanceScore: z
+      .number()
+      .min(0)
+      .max(1)
+      .default(0.7)
+      .optional()
+      .describe('How important is this knowledge (0-1, default 0.7)'),
+  }),
+  execute: async ({
+    content,
+    category,
+    tags,
+    importanceScore = 0.7,
+  }: {
+    content: string
+    category:
+      | 'viral_hook'
+      | 'sales_script'
+      | 'agency_rule'
+      | 'negotiation_tactic'
+      | 'content_strategy'
+      | 'whale_handling'
+    tags?: string[]
+    importanceScore?: number
+  }) => {
+    try {
+      const supabase = createAdminClient()
+
+      // Get agency ID
+      const { data: agencies } = await supabase.from('agencies').select('id').limit(1)
+      if (!agencies || agencies.length === 0) {
+        return { error: 'No agency found' }
+      }
+      const agencyId = agencies[0].id
+
+      // Get user ID for attribution
+      const { data: profiles } = await supabase.from('profiles').select('id').limit(1)
+      const createdBy = profiles?.[0]?.id
+
+      // Insert into ai_memory
+      const { data: memory, error } = await supabase
+        .from('ai_memory')
+        .insert({
+          agency_id: agencyId,
+          content,
+          category,
+          tags: tags || [],
+          source_type: 'chat_history',
+          importance_score: importanceScore,
+          created_by: createdBy,
+        })
+        .select('id, category, created_at')
+        .single()
+
+      if (error) throw error
+
+      return {
+        success: true,
+        memoryId: memory?.id,
+        category,
+        tags: tags || [],
+        message: `✅ Knowledge saved to long-term memory. Category: ${category}`,
+        tip: 'CLAW will use this knowledge in future conversations to provide better strategies.',
+      }
+    } catch (error) {
+      console.error('saveViralKnowledge error:', error)
+      return { error: 'Failed to save knowledge to memory' }
+    }
+  },
+})
+
+/**
+ * Tool: Search Memory
+ * Phase 72 - CLAW retrieves relevant knowledge from long-term memory
+ */
+export const searchMemory = tool({
+  description:
+    "Search CLAW's long-term memory for relevant strategies, hooks, or rules. Use before generating advice to check if there's stored wisdom that applies.",
+  parameters: z.object({
+    query: z.string().describe('What to search for in memory'),
+    category: z
+      .enum([
+        'viral_hook',
+        'sales_script',
+        'agency_rule',
+        'negotiation_tactic',
+        'content_strategy',
+        'whale_handling',
+        'all',
+      ])
+      .default('all')
+      .optional()
+      .describe('Filter by category (default: search all)'),
+    limit: z.number().min(1).max(10).default(5).optional().describe('Max results to return'),
+  }),
+  execute: async ({
+    query,
+    category = 'all',
+    limit = 5,
+  }: {
+    query: string
+    category?:
+      | 'viral_hook'
+      | 'sales_script'
+      | 'agency_rule'
+      | 'negotiation_tactic'
+      | 'content_strategy'
+      | 'whale_handling'
+      | 'all'
+    limit?: number
+  }) => {
+    try {
+      const supabase = createAdminClient()
+
+      // Get agency ID
+      const { data: agencies } = await supabase.from('agencies').select('id').limit(1)
+      if (!agencies || agencies.length === 0) {
+        return { memories: [], message: 'No agency found' }
+      }
+      const agencyId = agencies[0].id
+
+      // Build query
+      let dbQuery = supabase
+        .from('ai_memory')
+        .select('id, content, category, tags, importance_score, access_count, created_at')
+        .eq('agency_id', agencyId)
+        .order('importance_score', { ascending: false })
+        .order('access_count', { ascending: false })
+        .limit(limit)
+
+      // Filter by category if specified
+      if (category !== 'all') {
+        dbQuery = dbQuery.eq('category', category)
+      }
+
+      // Text search (basic - for semantic search we'd use pgvector)
+      dbQuery = dbQuery.ilike('content', `%${query}%`)
+
+      const { data: memories, error } = await dbQuery
+
+      if (error) throw error
+
+      // Update access counts for retrieved memories
+      if (memories && memories.length > 0) {
+        const memoryIds = memories.map(m => m.id)
+        await supabase
+          .from('ai_memory')
+          .update({
+            access_count: supabase.rpc('increment_access_count'),
+            last_accessed_at: new Date().toISOString(),
+          })
+          .in('id', memoryIds)
+      }
+
+      return {
+        found: memories?.length || 0,
+        memories:
+          memories?.map(m => ({
+            content: m.content,
+            category: m.category,
+            tags: m.tags,
+            importance: m.importance_score,
+            timesUsed: m.access_count,
+          })) || [],
+        message: memories?.length
+          ? `Found ${memories.length} relevant memories`
+          : 'No matching memories found',
+      }
+    } catch (error) {
+      console.error('searchMemory error:', error)
+      return { memories: [], error: 'Failed to search memory' }
+    }
+  },
+})
+
+/**
  * Tool: Get Model Quick Stats
  * Phase 71 - Fast lookup for model performance (simplified for CLAW)
  */
@@ -3278,6 +3578,11 @@ export const alfredTools = {
   // CLAW Phase 71 Tools
   get_slave_network_status: getSlaveNetworkStatus,
   get_user_psychology: getUserPsychologyProfile,
+
+  // CLAW Phase 72 - Cognitive Write-Back (Learning)
+  update_user_psychology: updateUserPsychology,
+  save_viral_knowledge: saveViralKnowledge,
+  search_memory: searchMemory,
 
   // Quest & Team Tools
   check_quest_status: checkQuestStatus,
