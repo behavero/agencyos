@@ -198,6 +198,51 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        // PHASE 75: Sync content/posts for performance tracking
+        try {
+          const postsResponse = await fanvue.getPosts({ page: 1, size: 50 })
+
+          if (postsResponse.data && postsResponse.data.length > 0) {
+            const { data: modelData } = await adminClient
+              .from('models')
+              .select('agency_id')
+              .eq('id', model.id)
+              .single()
+
+            if (modelData?.agency_id) {
+              for (const post of postsResponse.data) {
+                const engagementScore =
+                  (post.likesCount || 0) + (post.commentsCount || 0) * 2 + (post.tipsCount || 0) * 5
+
+                await adminClient.from('fanvue_posts').upsert(
+                  {
+                    agency_id: modelData.agency_id,
+                    model_id: model.id,
+                    fanvue_uuid: post.uuid,
+                    content: post.content?.substring(0, 1000),
+                    created_at_fanvue: post.createdAt,
+                    likes_count: post.likesCount || 0,
+                    comments_count: post.commentsCount || 0,
+                    tips_count: post.tipsCount || 0,
+                    media_count: post.mediaCount || 0,
+                    is_pay_to_view: post.isPayToView || false,
+                    price_cents: post.price ? Math.round(post.price * 100) : 0,
+                    engagement_score: engagementScore,
+                    last_synced_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                  },
+                  {
+                    onConflict: 'model_id,fanvue_uuid',
+                  }
+                )
+              }
+              console.log(`[CRON] Synced ${postsResponse.data.length} posts for ${model.name}`)
+            }
+          }
+        } catch (postsError) {
+          console.warn(`[CRON] Could not sync posts for ${model.name}:`, postsError)
+        }
+
         results.push({ model: model.name, success: true })
         console.log(`[CRON] Updated ${model.name}`)
       } catch (modelError) {

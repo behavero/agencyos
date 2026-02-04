@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Header } from '@/components/layout/header'
 import { AgencyProvider } from '@/providers/agency-data-provider'
+import { QueryProvider } from '@/providers/query-provider'
 
 /**
  * Dashboard Layout
@@ -47,19 +48,21 @@ export default async function DashboardLayout({ children }: { children: React.Re
     .order('name')
 
   return (
-    <AgencyProvider
-      initialUser={user}
-      initialProfile={profile}
-      initialAgency={agency}
-      initialModels={models || []}
-    >
-      <div className="flex min-h-screen bg-zinc-950">
-        <Sidebar />
-        <div className="flex-1 ml-[250px]">
-          <Header />
-          <main className="p-6">{children}</main>
+    <QueryProvider>
+      <AgencyProvider
+        initialUser={user}
+        initialProfile={profile}
+        initialAgency={agency}
+        initialModels={models || []}
+      >
+        <div className="flex min-h-screen bg-zinc-950">
+          <Sidebar />
+          <div className="flex-1 ml-[250px]">
+            <Header />
+            <main className="p-6">{children}</main>
+          </div>
         </div>
-      </div>
-    </AgencyProvider>
+      </AgencyProvider>
+    </QueryProvider>
   )
 }
