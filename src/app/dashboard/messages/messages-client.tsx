@@ -110,17 +110,17 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
 
   // Use new high-performance chat hook (TanStack Query + optimistic UI)
   const {
-    messages: fanvueMessages,
-    loading: messagesLoading,
-    error: messagesError,
-    sendMessage: sendMessageApi,
-    refresh: refreshMessages,
-    creatorUuid,
+    messages: fanvueMessages = [],
+    loading: messagesLoading = false,
+    error: messagesError = null,
+    sendMessage: sendMessageApi = null,
+    refresh: refreshMessages = () => Promise.resolve(),
+    creatorUuid = null,
   } = useFanvueChat({
     creatorId: selectedModel?.id || null,
     userUuid: selectedChat?.user.uuid || null,
     pollingInterval: 10000, // 10 seconds
-    enabled: !!selectedChat?.user.uuid, // Only fetch when chat is selected
+    enabled: !!selectedChat?.user.uuid && !!selectedModel?.id, // Only fetch when chat is selected
   })
 
   // Fallback to old hook if new one fails (for compatibility)
