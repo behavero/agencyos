@@ -256,9 +256,9 @@ export function useChatRosterWithWhalePriority(
     await fetchChats(1, false)
   }, [fetchChats])
 
-  const loadMore = useCallback(() => {
+  const loadMore = useCallback(async () => {
     if (!hasMore || loading) return
-    fetchChats(page + 1, true)
+    await fetchChats(page + 1, true)
   }, [fetchChats, hasMore, loading, page])
 
   return {

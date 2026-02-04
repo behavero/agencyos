@@ -150,17 +150,20 @@ export async function syncModelTransactions(modelId: string): Promise<SyncResult
     while (hasMore && pageCount < maxPages) {
       try {
         // Use agency endpoint if model doesn't have its own token
-        const response = useAgencyEndpoint
-          ? await fanvueClient.getCreatorEarnings(model.fanvue_user_uuid, {
-              startDate: startDate.toISOString(),
-              size: 50,
-              cursor: cursor || undefined,
-            })
-          : await fanvueClient.getEarnings({
-              startDate: startDate.toISOString(),
-              size: 50,
-              cursor: cursor || undefined,
-            })
+        let response: { data: any[]; nextCursor?: string | null; hasMore?: boolean }
+        if (useAgencyEndpoint) {
+          response = await fanvueClient.getCreatorEarnings(model.fanvue_user_uuid, {
+            startDate: startDate.toISOString(),
+            size: 50,
+            cursor: cursor || undefined,
+          })
+        } else {
+          response = await fanvueClient.getEarnings({
+            startDate: startDate.toISOString(),
+            size: 50,
+            cursor: cursor || undefined,
+          })
+        }
 
         allEarnings = [...allEarnings, ...(response.data || [])]
         cursor = response.nextCursor

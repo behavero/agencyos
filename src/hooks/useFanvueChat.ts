@@ -25,6 +25,7 @@ interface UseFanvueChatOptions {
 }
 
 interface SendMessagePayload {
+  userUuid: string
   text?: string | null
   mediaUuids?: string[]
   price?: number | null
