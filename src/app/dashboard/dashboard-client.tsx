@@ -76,6 +76,7 @@ import { InstagramInsightsCard } from '@/components/dashboard/instagram-insights
 import { useAgencyData } from '@/providers/agency-data-provider'
 import { LiveRevenueIndicator } from '@/components/dashboard/live-revenue-indicator'
 import { useQuery } from '@tanstack/react-query'
+import { useRevenueHeartbeat } from '@/hooks/useRevenueHeartbeat'
 
 // Dark mode chart theme for Recharts
 const CHART_THEME = {
@@ -150,6 +151,14 @@ export default function DashboardClient() {
     timeRange: contextTimeRange,
     selectedModelId: contextSelectedModelId,
   } = useAgencyData()
+
+  // ===== REVENUE HEARTBEAT (Live Polling) =====
+  const {
+    isLive: isRevenueLive,
+    isSyncing: isRevenueSyncing,
+    timeSinceUpdate,
+    refresh: refreshRevenue,
+  } = useRevenueHeartbeat()
 
   // Calculate total expenses from models (for backwards compatibility)
   const totalExpenses = 0 // TODO: Get from context
@@ -432,7 +441,7 @@ export default function DashboardClient() {
   // ===== DYNAMIC CALCULATIONS (from filtered API data) =====
   // ALWAYS use overviewData (no fallbacks to static data!)
   // Use live models revenue if available (from heartbeat), otherwise use overviewData
-  const liveTotalRevenue = displayModels.reduce((sum, m) => sum + Number(m.revenue_total || 0), 0)
+  const liveTotalRevenue = models.reduce((sum, m) => sum + Number(m.revenue_total || 0), 0)
   const totalGrossRevenue =
     liveTotalRevenue > 0 ? liveTotalRevenue : (overviewData?.kpiMetrics?.totalRevenue ?? 0)
   const totalNetRevenue = overviewData?.kpiMetrics?.netRevenue ?? 0
@@ -903,12 +912,12 @@ export default function DashboardClient() {
           {/* Top Tracking Links & Instagram Insights Row */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <TopTrackingLinksCard
-              models={models.map(m => ({ id: m.id, name: m.name }))}
+              models={models.map((m: any) => ({ id: m.id, name: m.name || 'Unknown' }))}
               initialModelId={selectedModelId === 'all' ? undefined : selectedModelId}
             />
             <InstagramInsightsCard
               modelId={selectedModelId}
-              modelName={models.find(m => m.id === selectedModelId)?.name}
+              modelName={models.find((m: any) => m.id === selectedModelId)?.name || undefined}
             />
           </div>
 
@@ -1437,7 +1446,7 @@ export default function DashboardClient() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {displayModels.map(model => {
+                {models.map((model: any) => {
                   const modelRevenue = Number(model.revenue_total || 0)
                   const modelSubs = Number(model.subscribers_count || 0)
                   const revenuePercent =

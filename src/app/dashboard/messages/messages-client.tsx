@@ -163,7 +163,7 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
         return false
       }
     },
-    [sendMessageApi, fallbackSendMessage]
+    [sendMessageApi, fallbackSendMessage, selectedChat?.user?.uuid]
   )
 
   // Update chat store with selected conversation

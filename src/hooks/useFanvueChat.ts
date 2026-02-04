@@ -263,10 +263,7 @@ export function useFanvueChat(options: UseFanvueChatOptions) {
 
       // Send to API
       const url = `/api/creators/${creatorId}/messages`
-      const result = await sendMessageWithRetry(url, {
-        userUuid,
-        ...payload,
-      })
+      const result = await sendMessageWithRetry(url, payload)
 
       if (result.success && result.messageUuid) {
         // Update optimistic message with real UUID
