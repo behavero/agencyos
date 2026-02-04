@@ -30,5 +30,9 @@ export default async function MessagesPage() {
     .order('created_at', { ascending: false })
     .limit(50)
 
-  return <MessagesClient models={models || []} vaultAssets={vaultAssets || []} />
+  return (
+    <div className="-m-6">
+      <MessagesClient models={models || []} vaultAssets={vaultAssets || []} />
+    </div>
+  )
 }
