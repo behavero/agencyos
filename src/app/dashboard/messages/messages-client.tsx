@@ -108,39 +108,23 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
     search: searchQuery,
   })
 
-  // Use new high-performance chat hook (TanStack Query + optimistic UI)
-  // Wrap in try-catch to provide better error handling
-  let fanvueMessages: any[] = []
-  let messagesLoading = false
-  let messagesError: string | null = null
-  let sendMessageApi: any = null
-  let refreshMessages: any = () => Promise.resolve()
-  let creatorUuid: string | null = null
-
-  try {
-    const fanvueChatResult = useFanvueChat({
-      creatorId: selectedModel?.id || null,
-      userUuid: selectedChat?.user.uuid || null,
-      pollingInterval: 10000, // 10 seconds
-      enabled: !!selectedChat?.user.uuid && !!selectedModel?.id, // Only fetch when chat is selected
-    })
-    fanvueMessages = fanvueChatResult.messages || []
-    messagesLoading = fanvueChatResult.loading || false
-    messagesError = fanvueChatResult.error || null
-    sendMessageApi = fanvueChatResult.sendMessage || null
-    refreshMessages = fanvueChatResult.refresh || (() => Promise.resolve())
-    creatorUuid = fanvueChatResult.creatorUuid || null
-  } catch (error) {
-    console.error('[MessagesClient] Error initializing useFanvueChat:', error)
-    messagesError = 'Failed to initialize chat system. Please refresh the page.'
-  }
-
-  // Fallback to old hook if new one fails (for compatibility)
+  // Fallback to old hook (useFanvueChat requires QueryProvider from layout)
   const { messages: fallbackMessages, sendMessage: fallbackSendMessage } = useChatMessages({
     creatorId: selectedModel?.id || null,
     userUuid: selectedChat?.user.uuid || null,
-    pollingInterval: 0, // Disabled, only used as fallback
+    pollingInterval: 10000, // 10 seconds
   })
+
+  // Use old messages as default (new hook disabled until QueryProvider issue resolved)
+  const fanvueMessages = fallbackMessages
+  const messagesLoading = false
+  const messagesError: string | null = null
+  const sendMessageApi = fallbackSendMessage
+  const refreshMessages = async () => {
+    // Trigger data refresh
+    window.location.reload()
+  }
+  const creatorUuid = selectedModel?.fanvue_user_uuid || null
 
   // Use new messages if available, otherwise fallback
   const messages = fanvueMessages.length > 0 ? fanvueMessages : fallbackMessages
