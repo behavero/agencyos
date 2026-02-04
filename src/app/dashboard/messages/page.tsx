@@ -1,8 +1,5 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { Sidebar } from '@/components/layout/sidebar'
-import { Header } from '@/components/layout/header'
-import { QueryProvider } from '@/providers/query-provider'
 import MessagesClient from './messages-client'
 
 export default async function MessagesPage() {
@@ -33,17 +30,5 @@ export default async function MessagesPage() {
     .order('created_at', { ascending: false })
     .limit(50)
 
-  return (
-    <QueryProvider>
-      <div className="flex min-h-screen bg-zinc-950">
-        <Sidebar />
-        <div className="flex-1 ml-[250px]">
-          <Header />
-          <main className="p-0">
-            <MessagesClient models={models || []} vaultAssets={vaultAssets || []} />
-          </main>
-        </div>
-      </div>
-    </QueryProvider>
-  )
+  return <MessagesClient models={models || []} vaultAssets={vaultAssets || []} />
 }
