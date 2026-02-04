@@ -198,7 +198,7 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
     const text = messageInput
     setMessageInput('')
 
-    const success = await sendMessageApi(text)
+    const success = await sendMessage(text)
 
     if (success) {
       toast.success('Message sent!')

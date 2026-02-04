@@ -439,11 +439,13 @@ export default function DashboardClient() {
   }
 
   // ===== DYNAMIC CALCULATIONS (from filtered API data) =====
-  // ALWAYS use overviewData (no fallbacks to static data!)
-  // Use live models revenue if available (from heartbeat), otherwise use overviewData
+  // ALWAYS use overviewData for filtered revenue (respects date range)
+  // For "all-time" view, use models.revenue_total (unfiltered)
   const liveTotalRevenue = models.reduce((sum, m) => sum + Number(m.revenue_total || 0), 0)
-  const totalGrossRevenue =
-    liveTotalRevenue > 0 ? liveTotalRevenue : (overviewData?.kpiMetrics?.totalRevenue ?? 0)
+  const isAllTimeView = dateRange.preset === 'all' || !dateRange.preset
+  const totalGrossRevenue = isAllTimeView
+    ? liveTotalRevenue
+    : (overviewData?.kpiMetrics?.totalRevenue ?? 0)
   const totalNetRevenue = overviewData?.kpiMetrics?.netRevenue ?? 0
   const platformFee = totalGrossRevenue - totalNetRevenue
   const afterPlatformFee = totalNetRevenue
