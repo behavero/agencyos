@@ -58,19 +58,22 @@ export async function POST(request: NextRequest) {
         // Fetch current user stats
         const currentUser = await fanvue.getCurrentUser()
 
-        // Fetch earnings (all-time)
-        let totalEarnings = 0
+        // PHASE 68 FIX: Calculate revenue from our DB transactions, NOT Fanvue API
+        // This prevents the "cache overwrite" bug where failed API calls write $0
+        // Our fanvue_transactions table is the single source of truth
+        let totalEarnings: number | null = null
         try {
-          const earnings = await fanvue.getEarnings({
-            startDate: '2020-01-01T00:00:00Z',
-            endDate: new Date().toISOString(),
-          })
-          totalEarnings = (earnings.data || []).reduce(
-            (sum: number, e: any) => sum + (e.amountInCents || 0) / 100,
-            0
-          )
+          const { data: revData } = await adminClient
+            .from('fanvue_transactions')
+            .select('amount')
+            .eq('model_id', model.id)
+
+          if (revData && revData.length > 0) {
+            totalEarnings = revData.reduce((sum, tx) => sum + Number(tx.amount || 0), 0)
+          }
         } catch (e) {
-          console.warn(`[CRON] Could not fetch earnings for ${model.name}`)
+          console.warn(`[CRON] Could not calculate revenue for ${model.name}`)
+          // totalEarnings remains null - we won't overwrite existing value
         }
 
         // Fetch chats for unread count
@@ -112,7 +115,11 @@ export async function POST(request: NextRequest) {
           updateData.audio_count = 0
         }
 
-        updateData.revenue_total = totalEarnings
+        // PHASE 68: Only update revenue if we successfully calculated it
+        // This prevents overwriting with $0 on API failures
+        if (totalEarnings !== null) {
+          updateData.revenue_total = totalEarnings
+        }
         updateData.unread_messages = unreadMessages
         updateData.tracking_links_count = trackingLinksCount
 
