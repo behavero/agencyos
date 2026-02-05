@@ -67,11 +67,12 @@ export async function GET(request: Request) {
   console.log('[Agency OAuth Login] Scopes:', AGENCY_SCOPES)
 
   // Build authorize URL with agency-specific scopes
-  const authUrl = getAgencyAuthorizeUrl({
+  const authUrl = getAuthorizeUrl({
     state,
     codeChallenge: challenge,
     clientId,
     redirectUri,
+    scopes: AGENCY_SCOPES,
   })
 
   console.log('[Agency OAuth Login] Auth URL:', authUrl.substring(0, 100) + '...')
