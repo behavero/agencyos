@@ -59,7 +59,7 @@ export async function GET(request: Request) {
   const state = crypto.randomUUID()
 
   const clientId = process.env.NEXT_PUBLIC_FANVUE_CLIENT_ID!
-  const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL}/api/oauth/agency/callback`
+  const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL}/api/oauth/callback?type=agency`
 
   console.log('[Agency OAuth Login] Agency:', profile.agency_id)
   console.log('[Agency OAuth Login] Admin:', user.id)

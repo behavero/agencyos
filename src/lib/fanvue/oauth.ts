@@ -5,7 +5,7 @@ import { randomBytes, createHash } from 'crypto'
  * https://github.com/fanvue/fanvue-app-starter
  */
 
-const OAUTH_ISSUER_BASE_URL = 'https://api.fanvue.com'
+const OAUTH_ISSUER_BASE_URL = 'https://auth.fanvue.com'
 
 function base64url(input: Buffer) {
   return input.toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
@@ -42,7 +42,7 @@ export function getAuthorizeUrl({
     code_challenge: codeChallenge,
     code_challenge_method: 'S256',
   })
-  return `${OAUTH_ISSUER_BASE_URL}/oauth/authorize?${params.toString()}`
+  return `${OAUTH_ISSUER_BASE_URL}/oauth2/auth?${params.toString()}`
 }
 
 export async function exchangeCodeForToken({
