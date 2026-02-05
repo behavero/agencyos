@@ -75,7 +75,7 @@ export async function GET(request: Request) {
     scopes: AGENCY_SCOPES,
   })
 
-  console.log('[Agency OAuth Login] Auth URL:', authUrl.substring(0, 100) + '...')
+  console.log('[Agency OAuth Login] Full Auth URL:', authUrl)
 
   // Store OAuth state in cookies
   const cookieStore = await cookies()
