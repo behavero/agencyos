@@ -97,10 +97,24 @@ export default function CreatorManagementClient() {
 
     if (success === 'agency_connected') {
       const importedCount = searchParams.get('imported')
+      const importNote = searchParams.get('import_note')
+
       if (importedCount && parseInt(importedCount) > 0) {
         toast.success(`Fanvue connected! ${importedCount} creators imported.`)
-      } else {
+      } else if (importNote === 'missing_scopes') {
+        toast.warning(
+          'Fanvue connected, but creator import failed due to missing scopes. ' +
+            'Check that OAUTH_SCOPES env var matches your Fanvue developer portal.',
+          { duration: 10000 }
+        )
+      } else if (importNote === 'no_creators') {
         toast.success('Fanvue connected! No creators found in your agency account.')
+      } else if (importNote) {
+        toast.warning(`Fanvue connected, but auto-import failed: ${importNote}`, {
+          duration: 8000,
+        })
+      } else {
+        toast.success('Fanvue connected!')
       }
       window.history.replaceState({}, '', '/dashboard/creator-management')
       router.refresh()

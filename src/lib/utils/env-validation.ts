@@ -33,7 +33,12 @@ const ENV_VARS: EnvVar[] = [
     name: 'OAUTH_SCOPES',
     required: false,
     description:
-      'Fanvue OAuth scopes — must exactly match what is configured in the Fanvue developer portal (e.g. "read:self read:creator read:insights")',
+      'Fanvue OAuth scopes — must exactly match what is configured in the Fanvue developer portal',
+  },
+  {
+    name: 'FANVUE_WEBHOOK_SECRET',
+    required: false,
+    description: 'Fanvue webhook signing secret (for verifying webhook requests)',
   },
   {
     name: 'FIRECRAWL_API_KEY',

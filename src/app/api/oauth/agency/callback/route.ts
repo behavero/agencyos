@@ -234,7 +234,18 @@ export async function GET(request: Request) {
       }
     } catch (importErr: any) {
       console.error('[Agency OAuth Callback] Auto-import failed (non-fatal):', importErr.message)
-      importError = importErr.message
+      // If 403, likely missing read:creator scope
+      if (importErr.message?.includes('403') || importErr.message?.includes('INSUFFICIENT')) {
+        importError = 'missing_scopes'
+        console.error(
+          '[Agency OAuth Callback] Likely missing read:creator scope. ' +
+            'Check OAUTH_SCOPES env var matches Fanvue developer portal. ' +
+            'Token scope was:',
+          token.scope
+        )
+      } else {
+        importError = importErr.message
+      }
     }
 
     const successParams = new URLSearchParams({ success: 'agency_connected' })
