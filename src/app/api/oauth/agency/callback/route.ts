@@ -101,24 +101,34 @@ export async function GET(request: Request) {
     // Fetch user info from Fanvue to get the Fanvue user ID
     console.log('[Agency OAuth Callback] Fetching user info...')
 
-    const userRes = await fetch(`${FANVUE_API_BASE}/users/me`, {
-      headers: {
-        Authorization: `Bearer ${token.access_token}`,
-        'X-Fanvue-API-Version': '2025-06-26',
-      },
-    })
+    let fanvueUserId = 'unknown'
+    let fanvueUserHandle = 'unknown'
 
-    if (!userRes.ok) {
-      const errorText = await userRes.text()
-      console.error('[Agency OAuth Callback] Failed to fetch user:', errorText)
-      return NextResponse.redirect(
-        new URL(`${baseUrl}/dashboard/agency-settings?error=user_fetch_failed`)
-      )
+    try {
+      const userRes = await fetch(`${FANVUE_API_BASE}/users/me`, {
+        headers: {
+          Authorization: `Bearer ${token.access_token}`,
+          'X-Fanvue-API-Version': '2025-06-26',
+        },
+      })
+
+      if (userRes.ok) {
+        const fanvueUser = await userRes.json()
+        fanvueUserId = fanvueUser.uuid || 'unknown'
+        fanvueUserHandle = fanvueUser.handle || fanvueUser.displayName || 'unknown'
+        console.log('[Agency OAuth Callback] Fanvue user:', fanvueUserHandle)
+        console.log('[Agency OAuth Callback] Fanvue UUID:', fanvueUserId)
+      } else {
+        const errorText = await userRes.text()
+        console.error(
+          '[Agency OAuth Callback] Failed to fetch user (continuing anyway):',
+          errorText
+        )
+        // Don't fail - we have the token, that's what matters
+      }
+    } catch (userError) {
+      console.error('[Agency OAuth Callback] Error fetching user (continuing):', userError)
     }
-
-    const fanvueUser = await userRes.json()
-    console.log('[Agency OAuth Callback] Fanvue user:', fanvueUser.handle || fanvueUser.displayName)
-    console.log('[Agency OAuth Callback] Fanvue UUID:', fanvueUser.uuid)
 
     // Verify the user is still authenticated
     const supabase = await createClient()
@@ -147,7 +157,7 @@ export async function GET(request: Request) {
       )
     }
 
-    if (!['admin', 'owner'].includes(profile.role || '')) {
+    if (!['admin', 'owner', 'grandmaster'].includes(profile.role || '')) {
       console.error('[Agency OAuth Callback] User is not an admin')
       return NextResponse.redirect(new URL(`${baseUrl}/dashboard/agency-settings?error=not_admin`))
     }
@@ -161,7 +171,7 @@ export async function GET(request: Request) {
         refresh_token: token.refresh_token || '',
         expires_in: token.expires_in,
       },
-      fanvueUser.uuid
+      fanvueUserId
     )
 
     console.log('[Agency OAuth Callback] ✅ Agency connection stored successfully!')
