@@ -131,18 +131,6 @@ export async function GET(request: NextRequest) {
       .not('model_id', 'is', null)
       .limit(100)
 
-    // 5. Get transaction breakdown by model
-    const { data: breakdown } = await supabase
-      .from('fanvue_transactions')
-      .select('model_id, amount')
-      .eq('agency_id', orphanedTx[0]?.agency_id || '')
-
-    const modelRevenue = new Map<string | null, number>()
-    for (const tx of breakdown || []) {
-      const current = modelRevenue.get(tx.model_id) || 0
-      modelRevenue.set(tx.model_id, current + (tx.amount || 0))
-    }
-
     const duration = Date.now() - startTime
 
     return NextResponse.json({
@@ -153,7 +141,6 @@ export async function GET(request: NextRequest) {
         stillOrphaned: orphanedTx.length - fixedCount,
         durationMs: duration,
       },
-      revenueByModel: Object.fromEntries(modelRevenue),
       fixedDetails: fixResults.slice(0, 20), // Show first 20
       models: models.map(m => ({
         id: m.id,

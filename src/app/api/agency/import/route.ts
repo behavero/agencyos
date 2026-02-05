@@ -170,7 +170,7 @@ async function importCreators(
 /**
  * POST handler: Import all agency creators
  */
-export async function POST(request: NextRequest) {
+export async function POST(_request: NextRequest) {
   try {
     const supabase = await createClient()
 
@@ -228,12 +228,12 @@ export async function POST(request: NextRequest) {
         displayName: c.displayName,
       })),
     })
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Agency import error:', error)
     return NextResponse.json(
       {
         success: false,
-        error: error.message || 'Agency import failed',
+        error: error instanceof Error ? error.message : 'Agency import failed',
       },
       { status: 500 }
     )
@@ -243,7 +243,7 @@ export async function POST(request: NextRequest) {
 /**
  * GET handler: Show import status
  */
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     const supabase = await createClient()
 
@@ -278,11 +278,11 @@ export async function GET(request: NextRequest) {
       creators: models || [],
       hint: 'POST to this endpoint to trigger agency auto-discovery',
     })
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Agency status error:', error)
     return NextResponse.json(
       {
-        error: error.message || 'Failed to get agency status',
+        error: error instanceof Error ? error.message : 'Failed to get agency status',
       },
       { status: 500 }
     )

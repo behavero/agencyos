@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -30,6 +30,8 @@ import {
   CheckCheck,
   Crown,
   ImageIcon as VaultIcon,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -43,6 +45,7 @@ import { useFanvueChat } from '@/hooks/useFanvueChat'
 import { VirtualMessageList } from '@/components/chat/VirtualMessageList'
 import { InputArea } from '@/components/chat/InputArea'
 import { useChatStore } from '@/store/chatStore'
+import { ModelSelectorTabs } from '@/components/chat/ModelSelectorTabs'
 
 type Model = Database['public']['Tables']['models']['Row']
 
@@ -85,7 +88,15 @@ function formatRelativeTime(dateStr: string | null): string {
 }
 
 export default function MessagesClient({ models, vaultAssets = [] }: MessagesClientProps) {
-  const [selectedModel, setSelectedModel] = useState<Model | null>(models[0] || null)
+  const availableModels = useMemo(() => {
+    const hasActive = models.some(model => model.status === 'active')
+    if (hasActive) {
+      return models.filter(model => model.status === 'active')
+    }
+    return models
+  }, [models])
+
+  const [selectedModel, setSelectedModel] = useState<Model | null>(availableModels[0] || null)
   const [selectedChat, setSelectedChat] = useState<ChatThreadWithTier | null>(null)
   const [messageInput, setMessageInput] = useState('')
   const [sendingMessage, setSendingMessage] = useState(false)
@@ -94,6 +105,7 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
   const [notes, setNotes] = useState('')
   const [isVaultOpen, setIsVaultOpen] = useState(false)
   const [selectedAttachment, setSelectedAttachment] = useState<VaultAsset | null>(null)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   // Chat roster hook with Whale Priority sorting
@@ -139,27 +151,20 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
       }
 
       if (typeof payload === 'string') {
-        // Old signature (string) - convert to new format
-        if (sendMessageApi) {
-          return await sendMessageApi({ userUuid, text: payload })
-        }
+        // String payload - call with text directly
         if (fallbackSendMessage) {
           return await fallbackSendMessage(payload)
         }
         return false
       } else {
-        // New signature (object)
-        if (sendMessageApi) {
-          return await sendMessageApi({ userUuid, ...payload })
-        }
-        // Fallback doesn't support object format, convert to string
+        // Object payload - extract text and optional params
         if (fallbackSendMessage && payload.text) {
-          return await fallbackSendMessage(payload.text)
+          return await fallbackSendMessage(payload.text, payload.mediaUuids, payload.price)
         }
         return false
       }
     },
-    [sendMessageApi, fallbackSendMessage, selectedChat?.user?.uuid]
+    [fallbackSendMessage, selectedChat?.user?.uuid]
   )
 
   // Update chat store with selected conversation
@@ -189,6 +194,27 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
   useEffect(() => {
     setSelectedChat(null)
   }, [selectedModel?.id])
+
+  // Keep selected model in sync when list changes
+  useEffect(() => {
+    if (availableModels.length === 0) {
+      setSelectedModel(null)
+      return
+    }
+    if (!selectedModel || !availableModels.some(model => model.id === selectedModel.id)) {
+      setSelectedModel(availableModels[0])
+    }
+  }, [availableModels, selectedModel])
+
+  const handleSelectModel = useCallback(
+    (modelId: string) => {
+      const nextModel = availableModels.find(model => model.id === modelId) || null
+      setSelectedModel(nextModel)
+      setSelectedChat(null)
+      setSelectedConversation(nextModel?.id || null, null)
+    },
+    [availableModels, setSelectedConversation]
+  )
 
   const handleSendMessage = async () => {
     if (!messageInput.trim() || sendingMessage) return
@@ -220,9 +246,9 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
     )
   })
 
-  if (models.length === 0) {
+  if (availableModels.length === 0) {
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-4rem)] bg-background">
+      <div className="flex items-center justify-center h-[calc(100vh-4rem)] bg-zinc-950">
         <Card className="max-w-md mx-auto">
           <CardContent className="p-8 text-center">
             <MessageCircle className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
@@ -240,36 +266,38 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
   }
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] bg-[#0a0f1a]">
-      {/* Left Sidebar - Conversations */}
-      <div className="w-80 border-r border-zinc-800 flex flex-col bg-[#0d1321]">
-        {/* Model Tabs */}
-        <div className="flex items-center gap-2 p-3 border-b border-zinc-800 bg-[#0a0f1a] overflow-x-auto">
-          {models.map(model => (
-            <button
-              key={model.id}
-              onClick={() => {
-                setSelectedModel(model)
-                setSelectedChat(null)
-              }}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-                selectedModel?.id === model.id
-                  ? 'bg-zinc-800 text-white'
-                  : 'text-zinc-400 hover:bg-zinc-800/50'
-              }`}
-            >
-              <Avatar className="w-6 h-6">
-                <AvatarImage src={model.avatar_url || undefined} />
-                <AvatarFallback className="bg-violet-600 text-xs">{model.name?.[0]}</AvatarFallback>
-              </Avatar>
-              <span className="truncate max-w-[100px]">{model.name}</span>
-              {model.unread_messages && model.unread_messages > 0 && (
-                <Badge className="bg-green-500 text-xs">{model.unread_messages}</Badge>
-              )}
-            </button>
-          ))}
+    <div className="flex h-[calc(100vh-4rem)] bg-zinc-950">
+      <div className="flex flex-col flex-1 overflow-hidden">
+        {/* Top Bar - Model Tabs */}
+        <div className="flex items-center gap-3 border-b border-zinc-800 bg-zinc-950 px-4 py-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsSidebarOpen(prev => !prev)}
+            className="text-zinc-400 hover:text-white"
+          >
+            {isSidebarOpen ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+          </Button>
+          <ModelSelectorTabs
+            models={availableModels}
+            selectedModelId={selectedModel?.id || null}
+            onSelect={handleSelectModel}
+          />
+          <div className="flex-1" />
+          {selectedModel?.unread_messages && selectedModel.unread_messages > 0 && (
+            <Badge className="bg-green-500 text-xs">{selectedModel.unread_messages} unread</Badge>
+          )}
         </div>
 
+        <div className="flex flex-1 overflow-hidden">
+          {/* Left Sidebar - Conversations */}
+          <div
+            className={`border-r border-zinc-800 flex flex-col bg-zinc-950 transition-all duration-200 ${
+              isSidebarOpen ? 'w-80' : 'w-0'
+            }`}
+          >
+            {isSidebarOpen && (
+              <>
         {/* Filter Tabs */}
         <div className="flex items-center gap-2 p-3 border-b border-zinc-800">
           <Button
@@ -424,14 +452,16 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
             </div>
           )}
         </ScrollArea>
-      </div>
+              </>
+            )}
+          </div>
 
-      {/* Center - Chat Area */}
-      <div className="flex-1 flex flex-col bg-[#0a0f1a]">
+          {/* Center - Chat Area */}
+          <div className="flex-1 flex flex-col bg-zinc-950">
         {selectedChat ? (
           <>
             {/* Chat Header */}
-            <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-[#0d1321]">
+            <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-950">
               <div className="flex items-center gap-3">
                 <Avatar className="w-10 h-10">
                   <AvatarImage src={selectedChat.user.avatarUrl || undefined} />
@@ -582,7 +612,7 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
       </div>
 
       {/* Right Sidebar - Fan Profile */}
-      <div className="w-80 border-l border-zinc-800 bg-[#0d1321] flex flex-col">
+      <div className="w-80 border-l border-zinc-800 bg-zinc-950 flex flex-col">
         {selectedChat ? (
           <>
             {/* Profile Header */}
@@ -720,6 +750,8 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
             <p>Select a chat to view fan details</p>
           </div>
         )}
+      </div>
+        </div>
       </div>
 
       {/* Vault Modal */}

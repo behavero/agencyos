@@ -47,11 +47,12 @@ export async function syncActiveChat(
       success: true,
       newMessages: messages.data?.length || 0,
     }
-  } catch (error: any) {
-    console.error(`[Real-Time Sync] Failed to sync chat ${fanUuid}:`, error.message)
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    console.error(`[Real-Time Sync] Failed to sync chat ${fanUuid}:`, errorMessage)
     return {
       success: false,
-      error: error.message,
+      error: errorMessage,
     }
   }
 }
@@ -73,11 +74,12 @@ export async function syncTransactionsRealtime(modelId: string): Promise<{
       newTransactions: result.transactionsSynced,
       error: result.errors.length > 0 ? result.errors.join(', ') : undefined,
     }
-  } catch (error: any) {
-    console.error(`[Real-Time Sync] Failed to sync transactions for ${modelId}:`, error.message)
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    console.error(`[Real-Time Sync] Failed to sync transactions for ${modelId}:`, errorMessage)
     return {
       success: false,
-      error: error.message,
+      error: errorMessage,
     }
   }
 }
@@ -103,7 +105,7 @@ export async function syncStatsRealtime(modelId: string): Promise<{
     const { error } = await supabase
       .from('models')
       .update({
-        subscribers_count: user.fanCount || user.followersCount || 0,
+        subscribers_count: user.fanCounts || user.followersCount || 0,
         // Don't overwrite revenue_total - let transaction sync handle that
         last_stats_sync: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -115,11 +117,12 @@ export async function syncStatsRealtime(modelId: string): Promise<{
     }
 
     return { success: true }
-  } catch (error: any) {
-    console.error(`[Real-Time Sync] Failed to sync stats for ${modelId}:`, error.message)
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    console.error(`[Real-Time Sync] Failed to sync stats for ${modelId}:`, errorMessage)
     return {
       success: false,
-      error: error.message,
+      error: errorMessage,
     }
   }
 }

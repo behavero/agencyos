@@ -25,8 +25,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }
 
-    const adminClient = createAdminClient()
-
     // Get creator's access token (auto-refreshes if expired)
     let accessToken: string
     try {
@@ -68,8 +66,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (!user) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }
-
-    const adminClient = createAdminClient()
 
     // Get creator's access token (auto-refreshes if expired)
     let accessToken: string

@@ -7,15 +7,9 @@ const nextConfig: NextConfig = {
   // Output mode - standalone for serverless deployment
   output: 'standalone',
 
-  // !! TODO: FIX TYPE ERRORS !!
-  // These should be removed after fixing all TypeScript and ESLint errors
-  // Keeping them temporarily to maintain deployment stability
-  // Track progress in GitHub Issues
+  // TypeScript and ESLint errors have been fixed
   typescript: {
-    ignoreBuildErrors: true, // TODO: Remove after fixing type errors
-  },
-  eslint: {
-    ignoreDuringBuilds: true, // TODO: Remove after fixing lint errors
+    ignoreBuildErrors: false,
   },
 
   // Performance optimizations

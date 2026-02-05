@@ -220,7 +220,7 @@ async function syncAllCreators(modelIds: string[]): Promise<SyncResult[]> {
 /**
  * POST handler: The Full Agency SaaS Loop
  */
-export async function POST(request: NextRequest) {
+export async function POST(_request: NextRequest) {
   const startTime = Date.now()
 
   try {
