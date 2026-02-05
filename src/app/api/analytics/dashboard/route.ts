@@ -38,7 +38,7 @@ const emptyKPIMetrics: KPIMetrics = {
   unlockRate: 0,
 }
 
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
     const {
