@@ -109,6 +109,44 @@ export function SyncButton() {
     }
   }
 
+  /**
+   * Recalculate revenue from existing transactions (no Fanvue API needed)
+   */
+  const handleRecalculateRevenue = async () => {
+    setIsSyncing(true)
+    toast.loading('💰 Recalculating revenue from transactions...', { id: 'sync-toast' })
+
+    try {
+      const response = await fetch('/api/revenue/recalculate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        toast.success(`✅ Revenue Recalculated!`, {
+          id: 'sync-toast',
+          description: `Total Revenue: ${result.totalRevenueFormatted}\n${result.message}`,
+          duration: 5000,
+        })
+        router.refresh()
+      } else {
+        toast.error('Recalculation failed', {
+          id: 'sync-toast',
+          description: result.error || 'Please try again',
+        })
+      }
+    } catch (error) {
+      toast.error('Failed to recalculate revenue', {
+        id: 'sync-toast',
+        description: 'Check your connection and try again',
+      })
+    } finally {
+      setIsSyncing(false)
+    }
+  }
+
   return (
     <div className="flex gap-1">
       {/* PHASE 59: Agency Sync Button - The main CTA */}
@@ -159,6 +197,19 @@ export function SyncButton() {
               <div className="font-medium">🔴 Force Full Sync</div>
               <div className="text-xs text-muted-foreground">
                 Resets cursor, fetches ALL history
+              </div>
+            </div>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={handleRecalculateRevenue}
+            className="gap-2 text-green-600 dark:text-green-400"
+          >
+            <RefreshCcw className="w-4 h-4" />
+            <div>
+              <div className="font-medium">💰 Fix Revenue Now</div>
+              <div className="text-xs text-muted-foreground">
+                Recalculate from existing data (no API)
               </div>
             </div>
           </DropdownMenuItem>
