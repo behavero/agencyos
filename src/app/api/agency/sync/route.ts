@@ -1,16 +1,24 @@
 /**
- * PHASE 59: AGENCY SAAS LOOP
+ * PHASE 60: AGENCY SAAS LOOP (Proper SaaS Architecture)
+ *
+ * Uses the AGENCY's Fanvue token (not a model's token) for all operations.
+ * Agency admins connect their own Fanvue account to manage all creators.
+ *
  * The ultimate "One-Click" agency sync:
- * 1. Auto-discovers all creators from Fanvue
+ * 1. Auto-discovers all creators from /agencies/creators
  * 2. Imports/updates them in the database
- * 3. Syncs transactions for each creator
+ * 3. Syncs transactions for each creator using /agencies/creators/{uuid}/earnings
  * 4. Returns detailed results for UI feedback
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
-import { getModelAccessToken } from '@/lib/services/fanvue-auth'
-import { syncModelTransactions } from '@/lib/services/transaction-syncer'
+import {
+  getAgencyFanvueToken,
+  fetchAgencyCreators,
+  fetchCreatorEarnings,
+  updateAgencyLastSync,
+} from '@/lib/services/agency-fanvue-auth'
 import { syncAgencyTopSpenders } from '@/lib/services/top-spenders-syncer'
 import { syncAgencySubscriberHistory } from '@/lib/services/subscriber-history-syncer'
 
@@ -37,75 +45,10 @@ interface SyncResult {
   errors: string[]
 }
 
-/**
- * Get a valid Fanvue access token for the agency
- */
-async function getAgencyFanvueToken(agencyId: string): Promise<string> {
-  const adminClient = createAdminClient()
-
-  const { data: models } = await adminClient
-    .from('models')
-    .select('id, name, fanvue_access_token, fanvue_refresh_token, fanvue_token_expires_at')
-    .eq('agency_id', agencyId)
-    .not('fanvue_access_token', 'is', null)
-    .order('fanvue_token_expires_at', { ascending: false, nullsFirst: false })
-    .limit(1)
-
-  if (!models || models.length === 0) {
-    throw new Error(
-      'NO_FANVUE_CONNECTION: No creators in this agency have connected their Fanvue account yet. ' +
-        'Click "Connect with Fanvue" for at least one creator first, then try again.'
-    )
-  }
-
-  const model = models[0]
-  console.log(`🔑 Using token from ${model.name} for agency operations`)
-
-  const token = await getModelAccessToken(model.id)
-  return token
-}
-
-/**
- * Fetch all creators from the agency
- */
-async function fetchAgencyCreators(token: string): Promise<FanvueCreator[]> {
-  const allCreators: FanvueCreator[] = []
-  let page = 1
-  let hasMore = true
-
-  console.log('👥 Fetching agency creators...')
-
-  while (hasMore) {
-    const response = await fetch(`${API_URL}/creators?page=${page}&size=50`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'X-Fanvue-API-Version': '2025-06-26',
-      },
-    })
-
-    if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(`Failed to fetch creators: ${response.status} ${errorText}`)
-    }
-
-    const data = await response.json()
-    const creators: FanvueCreator[] = data.data || []
-
-    allCreators.push(...creators)
-
-    hasMore = data.pagination?.hasMore || false
-    page++
-
-    console.log(`   Fetched page ${page - 1}: ${creators.length} creators`)
-
-    if (page > 10) {
-      console.warn('⚠️  Reached page limit, stopping')
-      break
-    }
-  }
-
-  console.log(`✅ Total creators found: ${allCreators.length}`)
-  return allCreators
+interface CreatorEarning {
+  period: string
+  revenue: number
+  currency: string
 }
 
 /**
@@ -114,11 +57,17 @@ async function fetchAgencyCreators(token: string): Promise<FanvueCreator[]> {
 async function importCreators(
   creators: FanvueCreator[],
   agencyId: string
-): Promise<{ imported: number; updated: number; modelIds: string[] }> {
+): Promise<{
+  imported: number
+  updated: number
+  modelIds: string[]
+  creatorsMap: Map<string, string>
+}> {
   const adminClient = createAdminClient()
   let imported = 0
   let updated = 0
   const modelIds: string[] = []
+  const creatorsMap = new Map<string, string>() // uuid -> modelId
 
   console.log(`📥 Importing ${creators.length} creators into agency ${agencyId}...`)
 
@@ -143,6 +92,7 @@ async function importCreators(
       if (existing) {
         await adminClient.from('models').update(modelData).eq('id', existing.id)
         modelIds.push(existing.id)
+        creatorsMap.set(creator.uuid, existing.id)
         console.log(`   ✅ Updated: ${creator.displayName} (@${creator.handle})`)
         updated++
       } else {
@@ -154,6 +104,7 @@ async function importCreators(
 
         if (newModel) {
           modelIds.push(newModel.id)
+          creatorsMap.set(creator.uuid, newModel.id)
         }
         console.log(`   🆕 Imported: ${creator.displayName} (@${creator.handle})`)
         imported++
@@ -164,52 +115,90 @@ async function importCreators(
   }
 
   console.log(`✅ Import complete: ${imported} new, ${updated} updated`)
-  return { imported, updated, modelIds }
+  return { imported, updated, modelIds, creatorsMap }
 }
 
 /**
- * Sync transactions for all models
+ * Sync earnings for all creators using agency endpoint
  */
-async function syncAllCreators(modelIds: string[]): Promise<SyncResult[]> {
+async function syncAllCreatorsEarnings(
+  agencyId: string,
+  creators: FanvueCreator[],
+  creatorsMap: Map<string, string>
+): Promise<SyncResult[]> {
   const adminClient = createAdminClient()
   const results: SyncResult[] = []
 
-  console.log(`\n💰 Syncing transactions for ${modelIds.length} creators...`)
+  console.log(`\n💰 Syncing earnings for ${creators.length} creators...`)
 
-  for (const modelId of modelIds) {
+  // Calculate date range (last 30 days)
+  const endDate = new Date().toISOString().split('T')[0]
+  const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+
+  for (const creator of creators) {
+    const modelId = creatorsMap.get(creator.uuid)
+    if (!modelId) {
+      console.log(`   ⚠️ Skipping ${creator.displayName} - no model ID`)
+      continue
+    }
+
     try {
-      // Get model info for reporting
-      const { data: model } = await adminClient
+      console.log(`   📊 Syncing ${creator.displayName}...`)
+
+      // Fetch earnings using agency endpoint
+      const earnings = await fetchCreatorEarnings(agencyId, creator.uuid, startDate, endDate)
+
+      // Store earnings in fanvue_transactions table
+      let transactionsSynced = 0
+
+      for (const earning of earnings) {
+        const { error: insertError } = await adminClient.from('fanvue_transactions').upsert(
+          {
+            model_id: modelId,
+            fanvue_user_uuid: creator.uuid,
+            transaction_date: earning.period,
+            amount: earning.revenue,
+            currency: earning.currency,
+            description: 'Earnings via agency sync',
+            source: 'agency_api',
+            created_at: new Date().toISOString(),
+          },
+          {
+            onConflict: 'model_id,transaction_date',
+          }
+        )
+
+        if (!insertError) {
+          transactionsSynced++
+        }
+      }
+
+      // Update model's last sync timestamp
+      await adminClient
         .from('models')
-        .select('name, fanvue_username')
+        .update({
+          last_transaction_sync: new Date().toISOString(),
+          revenue_30d: earnings.reduce((sum, e) => sum + e.revenue, 0),
+        })
         .eq('id', modelId)
-        .single()
-
-      if (!model) continue
-
-      console.log(`   📊 Syncing ${model.name}...`)
-
-      const syncResult = await syncModelTransactions(modelId)
 
       results.push({
-        creatorName: model.name,
-        creatorHandle: model.fanvue_username || '',
-        success: syncResult.success,
-        transactionsSynced: syncResult.transactionsSynced,
-        errors: syncResult.errors || [],
+        creatorName: creator.displayName,
+        creatorHandle: creator.handle,
+        success: true,
+        transactionsSynced,
+        errors: [],
       })
 
-      console.log(
-        `   ${syncResult.success ? '✅' : '❌'} ${model.name}: ${syncResult.transactionsSynced} transactions`
-      )
-    } catch (error) {
-      console.error(`   ❌ Sync failed for model ${modelId}:`, error)
+      console.log(`   ✅ ${creator.displayName}: ${transactionsSynced} earnings synced`)
+    } catch (error: any) {
+      console.error(`   ❌ Sync failed for ${creator.displayName}:`, error.message)
       results.push({
-        creatorName: 'Unknown',
-        creatorHandle: '',
+        creatorName: creator.displayName,
+        creatorHandle: creator.handle,
         success: false,
         transactionsSynced: 0,
-        errors: [error instanceof Error ? error.message : 'Unknown error'],
+        errors: [error.message],
       })
     }
   }
@@ -222,6 +211,7 @@ async function syncAllCreators(modelIds: string[]): Promise<SyncResult[]> {
  */
 export async function POST(_request: NextRequest) {
   const startTime = Date.now()
+  let syncError: string | undefined
 
   try {
     const supabase = await createClient()
@@ -235,10 +225,10 @@ export async function POST(_request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get user's agency
+    // Get user's agency and verify admin role
     const { data: profile } = await supabase
       .from('profiles')
-      .select('agency_id')
+      .select('agency_id, role')
       .eq('id', user.id)
       .single()
 
@@ -246,14 +236,23 @@ export async function POST(_request: NextRequest) {
       return NextResponse.json({ error: 'No agency found' }, { status: 400 })
     }
 
+    if (!['admin', 'owner'].includes(profile.role || '')) {
+      return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
+    }
+
     console.log(`\n🏢 🔄 AGENCY SAAS LOOP START for agency ${profile.agency_id}`)
 
-    // STEP 1: Auto-discover creators
-    console.log('\n📡 STEP 1: AUTO-DISCOVERY')
+    // STEP 1: Get agency token (validates connection exists)
+    console.log('\n📡 STEP 1: VALIDATE AGENCY CONNECTION')
     const agencyToken = await getAgencyFanvueToken(profile.agency_id)
-    const creators = await fetchAgencyCreators(agencyToken)
+    console.log('✅ Agency token validated')
+
+    // STEP 2: Auto-discover creators
+    console.log('\n📡 STEP 2: AUTO-DISCOVERY')
+    const creators = await fetchAgencyCreators(profile.agency_id)
 
     if (creators.length === 0) {
+      await updateAgencyLastSync(profile.agency_id, 'No creators found')
       return NextResponse.json({
         success: false,
         message: 'No creators found in agency account',
@@ -264,25 +263,42 @@ export async function POST(_request: NextRequest) {
       })
     }
 
-    // STEP 2: Import/update creators
-    console.log('\n📥 STEP 2: AUTO-IMPORT')
+    // STEP 3: Import/update creators
+    console.log('\n📥 STEP 3: AUTO-IMPORT')
     const importResult = await importCreators(creators, profile.agency_id)
 
-    // STEP 3: Sync all creators
-    console.log('\n💰 STEP 3: TRANSACTION SYNC')
-    const syncResults = await syncAllCreators(importResult.modelIds)
-
-    // STEP 4: Sync Top Spenders (Phase A)
-    console.log('\n🌟 STEP 4: TOP SPENDERS SYNC (VIP Analytics)')
-    const topSpendersResult = await syncAgencyTopSpenders(profile.agency_id, agencyToken)
-
-    // STEP 5: Sync Subscriber History (Phase A)
-    console.log('\n📈 STEP 5: SUBSCRIBER HISTORY SYNC (Trend Analytics)')
-    const subscriberHistoryResult = await syncAgencySubscriberHistory(
+    // STEP 4: Sync earnings using agency endpoint
+    console.log('\n💰 STEP 4: EARNINGS SYNC (via /agencies/creators/{uuid}/earnings)')
+    const syncResults = await syncAllCreatorsEarnings(
       profile.agency_id,
-      agencyToken,
-      365
-    ) // 1 year
+      creators,
+      importResult.creatorsMap
+    )
+
+    // STEP 5: Sync Top Spenders (using agency token)
+    console.log('\n🌟 STEP 5: TOP SPENDERS SYNC (VIP Analytics)')
+    let topSpendersResult = { totalSpenders: 0, totalRevenue: 0 }
+    try {
+      topSpendersResult = await syncAgencyTopSpenders(profile.agency_id, agencyToken)
+    } catch (error: any) {
+      console.error('   ⚠️ Top spenders sync failed:', error.message)
+    }
+
+    // STEP 6: Sync Subscriber History (using agency token)
+    console.log('\n📈 STEP 6: SUBSCRIBER HISTORY SYNC (Trend Analytics)')
+    let subscriberHistoryResult = { totalDays: 0 }
+    try {
+      subscriberHistoryResult = await syncAgencySubscriberHistory(
+        profile.agency_id,
+        agencyToken,
+        365
+      )
+    } catch (error: any) {
+      console.error('   ⚠️ Subscriber history sync failed:', error.message)
+    }
+
+    // Update last sync timestamp
+    await updateAgencyLastSync(profile.agency_id)
 
     // Calculate totals
     const totalSynced = syncResults.reduce((sum, r) => sum + r.transactionsSynced, 0)
@@ -294,13 +310,13 @@ export async function POST(_request: NextRequest) {
     console.log(`   Creators imported: ${importResult.imported}`)
     console.log(`   Creators updated: ${importResult.updated}`)
     console.log(`   Creators synced successfully: ${successCount}/${syncResults.length}`)
-    console.log(`   Total transactions synced: ${totalSynced}`)
+    console.log(`   Total earnings synced: ${totalSynced}`)
     console.log(`   VIP fans tracked: ${topSpendersResult.totalSpenders}`)
     console.log(`   History days synced: ${subscriberHistoryResult.totalDays}`)
 
     return NextResponse.json({
       success: true,
-      message: `✅ Synced ${successCount} creators: ${totalSynced} transactions, ${topSpendersResult.totalSpenders} VIP fans`,
+      message: `✅ Synced ${successCount} creators: ${totalSynced} earnings, ${topSpendersResult.totalSpenders} VIP fans`,
       creatorsFound: creators.length,
       creatorsImported: importResult.imported,
       creatorsUpdated: importResult.updated,
@@ -310,7 +326,7 @@ export async function POST(_request: NextRequest) {
       summary: {
         totalCreators: creators.length,
         successfulSyncs: successCount,
-        totalTransactions: totalSynced,
+        totalEarnings: totalSynced,
         totalVIPFans: topSpendersResult.totalSpenders,
         totalVIPRevenue: topSpendersResult.totalRevenue,
         totalHistoryDays: subscriberHistoryResult.totalDays,
@@ -330,15 +346,33 @@ export async function POST(_request: NextRequest) {
       errorMessage = error.message
 
       // Check for common error types
-      if (errorMessage.includes('NO_FANVUE_CONNECTION')) {
-        errorDetails = 'Connect at least one creator with Fanvue first'
+      if (errorMessage.includes('NO_AGENCY_FANVUE_CONNECTION')) {
+        errorDetails = 'Agency admin needs to connect their Fanvue account in agency settings'
+      } else if (errorMessage.includes('INSUFFICIENT_PERMISSIONS')) {
+        errorDetails = 'The connected Fanvue account does not have agency admin access'
       } else if (errorMessage.includes('Failed to fetch creators')) {
         errorDetails = 'Could not fetch creators from Fanvue API'
       } else if (errorMessage.includes('401') || errorMessage.includes('Unauthorized')) {
-        errorDetails = 'Fanvue authentication failed. Please reconnect your account'
+        errorDetails = 'Fanvue authentication failed. Agency admin needs to reconnect'
       } else if (errorMessage.includes('429') || errorMessage.includes('Too many requests')) {
         errorDetails = 'Rate limit exceeded. Please wait a minute and try again'
       }
+    }
+
+    // Try to update sync error
+    try {
+      const supabase = await createClient()
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('agency_id')
+        .eq('id', (await supabase.auth.getUser()).data.user?.id || '')
+        .single()
+
+      if (profile?.agency_id) {
+        await updateAgencyLastSync(profile.agency_id, errorMessage)
+      }
+    } catch {
+      // Ignore errors here
     }
 
     return NextResponse.json(
@@ -347,9 +381,10 @@ export async function POST(_request: NextRequest) {
         error: errorMessage,
         details: errorDetails || errorMessage,
         troubleshooting: {
-          step1: 'Ensure at least one creator is connected to Fanvue',
-          step2: 'Check that Fanvue tokens are not expired',
-          step3: 'Wait a minute if you recently synced (rate limit)',
+          step1: 'Ensure an agency admin has connected their Fanvue account in Agency Settings',
+          step2: 'Verify the connected account has agency admin/owner permissions on Fanvue',
+          step3: 'Check that Fanvue tokens are not expired',
+          step4: 'Wait a minute if you recently synced (rate limit)',
         },
       },
       { status: 500 }

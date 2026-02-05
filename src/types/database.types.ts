@@ -44,6 +44,50 @@ export interface Database {
           updated_at?: string | null
         }
       }
+      agency_fanvue_connections: {
+        Row: {
+          id: string
+          agency_id: string
+          admin_user_id: string
+          fanvue_access_token: string
+          fanvue_refresh_token: string
+          fanvue_token_expires_at: string
+          fanvue_user_id: string
+          connected_at: string | null
+          updated_at: string | null
+          status: 'active' | 'expired' | 'revoked' | null
+          last_synced_at: string | null
+          last_sync_error: string | null
+        }
+        Insert: {
+          id?: string
+          agency_id: string
+          admin_user_id: string
+          fanvue_access_token: string
+          fanvue_refresh_token: string
+          fanvue_token_expires_at: string
+          fanvue_user_id: string
+          connected_at?: string | null
+          updated_at?: string | null
+          status?: 'active' | 'expired' | 'revoked' | null
+          last_synced_at?: string | null
+          last_sync_error?: string | null
+        }
+        Update: {
+          id?: string
+          agency_id?: string
+          admin_user_id?: string
+          fanvue_access_token?: string
+          fanvue_refresh_token?: string
+          fanvue_token_expires_at?: string
+          fanvue_user_id?: string
+          connected_at?: string | null
+          updated_at?: string | null
+          status?: 'active' | 'expired' | 'revoked' | null
+          last_synced_at?: string | null
+          last_sync_error?: string | null
+        }
+      }
       models: {
         Row: {
           id: string

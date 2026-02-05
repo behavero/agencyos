@@ -1,14 +1,20 @@
 /**
- * Phase 59: Agency Auto-Discovery
- * Automatically imports all creators from the agency's Fanvue account
+ * Phase 60: Agency Auto-Discovery (SaaS Architecture)
  *
- * IMPORTANT: This uses the logged-in admin's Fanvue token (not client credentials)
- * The admin must have connected their Fanvue account via OAuth with read:creator scope
+ * IMPORTANT: This uses the AGENCY's Fanvue token (not a model's token).
+ * Agency admins connect their own Fanvue account via OAuth with agency scopes.
+ *
+ * This fetches all creators from /agencies/creators endpoint
+ * and imports them into the database.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
-import { getModelAccessToken } from '@/lib/services/fanvue-auth'
+import {
+  getAgencyFanvueToken,
+  fetchAgencyCreators,
+  updateAgencyLastSync,
+} from '@/lib/services/agency-fanvue-auth'
 
 const API_URL = 'https://api.fanvue.com'
 
@@ -26,91 +32,9 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 /**
- * Get a valid Fanvue access token for the agency
- * Uses any connected creator's token (they all have read:creator scope)
- */
-async function getAgencyFanvueToken(agencyId: string): Promise<string> {
-  const adminClient = createAdminClient()
-
-  // Find any model in this agency with a Fanvue token
-  const { data: models } = await adminClient
-    .from('models')
-    .select('id, name, fanvue_access_token, fanvue_refresh_token, fanvue_token_expires_at')
-    .eq('agency_id', agencyId)
-    .not('fanvue_access_token', 'is', null)
-    .order('fanvue_token_expires_at', { ascending: false, nullsFirst: false })
-    .limit(1)
-
-  if (!models || models.length === 0) {
-    throw new Error(
-      'NO_FANVUE_CONNECTION: No creators in this agency have connected their Fanvue account yet. ' +
-        'Click "Connect with Fanvue" for at least one creator first, then try again.'
-    )
-  }
-
-  const model = models[0]
-  console.log(`🔑 Using token from ${model.name} for agency operations`)
-
-  // Use the existing token refresh logic
-  try {
-    const token = await getModelAccessToken(model.id)
-    return token
-  } catch (error: any) {
-    throw new Error(
-      `Failed to get valid Fanvue token from ${model.name}: ${error.message}. ` +
-        'Try reconnecting their Fanvue account.'
-    )
-  }
-}
-
-/**
- * Fetch all creators from the agency
- */
-async function fetchAgencyCreators(token: string): Promise<FanvueCreator[]> {
-  const allCreators: FanvueCreator[] = []
-  let page = 1
-  let hasMore = true
-
-  console.log('👥 Fetching agency creators...')
-
-  while (hasMore) {
-    const response = await fetch(`${API_URL}/creators?page=${page}&size=50`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'X-Fanvue-API-Version': '2025-06-26',
-      },
-    })
-
-    if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(`Failed to fetch creators: ${response.status} ${errorText}`)
-    }
-
-    const data = await response.json()
-    const creators: FanvueCreator[] = data.data || []
-
-    allCreators.push(...creators)
-
-    hasMore = data.pagination?.hasMore || false
-    page++
-
-    console.log(`   Fetched page ${page - 1}: ${creators.length} creators`)
-
-    if (page > 10) {
-      // Safety limit
-      console.warn('⚠️  Reached page limit, stopping')
-      break
-    }
-  }
-
-  console.log(`✅ Total creators found: ${allCreators.length}`)
-  return allCreators
-}
-
-/**
  * Import creators into the database
  * NOTE: We don't store tokens for auto-imported creators
- * They will need to connect individually via OAuth to enable syncing
+ * They will need to connect individually via OAuth to enable personal syncing
  */
 async function importCreators(
   creators: FanvueCreator[],
@@ -171,6 +95,8 @@ async function importCreators(
  * POST handler: Import all agency creators
  */
 export async function POST(_request: NextRequest) {
+  let syncError: string | undefined
+
   try {
     const supabase = await createClient()
 
@@ -183,10 +109,10 @@ export async function POST(_request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get user's agency
+    // Get user's agency and verify admin role
     const { data: profile } = await supabase
       .from('profiles')
-      .select('agency_id')
+      .select('agency_id, role')
       .eq('id', user.id)
       .single()
 
@@ -194,15 +120,20 @@ export async function POST(_request: NextRequest) {
       return NextResponse.json({ error: 'No agency found' }, { status: 400 })
     }
 
+    if (!['admin', 'owner'].includes(profile.role || '')) {
+      return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
+    }
+
     console.log(`\n🏢 AGENCY AUTO-DISCOVERY for agency ${profile.agency_id}`)
 
-    // Step 1: Get a valid Fanvue token from any connected creator in this agency
+    // Step 1: Get a valid Fanvue token from agency connection
     const agencyToken = await getAgencyFanvueToken(profile.agency_id)
 
-    // Step 2: Fetch all creators
-    const creators = await fetchAgencyCreators(agencyToken)
+    // Step 2: Fetch all creators from agency
+    const creators = await fetchAgencyCreators(profile.agency_id)
 
     if (creators.length === 0) {
+      await updateAgencyLastSync(profile.agency_id, 'No creators found')
       return NextResponse.json({
         success: false,
         message: 'No creators found in agency account',
@@ -214,6 +145,9 @@ export async function POST(_request: NextRequest) {
 
     // Step 3: Import into database (without copying tokens)
     const result = await importCreators(creators, profile.agency_id)
+
+    // Update last sync timestamp
+    await updateAgencyLastSync(profile.agency_id)
 
     return NextResponse.json({
       success: true,
@@ -230,10 +164,30 @@ export async function POST(_request: NextRequest) {
     })
   } catch (error: unknown) {
     console.error('Agency import error:', error)
+
+    const errorMessage = error instanceof Error ? error.message : 'Agency import failed'
+    syncError = errorMessage
+
+    // Try to update sync error if we have agency ID
+    try {
+      const supabase = await createClient()
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('agency_id')
+        .eq('id', (await supabase.auth.getUser()).data.user?.id || '')
+        .single()
+
+      if (profile?.agency_id) {
+        await updateAgencyLastSync(profile.agency_id, errorMessage)
+      }
+    } catch {
+      // Ignore errors here
+    }
+
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Agency import failed',
+        error: errorMessage,
       },
       { status: 500 }
     )
@@ -257,7 +211,7 @@ export async function GET(_request: NextRequest) {
 
     const { data: profile } = await supabase
       .from('profiles')
-      .select('agency_id')
+      .select('agency_id, role')
       .eq('id', user.id)
       .single()
 
@@ -272,8 +226,25 @@ export async function GET(_request: NextRequest) {
       .eq('agency_id', profile.agency_id)
       .order('created_at', { ascending: false })
 
+    // Get agency connection status
+    const { data: connection } = await supabase
+      .from('agency_fanvue_connections')
+      .select('status, connected_at, last_synced_at, last_sync_error')
+      .eq('agency_id', profile.agency_id)
+      .single()
+
     return NextResponse.json({
       agencyId: profile.agency_id,
+      isAdmin: ['admin', 'owner'].includes(profile.role || ''),
+      fanvueConnection: connection
+        ? {
+            connected: connection.status === 'active',
+            status: connection.status,
+            connectedAt: connection.connected_at,
+            lastSyncedAt: connection.last_synced_at,
+            lastSyncError: connection.last_sync_error,
+          }
+        : null,
       totalCreators: models?.length || 0,
       creators: models || [],
       hint: 'POST to this endpoint to trigger agency auto-discovery',
