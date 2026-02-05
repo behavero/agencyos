@@ -163,10 +163,13 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
   )
 
   // Update chat store with selected conversation
-  const chatStore = useChatStore()
-  useEffect(() => {
-    chatStore.setSelectedConversation(selectedModel?.id || null, selectedChat?.user.uuid || null)
-  }, [selectedModel?.id, selectedChat?.user.uuid, chatStore])
+  const setSelectedConversation = useChatStore(state => state.setSelectedConversation)
+  const optimisticMessages = useChatStore(state => state.optimisticMessages)
+  // DISABLED: Temporarily sever potential infinite loop (React #185).
+  // Re-enable after confirming safe store/router interaction.
+  // useEffect(() => {
+  //   setSelectedConversation(selectedModel?.id || null, selectedChat?.user.uuid || null)
+  // }, [selectedModel?.id, selectedChat?.user.uuid, setSelectedConversation])
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -504,7 +507,7 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
                   className="h-full"
                   onRetryMessage={tempId => {
                     // Retry failed message
-                    const optimisticMsg = chatStore.optimisticMessages.get(tempId)
+                    const optimisticMsg = optimisticMessages.get(tempId)
                     if (optimisticMsg && selectedChat) {
                       sendMessage({
                         text: optimisticMsg.text || undefined,
