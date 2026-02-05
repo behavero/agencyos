@@ -213,7 +213,7 @@ export async function syncModelTransactions(modelId: string): Promise<SyncResult
       return {
         agency_id: model.agency_id,
         model_id: model.id,
-        fanvue_transaction_id: `${earning.date}_${earning.source}_${earning.gross}_${earning.user?.uuid || 'unknown'}`, // Generate unique ID
+        fanvue_transaction_id: `${earning.date}_${earning.source}_${earning.gross}_${earning.user?.uuid || 'unknown'}_${Math.random().toString(36).substring(2, 11)}`, // Generate unique ID with random suffix to prevent collisions
         transaction_type: category, // Must match CHECK constraint: subscription, tip, ppv, message, post, stream, other
         amount: earning.gross / 100, // Convert cents to dollars (gross amount)
         // net_amount is auto-calculated by DB: (amount - platform_fee)

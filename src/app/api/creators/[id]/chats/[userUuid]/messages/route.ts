@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createClient } from '@/lib/supabase/server'
 import { createFanvueClient } from '@/lib/fanvue/client'
+import { getModelAccessToken } from '@/lib/services/fanvue-auth'
 
 /**
  * GET /api/creators/[id]/chats/[userUuid]/messages
@@ -27,22 +28,26 @@ export async function GET(
 
     const adminClient = createAdminClient()
 
-    // Get creator's tokens
-    const { data: model } = await adminClient
-      .from('models')
-      .select('fanvue_access_token, fanvue_user_uuid')
-      .eq('id', id)
-      .single()
-
-    if (!model?.fanvue_access_token) {
+    // Get creator's access token (auto-refreshes if expired)
+    let accessToken: string
+    try {
+      accessToken = await getModelAccessToken(id)
+    } catch (error) {
       return NextResponse.json({ error: 'Creator not connected' }, { status: 400 })
     }
 
-    const fanvue = createFanvueClient(model.fanvue_access_token)
+    // Get creator's UUID for message transformation
+    const { data: model } = await adminClient
+      .from('models')
+      .select('fanvue_user_uuid')
+      .eq('id', id)
+      .single()
+
+    const fanvue = createFanvueClient(accessToken)
     const messages = await fanvue.getMessages(userUuid, { page, size })
 
     // Transform messages to include isFromCreator flag
-    const creatorUuid = model.fanvue_user_uuid
+    const creatorUuid = model?.fanvue_user_uuid
     const transformedMessages = messages.data.map(msg => ({
       ...msg,
       isFromCreator: msg.sender.uuid === creatorUuid,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createClient } from '@/lib/supabase/server'
 import { createFanvueClient } from '@/lib/fanvue/client'
+import { getModelAccessToken } from '@/lib/services/fanvue-auth'
 
 /**
  * Messages API for a specific creator
@@ -26,18 +27,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const adminClient = createAdminClient()
 
-    // Get creator's tokens
-    const { data: model } = await adminClient
-      .from('models')
-      .select('fanvue_access_token')
-      .eq('id', id)
-      .single()
-
-    if (!model?.fanvue_access_token) {
+    // Get creator's access token (auto-refreshes if expired)
+    let accessToken: string
+    try {
+      accessToken = await getModelAccessToken(id)
+    } catch (error) {
       return NextResponse.json({ error: 'Creator not connected' }, { status: 400 })
     }
 
-    const fanvue = createFanvueClient(model.fanvue_access_token)
+    const fanvue = createFanvueClient(accessToken)
     const chats = await fanvue.getChats({ page, size })
 
     return NextResponse.json(chats)
@@ -73,18 +71,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const adminClient = createAdminClient()
 
-    // Get creator's tokens
-    const { data: model } = await adminClient
-      .from('models')
-      .select('fanvue_access_token, name')
-      .eq('id', id)
-      .single()
-
-    if (!model?.fanvue_access_token) {
+    // Get creator's access token (auto-refreshes if expired)
+    let accessToken: string
+    try {
+      accessToken = await getModelAccessToken(id)
+    } catch (error) {
       return NextResponse.json({ error: 'Creator not connected' }, { status: 400 })
     }
 
-    const fanvue = createFanvueClient(model.fanvue_access_token)
+    const fanvue = createFanvueClient(accessToken)
 
     // Try to ensure chat exists (this is optional, sendMessage may auto-create)
     try {
