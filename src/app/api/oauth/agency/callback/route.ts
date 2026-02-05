@@ -181,71 +181,97 @@ export async function GET(request: Request) {
     )
 
     console.log('[Agency OAuth Callback] ✅ Agency connection stored successfully!')
+    console.log('[Agency OAuth Callback] Token scope:', token.scope)
 
-    // Auto-import creators immediately after connecting
+    // Auto-import creators immediately using the fresh token directly
+    // (Don't go through getAgencyFanvueToken — we already have the token)
     let importedCount = 0
     let importError = ''
     try {
-      console.log('[Agency OAuth Callback] 🔄 Auto-importing creators...')
-      const creators = await fetchAgencyCreators(agencyId)
+      console.log('[Agency OAuth Callback] 🔄 Auto-importing creators with fresh token...')
 
-      if (creators.length > 0) {
-        const adminClient = createAdminClient()
+      // Call GET /creators directly with the token we just received
+      const creatorsRes = await fetch('https://api.fanvue.com/creators?page=1&size=50', {
+        headers: {
+          Authorization: `Bearer ${token.access_token}`,
+          'X-Fanvue-API-Version': '2025-06-26',
+        },
+      })
 
-        for (const creator of creators) {
-          try {
-            const { data: existing } = await adminClient
-              .from('models')
-              .select('id')
-              .eq('fanvue_user_uuid', creator.uuid)
-              .single()
+      const rawBody = await creatorsRes.text()
+      console.log('[Agency OAuth Callback] GET /creators status:', creatorsRes.status)
+      console.log('[Agency OAuth Callback] GET /creators raw response:', rawBody.substring(0, 500))
 
-            const modelData = {
-              agency_id: agencyId,
-              name: creator.displayName,
-              fanvue_username: creator.handle,
-              fanvue_user_uuid: creator.uuid,
-              avatar_url: creator.avatarUrl,
-              status: 'active',
-              updated_at: new Date().toISOString(),
-            }
-
-            if (existing) {
-              await adminClient.from('models').update(modelData).eq('id', existing.id)
-            } else {
-              await adminClient.from('models').insert(modelData)
-            }
-            importedCount++
-          } catch (creatorErr) {
-            console.error(
-              `[Agency OAuth Callback] Failed to import ${creator.displayName}:`,
-              creatorErr
-            )
-          }
+      if (!creatorsRes.ok) {
+        importError = `api_${creatorsRes.status}`
+        console.error('[Agency OAuth Callback] GET /creators failed:', creatorsRes.status, rawBody)
+      } else {
+        let creatorsData: { data?: any[]; pagination?: any }
+        try {
+          creatorsData = JSON.parse(rawBody)
+        } catch {
+          importError = 'invalid_json'
+          console.error('[Agency OAuth Callback] Failed to parse creators response')
+          creatorsData = {}
         }
 
-        await updateAgencyLastSync(agencyId)
+        const creators = creatorsData.data || []
+        console.log('[Agency OAuth Callback] Creators found:', creators.length)
         console.log(
-          `[Agency OAuth Callback] ✅ Imported ${importedCount}/${creators.length} creators`
+          '[Agency OAuth Callback] Creator handles:',
+          creators.map((c: any) => c.handle || c.displayName).join(', ')
         )
-      } else {
-        console.log('[Agency OAuth Callback] No creators found in agency account')
-        importError = 'no_creators'
+
+        if (creators.length > 0) {
+          const adminClient = createAdminClient()
+
+          for (const creator of creators) {
+            try {
+              const { data: existing } = await adminClient
+                .from('models')
+                .select('id')
+                .eq('fanvue_user_uuid', creator.uuid)
+                .single()
+
+              const modelData = {
+                agency_id: agencyId,
+                name: creator.displayName || creator.handle || 'Unknown',
+                fanvue_username: creator.handle,
+                fanvue_user_uuid: creator.uuid,
+                avatar_url: creator.avatarUrl,
+                status: 'active',
+                updated_at: new Date().toISOString(),
+              }
+
+              if (existing) {
+                await adminClient.from('models').update(modelData).eq('id', existing.id)
+              } else {
+                await adminClient.from('models').insert(modelData)
+              }
+              importedCount++
+              console.log(
+                `[Agency OAuth Callback]   ✅ ${creator.displayName} (@${creator.handle})`
+              )
+            } catch (creatorErr) {
+              console.error(
+                `[Agency OAuth Callback]   ❌ Failed to import ${creator.displayName}:`,
+                creatorErr
+              )
+            }
+          }
+
+          await updateAgencyLastSync(agencyId)
+          console.log(
+            `[Agency OAuth Callback] ✅ Imported ${importedCount}/${creators.length} creators`
+          )
+        } else {
+          importError = 'no_creators'
+          console.log('[Agency OAuth Callback] API returned 0 creators. Full response:', rawBody)
+        }
       }
     } catch (importErr: any) {
       console.error('[Agency OAuth Callback] Auto-import failed (non-fatal):', importErr.message)
-      // If 403, likely missing read:creator scope
-      if (importErr.message?.includes('403') || importErr.message?.includes('INSUFFICIENT')) {
-        importError = 'missing_scopes'
-        console.error(
-          '[Agency OAuth Callback] Likely missing read:creator scope. ' +
-            'Check OAUTH_SCOPES env var matches Fanvue developer portal. ' +
-            'Token scope was:',
-          token.scope
-        )
-      } else {
-        importError = importErr.message
-      }
+      importError = importErr.message
     }
 
     const successParams = new URLSearchParams({ success: 'agency_connected' })
