@@ -49,7 +49,7 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL('/dashboard/agency-settings?error=no_agency', url.origin))
   }
 
-  if (!['admin', 'owner'].includes(profile.role || '')) {
+  if (!['admin', 'owner', 'grandmaster'].includes(profile.role || '')) {
     console.error('[Agency OAuth Login] User is not an agency admin')
     return NextResponse.redirect(new URL('/dashboard/agency-settings?error=not_admin', url.origin))
   }
