@@ -39,7 +39,7 @@ export async function syncActiveChat(
     const fanvue = createFanvueClient(token)
 
     // Fetch latest messages for this conversation
-    const messages = await fanvue.getMessages({ fanUuid, limit: 50 })
+    const messages = await fanvue.getMessages(fanUuid, { size: 50 })
 
     // TODO: Compare with local DB, return only new messages
     // For now, just return count
@@ -105,7 +105,7 @@ export async function syncStatsRealtime(modelId: string): Promise<{
     const { error } = await supabase
       .from('models')
       .update({
-        subscribers_count: user.fanCounts || user.followersCount || 0,
+        subscribers_count: user.fanCounts?.subscribersCount || user.fanCounts?.followersCount || 0,
         // Don't overwrite revenue_total - let transaction sync handle that
         last_stats_sync: new Date().toISOString(),
         updated_at: new Date().toISOString(),

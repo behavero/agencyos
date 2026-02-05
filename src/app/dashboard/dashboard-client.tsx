@@ -914,7 +914,10 @@ export default function DashboardClient() {
           {/* Top Tracking Links & Instagram Insights Row */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <TopTrackingLinksCard
-              models={models.map((m: { id: string; name: string | null }) => ({ id: m.id, name: m.name || 'Unknown' }))}
+              models={models.map((m: { id: string; name: string | null }) => ({
+                id: m.id,
+                name: m.name || 'Unknown',
+              }))}
               initialModelId={selectedModelId === 'all' ? undefined : selectedModelId}
             />
             <InstagramInsightsCard
@@ -1105,7 +1108,7 @@ export default function DashboardClient() {
                 {filteredFanvueData.categoryBreakdown.length > 0 ? (
                   <EarningsBreakdown
                     data={filteredFanvueData.categoryBreakdown}
-                    currency={agency?.currency}
+                    currency={agency?.currency || undefined}
                   />
                 ) : (
                   <div className="flex flex-col items-center justify-center h-[200px] text-center p-6">

@@ -136,7 +136,7 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
     // Trigger data refresh
     window.location.reload()
   }
-  const creatorUuid = selectedModel?.fanvue_user_uuid || null
+  const creatorUuid = selectedModel?.fanvue_user_id || null
 
   // Use new messages if available, otherwise fallback
   const messages = fanvueMessages.length > 0 ? fanvueMessages : fallbackMessages
@@ -276,7 +276,11 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
             onClick={() => setIsSidebarOpen(prev => !prev)}
             className="text-zinc-400 hover:text-white"
           >
-            {isSidebarOpen ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+            {isSidebarOpen ? (
+              <ChevronLeft className="w-4 h-4" />
+            ) : (
+              <ChevronRight className="w-4 h-4" />
+            )}
           </Button>
           <ModelSelectorTabs
             models={availableModels}
@@ -298,459 +302,464 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
           >
             {isSidebarOpen && (
               <>
-        {/* Filter Tabs */}
-        <div className="flex items-center gap-2 p-3 border-b border-zinc-800">
-          <Button
-            variant={filter === 'all' ? 'default' : 'ghost'}
-            size="sm"
-            onClick={() => setFilter('all')}
-            className={filter === 'all' ? 'bg-zinc-700' : 'text-zinc-400'}
-          >
-            All
-          </Button>
-          <Button
-            variant={filter === 'unread' ? 'default' : 'ghost'}
-            size="sm"
-            onClick={() => setFilter('unread')}
-            className={filter === 'unread' ? 'bg-zinc-700' : 'text-zinc-400'}
-          >
-            Unread
-          </Button>
-          <div className="flex-1" />
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={refreshChats}
-            disabled={chatsLoading}
-            className="h-8 w-8 text-zinc-400"
-          >
-            <RefreshCw className={`w-4 h-4 ${chatsLoading ? 'animate-spin' : ''}`} />
-          </Button>
-        </div>
+                {/* Filter Tabs */}
+                <div className="flex items-center gap-2 p-3 border-b border-zinc-800">
+                  <Button
+                    variant={filter === 'all' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setFilter('all')}
+                    className={filter === 'all' ? 'bg-zinc-700' : 'text-zinc-400'}
+                  >
+                    All
+                  </Button>
+                  <Button
+                    variant={filter === 'unread' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setFilter('unread')}
+                    className={filter === 'unread' ? 'bg-zinc-700' : 'text-zinc-400'}
+                  >
+                    Unread
+                  </Button>
+                  <div className="flex-1" />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={refreshChats}
+                    disabled={chatsLoading}
+                    className="h-8 w-8 text-zinc-400"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${chatsLoading ? 'animate-spin' : ''}`} />
+                  </Button>
+                </div>
 
-        {/* Search */}
-        <div className="p-3 border-b border-zinc-800">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-            <Input
-              placeholder="Search fans..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="pl-9 bg-zinc-800/50 border-zinc-700 text-white placeholder:text-zinc-500"
-            />
-          </div>
-        </div>
+                {/* Search */}
+                <div className="p-3 border-b border-zinc-800">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                    <Input
+                      placeholder="Search fans..."
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                      className="pl-9 bg-zinc-800/50 border-zinc-700 text-white placeholder:text-zinc-500"
+                    />
+                  </div>
+                </div>
 
-        {/* Conversations List */}
-        <ScrollArea className="flex-1">
-          {chatsLoading && chats.length === 0 ? (
-            <div className="flex items-center justify-center py-8">
-              <RefreshCw className="w-6 h-6 animate-spin text-zinc-500" />
-            </div>
-          ) : chatsError ? (
-            <div className="p-4 text-center">
-              <AlertCircle className="w-8 h-8 mx-auto mb-2 text-red-500" />
-              <p className="text-red-400 text-sm">{chatsError}</p>
-              <Button variant="ghost" size="sm" onClick={refreshChats} className="mt-2">
-                Retry
-              </Button>
-            </div>
-          ) : filteredChats.length === 0 ? (
-            <div className="p-4 text-center text-zinc-500">
-              {filter === 'unread' ? 'No unread messages' : 'No conversations yet'}
-            </div>
-          ) : (
-            <div className="p-2">
-              {filteredChats
-                .filter(chat => chat?.user?.uuid) // Safety: Filter out chats without user
-                .map(chat => {
-                  // Defensive checks
-                  if (!chat?.user) return null
-                  const user = chat.user
-                  const userUuid = user.uuid || ''
-                  const displayName = user.displayName || user.handle || 'Unknown'
-                  const handle = user.handle || 'unknown'
+                {/* Conversations List */}
+                <ScrollArea className="flex-1">
+                  {chatsLoading && chats.length === 0 ? (
+                    <div className="flex items-center justify-center py-8">
+                      <RefreshCw className="w-6 h-6 animate-spin text-zinc-500" />
+                    </div>
+                  ) : chatsError ? (
+                    <div className="p-4 text-center">
+                      <AlertCircle className="w-8 h-8 mx-auto mb-2 text-red-500" />
+                      <p className="text-red-400 text-sm">{chatsError}</p>
+                      <Button variant="ghost" size="sm" onClick={refreshChats} className="mt-2">
+                        Retry
+                      </Button>
+                    </div>
+                  ) : filteredChats.length === 0 ? (
+                    <div className="p-4 text-center text-zinc-500">
+                      {filter === 'unread' ? 'No unread messages' : 'No conversations yet'}
+                    </div>
+                  ) : (
+                    <div className="p-2">
+                      {filteredChats
+                        .filter(chat => chat?.user?.uuid) // Safety: Filter out chats without user
+                        .map(chat => {
+                          // Defensive checks
+                          if (!chat?.user) return null
+                          const user = chat.user
+                          const userUuid = user.uuid || ''
+                          const displayName = user.displayName || user.handle || 'Unknown'
+                          const handle = user.handle || 'unknown'
 
-                  return (
-                    <button
-                      key={userUuid}
-                      onClick={() => setSelectedChat(chat)}
-                      className={`w-full flex items-start gap-3 p-3 rounded-lg transition-colors text-left ${
-                        selectedChat?.user?.uuid === userUuid
-                          ? 'bg-zinc-800'
-                          : 'hover:bg-zinc-800/50'
-                      }`}
-                    >
-                      <div className="relative">
-                        <Avatar className="w-10 h-10 flex-shrink-0">
-                          <AvatarImage src={user.avatarUrl || undefined} />
-                          <AvatarFallback className="bg-zinc-700 text-white">
-                            {displayName[0]?.toUpperCase() || 'U'}
-                          </AvatarFallback>
-                        </Avatar>
-                        {user.isTopSpender && (
-                          <Crown className="absolute -top-1 -right-1 w-4 h-4 text-yellow-500" />
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="font-medium text-white truncate">
-                              {user.nickname || displayName}
-                            </span>
-                            {chat.tier && (
-                              <Badge
-                                className={`text-xs shrink-0 ${
-                                  chat.tier === 'whale'
-                                    ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
-                                    : chat.tier === 'spender'
-                                      ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
-                                      : 'bg-zinc-700/50 text-zinc-400 border-zinc-600'
-                                }`}
-                              >
-                                {chat.tier === 'whale'
-                                  ? '🐋'
-                                  : chat.tier === 'spender'
-                                    ? '💰'
-                                    : '👤'}{' '}
-                                {chat.tier}
-                              </Badge>
-                            )}
-                            {chat.ltv !== undefined && chat.ltv !== null && chat.ltv > 0 && (
-                              <Badge
-                                variant="outline"
-                                className="text-xs shrink-0 bg-zinc-800/50 border-zinc-700 text-zinc-300"
-                              >
-                                ${(chat.ltv / 100).toFixed(0)}
-                              </Badge>
-                            )}
-                          </div>
-                          <span className="text-xs text-zinc-500 flex-shrink-0">
-                            {formatRelativeTime(chat.lastMessageAt)}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span className="text-sm text-zinc-400 truncate">@{handle}</span>
-                        </div>
-                        {chat.lastMessage && (
-                          <div className="flex items-center gap-2 mt-1">
-                            {(chat.unreadMessagesCount || 0) > 0 && (
-                              <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
-                            )}
-                            <p className="text-sm text-zinc-400 truncate">
-                              {chat.lastMessage.hasMedia && !chat.lastMessage.text
-                                ? '📷 Media'
-                                : chat.lastMessage.text || 'No message'}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    </button>
-                  )
-                })
-                .filter(Boolean)}
-            </div>
-          )}
-        </ScrollArea>
+                          return (
+                            <button
+                              key={userUuid}
+                              onClick={() => setSelectedChat(chat)}
+                              className={`w-full flex items-start gap-3 p-3 rounded-lg transition-colors text-left ${
+                                selectedChat?.user?.uuid === userUuid
+                                  ? 'bg-zinc-800'
+                                  : 'hover:bg-zinc-800/50'
+                              }`}
+                            >
+                              <div className="relative">
+                                <Avatar className="w-10 h-10 flex-shrink-0">
+                                  <AvatarImage src={user.avatarUrl || undefined} />
+                                  <AvatarFallback className="bg-zinc-700 text-white">
+                                    {displayName[0]?.toUpperCase() || 'U'}
+                                  </AvatarFallback>
+                                </Avatar>
+                                {user.isTopSpender && (
+                                  <Crown className="absolute -top-1 -right-1 w-4 h-4 text-yellow-500" />
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <span className="font-medium text-white truncate">
+                                      {user.nickname || displayName}
+                                    </span>
+                                    {chat.tier && (
+                                      <Badge
+                                        className={`text-xs shrink-0 ${
+                                          chat.tier === 'whale'
+                                            ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+                                            : chat.tier === 'spender'
+                                              ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                                              : 'bg-zinc-700/50 text-zinc-400 border-zinc-600'
+                                        }`}
+                                      >
+                                        {chat.tier === 'whale'
+                                          ? '🐋'
+                                          : chat.tier === 'spender'
+                                            ? '💰'
+                                            : '👤'}{' '}
+                                        {chat.tier}
+                                      </Badge>
+                                    )}
+                                    {chat.ltv !== undefined &&
+                                      chat.ltv !== null &&
+                                      chat.ltv > 0 && (
+                                        <Badge
+                                          variant="outline"
+                                          className="text-xs shrink-0 bg-zinc-800/50 border-zinc-700 text-zinc-300"
+                                        >
+                                          ${(chat.ltv / 100).toFixed(0)}
+                                        </Badge>
+                                      )}
+                                  </div>
+                                  <span className="text-xs text-zinc-500 flex-shrink-0">
+                                    {formatRelativeTime(chat.lastMessageAt)}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <span className="text-sm text-zinc-400 truncate">@{handle}</span>
+                                </div>
+                                {chat.lastMessage && (
+                                  <div className="flex items-center gap-2 mt-1">
+                                    {(chat.unreadMessagesCount || 0) > 0 && (
+                                      <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
+                                    )}
+                                    <p className="text-sm text-zinc-400 truncate">
+                                      {chat.lastMessage.hasMedia && !chat.lastMessage.text
+                                        ? '📷 Media'
+                                        : chat.lastMessage.text || 'No message'}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            </button>
+                          )
+                        })
+                        .filter(Boolean)}
+                    </div>
+                  )}
+                </ScrollArea>
               </>
             )}
           </div>
 
           {/* Center - Chat Area */}
           <div className="flex-1 flex flex-col bg-zinc-950">
-        {selectedChat ? (
-          <>
-            {/* Chat Header */}
-            <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-950">
-              <div className="flex items-center gap-3">
-                <Avatar className="w-10 h-10">
-                  <AvatarImage src={selectedChat.user.avatarUrl || undefined} />
-                  <AvatarFallback className="bg-zinc-700 text-white">
-                    {selectedChat.user.displayName?.[0]?.toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-white">
-                      {selectedChat.user.nickname || selectedChat.user.displayName}
-                    </span>
-                    <span className="text-zinc-400 text-sm">@{selectedChat.user.handle}</span>
-                    {selectedChat.user.isTopSpender && (
-                      <Badge className="bg-yellow-500/20 text-yellow-500 text-xs gap-1">
-                        <Crown className="w-3 h-3" />
-                        Top Spender
-                      </Badge>
-                    )}
+            {selectedChat ? (
+              <>
+                {/* Chat Header */}
+                <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-950">
+                  <div className="flex items-center gap-3">
+                    <Avatar className="w-10 h-10">
+                      <AvatarImage src={selectedChat.user.avatarUrl || undefined} />
+                      <AvatarFallback className="bg-zinc-700 text-white">
+                        {selectedChat.user.displayName?.[0]?.toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-white">
+                          {selectedChat.user.nickname || selectedChat.user.displayName}
+                        </span>
+                        <span className="text-zinc-400 text-sm">@{selectedChat.user.handle}</span>
+                        {selectedChat.user.isTopSpender && (
+                          <Badge className="bg-yellow-500/20 text-yellow-500 text-xs gap-1">
+                            <Crown className="w-3 h-3" />
+                            Top Spender
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-zinc-500">
+                          Member since{' '}
+                          {new Date(selectedChat.user.registeredAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-zinc-500">
-                      Member since {new Date(selectedChat.user.registeredAt).toLocaleDateString()}
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={refreshMessages}
-                  disabled={messagesLoading}
-                  className="text-zinc-400"
-                >
-                  <RefreshCw className={`w-4 h-4 ${messagesLoading ? 'animate-spin' : ''}`} />
-                </Button>
-                <Badge className="bg-violet-600 text-white gap-1">
-                  <Sparkles className="w-3 h-3" />
-                  AI enabled
-                </Badge>
-              </div>
-            </div>
-
-            {/* Virtualized Message List - Handles 5,000+ messages at 60fps */}
-            <div className="flex-1 overflow-hidden">
-              {messagesLoading && messages.length === 0 ? (
-                <div className="flex items-center justify-center h-full">
-                  <div className="text-center">
-                    <RefreshCw className="w-8 h-8 mx-auto mb-2 animate-spin text-zinc-500" />
-                    <p className="text-zinc-400">Loading messages...</p>
-                  </div>
-                </div>
-              ) : messagesError ? (
-                <div className="flex items-center justify-center h-full">
-                  <div className="text-center">
-                    <AlertCircle className="w-8 h-8 mx-auto mb-2 text-red-500" />
-                    <p className="text-red-400">{messagesError}</p>
                     <Button
-                      variant="outline"
-                      size="sm"
-                      className="mt-4"
-                      onClick={() => refreshMessages()}
+                      variant="ghost"
+                      size="icon"
+                      onClick={refreshMessages}
+                      disabled={messagesLoading}
+                      className="text-zinc-400"
                     >
-                      Retry
+                      <RefreshCw className={`w-4 h-4 ${messagesLoading ? 'animate-spin' : ''}`} />
                     </Button>
+                    <Badge className="bg-violet-600 text-white gap-1">
+                      <Sparkles className="w-3 h-3" />
+                      AI enabled
+                    </Badge>
                   </div>
                 </div>
-              ) : (
-                <VirtualMessageList
-                  messages={messages}
-                  creatorUuid={creatorUuid}
-                  className="h-full"
-                  onRetryMessage={tempId => {
-                    // Retry failed message
-                    const optimisticMsg = optimisticMessages.get(tempId)
-                    if (optimisticMsg && selectedChat) {
-                      sendMessage({
-                        text: optimisticMsg.text || undefined,
-                        mediaUuids:
-                          optimisticMsg.mediaUuids.length > 0
-                            ? optimisticMsg.mediaUuids
-                            : undefined,
-                        price: optimisticMsg.price || undefined,
-                      })
-                    }
-                  }}
-                  onUnlockPPV={messageUuid => {
-                    toast.info('PPV unlock feature coming soon!')
-                  }}
-                />
-              )}
-            </div>
 
-            {/* High-Performance Input Area with PPV/Vault/Macros */}
-            {selectedChat && (
-              <InputArea
-                onSend={async payload => {
-                  if (!sendMessage) return false
-                  return await sendMessage(payload)
-                }}
-                isLoading={sendingMessage}
-                placeholder="Type a message..."
-                vaultAssets={vaultAssets.map(asset => ({
-                  id: asset.id,
-                  title: asset.title,
-                  file_name: asset.file_name,
-                  file_type: asset.file_type as 'image' | 'video',
-                  file_url: asset.url,
-                  thumbnail_url: asset.url,
-                }))}
-                macros={[
-                  { id: '1', name: 'Good Morning', text: 'Good morning baby! 💕' },
-                  { id: '2', name: 'Good Night', text: 'Good night, sweet dreams! 😘' },
-                  { id: '3', name: 'Thank You', text: "Thank you so much! You're amazing! ❤️" },
-                ]}
-                conversationHistory={
-                  Array.isArray(messages)
-                    ? messages
-                        .slice(-10)
-                        .map(msg => ({
-                          role: (msg.isFromCreator ? 'assistant' : 'user') as
-                            | 'user'
-                            | 'assistant'
-                            | 'system',
-                          content: msg.text || (msg.hasMedia ? '[Media]' : ''),
-                        }))
-                        .filter(msg => msg.content) // Filter out empty messages
-                    : []
-                }
-                userModel={selectedModel?.name || undefined}
-                subscriberTier={
-                  (selectedChat?.tier as 'whale' | 'spender' | 'free' | 'unknown') || 'unknown'
-                }
-                fanUuid={selectedChat?.user?.uuid}
-                modelId={selectedModel?.id || undefined}
-              />
-            )}
-          </>
-        ) : (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center text-zinc-500">
-              <MessageCircle className="w-16 h-16 mx-auto mb-4" />
-              <p>Select a conversation to start messaging</p>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Right Sidebar - Fan Profile */}
-      <div className="w-80 border-l border-zinc-800 bg-zinc-950 flex flex-col">
-        {selectedChat ? (
-          <>
-            {/* Profile Header */}
-            <div className="p-4 border-b border-zinc-800">
-              <div className="flex items-center gap-3">
-                <Avatar className="w-16 h-16">
-                  <AvatarImage src={selectedChat.user.avatarUrl || undefined} />
-                  <AvatarFallback className="bg-zinc-700 text-xl">
-                    {selectedChat.user.displayName?.[0]?.toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <h2 className="text-lg font-semibold text-white">
-                    {selectedChat.user.nickname || selectedChat.user.displayName}
-                  </h2>
-                  <p className="text-zinc-400 text-sm">@{selectedChat.user.handle}</p>
-                  {selectedChat.user.isTopSpender && (
-                    <Badge className="mt-1 bg-yellow-500/20 text-yellow-500">
-                      <Crown className="w-3 h-3 mr-1" />
-                      Top Spender
-                    </Badge>
+                {/* Virtualized Message List - Handles 5,000+ messages at 60fps */}
+                <div className="flex-1 overflow-hidden">
+                  {messagesLoading && messages.length === 0 ? (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="text-center">
+                        <RefreshCw className="w-8 h-8 mx-auto mb-2 animate-spin text-zinc-500" />
+                        <p className="text-zinc-400">Loading messages...</p>
+                      </div>
+                    </div>
+                  ) : messagesError ? (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="text-center">
+                        <AlertCircle className="w-8 h-8 mx-auto mb-2 text-red-500" />
+                        <p className="text-red-400">{messagesError}</p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="mt-4"
+                          onClick={() => refreshMessages()}
+                        >
+                          Retry
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <VirtualMessageList
+                      messages={messages}
+                      creatorUuid={creatorUuid}
+                      className="h-full"
+                      onRetryMessage={tempId => {
+                        // Retry failed message
+                        const optimisticMsg = optimisticMessages.get(tempId)
+                        if (optimisticMsg && selectedChat) {
+                          sendMessage({
+                            text: optimisticMsg.text || undefined,
+                            mediaUuids:
+                              optimisticMsg.mediaUuids.length > 0
+                                ? optimisticMsg.mediaUuids
+                                : undefined,
+                            price: optimisticMsg.price || undefined,
+                          })
+                        }
+                      }}
+                      onUnlockPPV={messageUuid => {
+                        toast.info('PPV unlock feature coming soon!')
+                      }}
+                    />
                   )}
                 </div>
-              </div>
-            </div>
 
-            <ScrollArea className="flex-1">
-              <div className="p-4 space-y-6">
-                {/* Activity Stats */}
-                <div>
-                  <h3 className="font-medium text-white mb-3 flex items-center gap-2">
-                    <Clock className="w-4 h-4" />
-                    Activity
-                  </h3>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-zinc-800/50 rounded-lg p-3">
-                      <p className="text-xs text-zinc-500">First Message</p>
-                      <p className="text-sm text-white">
-                        {new Date(selectedChat.createdAt).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <div className="bg-zinc-800/50 rounded-lg p-3">
-                      <p className="text-xs text-zinc-500">Last Message</p>
-                      <p className="text-sm text-white">
-                        {selectedChat.lastMessageAt
-                          ? formatRelativeTime(selectedChat.lastMessageAt)
-                          : 'Never'}
-                      </p>
-                    </div>
-                    <div className="bg-zinc-800/50 rounded-lg p-3">
-                      <p className="text-xs text-zinc-500">Unread</p>
-                      <p className="text-sm text-white">{selectedChat.unreadMessagesCount}</p>
-                    </div>
-                    <div className="bg-zinc-800/50 rounded-lg p-3">
-                      <p className="text-xs text-zinc-500">Muted</p>
-                      <p className="text-sm text-white">{selectedChat.isMuted ? 'Yes' : 'No'}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Quick Actions */}
-                <div>
-                  <h3 className="font-medium text-white mb-3">Quick Actions</h3>
-                  <div className="space-y-2">
-                    <Button
-                      variant="outline"
-                      className="w-full justify-start border-zinc-700 text-zinc-300"
-                    >
-                      <DollarSign className="w-4 h-4 mr-2" />
-                      Send PPV Content
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="w-full justify-start border-zinc-700 text-zinc-300"
-                    >
-                      <Sparkles className="w-4 h-4 mr-2" />
-                      Use AI Script
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="w-full justify-start border-zinc-700 text-zinc-300"
-                      onClick={() => setIsVaultOpen(true)}
-                    >
-                      <ImageIcon className="w-4 h-4 mr-2" />
-                      Open Vault
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Notes Section */}
-                <div>
-                  <h3 className="font-medium text-white mb-3 flex items-center gap-2">
-                    <MessageCircle className="w-4 h-4" />
-                    Notes
-                  </h3>
-                  <Textarea
-                    placeholder="Add notes about this fan..."
-                    value={notes}
-                    onChange={e => setNotes(e.target.value)}
-                    className="bg-zinc-800/50 border-zinc-700 text-white placeholder:text-zinc-500 min-h-[100px]"
+                {/* High-Performance Input Area with PPV/Vault/Macros */}
+                {selectedChat && (
+                  <InputArea
+                    onSend={async payload => {
+                      if (!sendMessage) return false
+                      return await sendMessage(payload)
+                    }}
+                    isLoading={sendingMessage}
+                    placeholder="Type a message..."
+                    vaultAssets={vaultAssets.map(asset => ({
+                      id: asset.id,
+                      title: asset.title,
+                      file_name: asset.file_name,
+                      file_type: asset.file_type as 'image' | 'video',
+                      file_url: asset.url,
+                      thumbnail_url: asset.url,
+                    }))}
+                    macros={[
+                      { id: '1', name: 'Good Morning', text: 'Good morning baby! 💕' },
+                      { id: '2', name: 'Good Night', text: 'Good night, sweet dreams! 😘' },
+                      { id: '3', name: 'Thank You', text: "Thank you so much! You're amazing! ❤️" },
+                    ]}
+                    conversationHistory={
+                      Array.isArray(messages)
+                        ? messages
+                            .slice(-10)
+                            .map(msg => ({
+                              role: (msg.isFromCreator ? 'assistant' : 'user') as
+                                | 'user'
+                                | 'assistant'
+                                | 'system',
+                              content: msg.text || (msg.hasMedia ? '[Media]' : ''),
+                            }))
+                            .filter(msg => msg.content) // Filter out empty messages
+                        : []
+                    }
+                    userModel={selectedModel?.name || undefined}
+                    subscriberTier={
+                      (selectedChat?.tier as 'whale' | 'spender' | 'free' | 'unknown') || 'unknown'
+                    }
+                    fanUuid={selectedChat?.user?.uuid}
+                    modelId={selectedModel?.id || undefined}
                   />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="mt-2 text-zinc-400"
-                    onClick={() => toast.info('Notes saving coming soon!')}
-                  >
-                    Save Notes
-                  </Button>
+                )}
+              </>
+            ) : (
+              <div className="flex-1 flex items-center justify-center">
+                <div className="text-center text-zinc-500">
+                  <MessageCircle className="w-16 h-16 mx-auto mb-4" />
+                  <p>Select a conversation to start messaging</p>
                 </div>
+              </div>
+            )}
+          </div>
 
-                {/* Member Info */}
-                <div>
-                  <h3 className="font-medium text-white mb-3">Member Info</h3>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="text-zinc-400">User ID</span>
-                      <span className="text-white font-mono text-xs truncate max-w-[150px]">
-                        {selectedChat.user.uuid}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-zinc-400">Registered</span>
-                      <span className="text-white">
-                        {new Date(selectedChat.user.registeredAt).toLocaleDateString()}
-                      </span>
+          {/* Right Sidebar - Fan Profile */}
+          <div className="w-80 border-l border-zinc-800 bg-zinc-950 flex flex-col">
+            {selectedChat ? (
+              <>
+                {/* Profile Header */}
+                <div className="p-4 border-b border-zinc-800">
+                  <div className="flex items-center gap-3">
+                    <Avatar className="w-16 h-16">
+                      <AvatarImage src={selectedChat.user.avatarUrl || undefined} />
+                      <AvatarFallback className="bg-zinc-700 text-xl">
+                        {selectedChat.user.displayName?.[0]?.toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <h2 className="text-lg font-semibold text-white">
+                        {selectedChat.user.nickname || selectedChat.user.displayName}
+                      </h2>
+                      <p className="text-zinc-400 text-sm">@{selectedChat.user.handle}</p>
+                      {selectedChat.user.isTopSpender && (
+                        <Badge className="mt-1 bg-yellow-500/20 text-yellow-500">
+                          <Crown className="w-3 h-3 mr-1" />
+                          Top Spender
+                        </Badge>
+                      )}
                     </div>
                   </div>
                 </div>
+
+                <ScrollArea className="flex-1">
+                  <div className="p-4 space-y-6">
+                    {/* Activity Stats */}
+                    <div>
+                      <h3 className="font-medium text-white mb-3 flex items-center gap-2">
+                        <Clock className="w-4 h-4" />
+                        Activity
+                      </h3>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-zinc-800/50 rounded-lg p-3">
+                          <p className="text-xs text-zinc-500">First Message</p>
+                          <p className="text-sm text-white">
+                            {new Date(selectedChat.createdAt).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <div className="bg-zinc-800/50 rounded-lg p-3">
+                          <p className="text-xs text-zinc-500">Last Message</p>
+                          <p className="text-sm text-white">
+                            {selectedChat.lastMessageAt
+                              ? formatRelativeTime(selectedChat.lastMessageAt)
+                              : 'Never'}
+                          </p>
+                        </div>
+                        <div className="bg-zinc-800/50 rounded-lg p-3">
+                          <p className="text-xs text-zinc-500">Unread</p>
+                          <p className="text-sm text-white">{selectedChat.unreadMessagesCount}</p>
+                        </div>
+                        <div className="bg-zinc-800/50 rounded-lg p-3">
+                          <p className="text-xs text-zinc-500">Muted</p>
+                          <p className="text-sm text-white">
+                            {selectedChat.isMuted ? 'Yes' : 'No'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Quick Actions */}
+                    <div>
+                      <h3 className="font-medium text-white mb-3">Quick Actions</h3>
+                      <div className="space-y-2">
+                        <Button
+                          variant="outline"
+                          className="w-full justify-start border-zinc-700 text-zinc-300"
+                        >
+                          <DollarSign className="w-4 h-4 mr-2" />
+                          Send PPV Content
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="w-full justify-start border-zinc-700 text-zinc-300"
+                        >
+                          <Sparkles className="w-4 h-4 mr-2" />
+                          Use AI Script
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="w-full justify-start border-zinc-700 text-zinc-300"
+                          onClick={() => setIsVaultOpen(true)}
+                        >
+                          <ImageIcon className="w-4 h-4 mr-2" />
+                          Open Vault
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Notes Section */}
+                    <div>
+                      <h3 className="font-medium text-white mb-3 flex items-center gap-2">
+                        <MessageCircle className="w-4 h-4" />
+                        Notes
+                      </h3>
+                      <Textarea
+                        placeholder="Add notes about this fan..."
+                        value={notes}
+                        onChange={e => setNotes(e.target.value)}
+                        className="bg-zinc-800/50 border-zinc-700 text-white placeholder:text-zinc-500 min-h-[100px]"
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="mt-2 text-zinc-400"
+                        onClick={() => toast.info('Notes saving coming soon!')}
+                      >
+                        Save Notes
+                      </Button>
+                    </div>
+
+                    {/* Member Info */}
+                    <div>
+                      <h3 className="font-medium text-white mb-3">Member Info</h3>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-400">User ID</span>
+                          <span className="text-white font-mono text-xs truncate max-w-[150px]">
+                            {selectedChat.user.uuid}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-400">Registered</span>
+                          <span className="text-white">
+                            {new Date(selectedChat.user.registeredAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </ScrollArea>
+              </>
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-zinc-500">
+                <p>Select a chat to view fan details</p>
               </div>
-            </ScrollArea>
-          </>
-        ) : (
-          <div className="flex-1 flex items-center justify-center text-zinc-500">
-            <p>Select a chat to view fan details</p>
+            )}
           </div>
-        )}
-      </div>
         </div>
       </div>
 

@@ -166,7 +166,7 @@ export async function syncModelTransactions(modelId: string): Promise<SyncResult
         }
 
         allEarnings = [...allEarnings, ...(response.data || [])]
-        cursor = response.nextCursor
+        cursor = response.nextCursor ?? null
         hasMore = !!cursor
         pageCount++
       } catch (error) {
