@@ -1,8 +1,17 @@
 import { randomBytes, createHash } from 'crypto'
 
 /**
- * Fanvue OAuth utilities - copied from official fanvue-app-starter
- * https://github.com/fanvue/fanvue-app-starter
+ * Fanvue OAuth utilities
+ *
+ * Based on the official Fanvue App Starter Kit:
+ * https://github.com/fanvue/fanvue-app-starter/blob/main/src/lib/oauth.ts
+ *
+ * Auth URL: https://auth.fanvue.com/oauth2/auth
+ * Token URL: https://auth.fanvue.com/oauth2/token
+ *
+ * IMPORTANT: The scopes you request must EXACTLY match what you selected
+ * in the Fanvue developer UI for your app.
+ * Set the OAUTH_SCOPES environment variable to match your app config.
  */
 
 const OAUTH_ISSUER_BASE_URL = 'https://auth.fanvue.com'
@@ -17,9 +26,35 @@ export function generatePkce() {
   return { verifier, challenge, method: 'S256' as const }
 }
 
-// Do not remove these, your app won't work without them
+/**
+ * System scopes that are always required.
+ * Per the Fanvue docs: "Do not remove these, your app won't work without them"
+ */
 const DEFAULT_SCOPES = 'openid offline_access offline'
 
+/**
+ * Get the OAuth client ID from environment variables.
+ */
+export function getClientId(): string {
+  return process.env.FANVUE_CLIENT_ID || process.env.NEXT_PUBLIC_FANVUE_CLIENT_ID || ''
+}
+
+/**
+ * Get the OAuth client secret from environment variables.
+ */
+export function getClientSecret(): string {
+  return process.env.FANVUE_CLIENT_SECRET || ''
+}
+
+/**
+ * Build the Fanvue authorization URL.
+ *
+ * Scopes are read from the OAUTH_SCOPES environment variable.
+ * These must exactly match what's configured in the Fanvue developer portal.
+ *
+ * Valid scopes: read:self, read:chat, write:chat, read:fan, read:creator,
+ *   write:creator, read:media, write:media, write:post, read:insights
+ */
 export function getAuthorizeUrl({
   state,
   codeChallenge,
@@ -33,18 +68,29 @@ export function getAuthorizeUrl({
   redirectUri: string
   scopes?: string
 }) {
+  // Use provided scopes, or fall back to OAUTH_SCOPES env var, or minimal default
+  const appScopes = scopes || process.env.OAUTH_SCOPES || 'read:self'
+
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: clientId,
     redirect_uri: redirectUri,
-    scope: `${DEFAULT_SCOPES} ${scopes || 'read:self read:creator read:insights read:chat write:chat read:fan read:media read:post write:post read:agency read:tracking_links write:tracking_links'}`,
+    scope: `${DEFAULT_SCOPES} ${appScopes}`,
     state,
     code_challenge: codeChallenge,
     code_challenge_method: 'S256',
   })
+
   return `${OAUTH_ISSUER_BASE_URL}/oauth2/auth?${params.toString()}`
 }
 
+/**
+ * Exchange authorization code for tokens.
+ *
+ * Matches the official Fanvue App Starter Kit implementation:
+ * - client_id in the POST body
+ * - client_id:client_secret as Authorization: Basic header
+ */
 export async function exchangeCodeForToken({
   code,
   codeVerifier,
@@ -91,6 +137,13 @@ export async function exchangeCodeForToken({
   }
 }
 
+/**
+ * Refresh an access token.
+ *
+ * Matches the official Fanvue App Starter Kit implementation:
+ * - client_id in the POST body
+ * - client_id:client_secret as Authorization: Basic header
+ */
 export async function refreshAccessToken({
   refreshToken,
   clientId,
@@ -117,6 +170,7 @@ export async function refreshAccessToken({
 
   if (!res.ok) {
     const text = await res.text()
+    console.error('[OAuth] Token refresh failed:', res.status, text)
     throw new Error(`Token refresh failed: ${res.status} ${text}`)
   }
 

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
-import { exchangeCodeForToken } from '@/lib/fanvue/oauth'
+import { exchangeCodeForToken, getClientId, getClientSecret } from '@/lib/fanvue/oauth'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 
 const FANVUE_API_BASE = 'https://api.fanvue.com'
@@ -51,8 +51,8 @@ export async function GET(request: Request) {
     )
   }
 
-  const clientId = process.env.FANVUE_CLIENT_ID || process.env.NEXT_PUBLIC_FANVUE_CLIENT_ID || ''
-  const clientSecret = process.env.FANVUE_CLIENT_SECRET || ''
+  const clientId = getClientId()
+  const clientSecret = getClientSecret()
   const redirectUri = `${baseUrl}/api/oauth/callback`
 
   try {

@@ -152,14 +152,17 @@ async function syncAllCreatorsEarnings(
       let transactionsSynced = 0
 
       for (const earning of earnings) {
+        // Fanvue API returns amounts in cents — convert to dollars
+        const amountDollars = (earning.net || earning.gross || 0) / 100
+
         const { error: insertError } = await adminClient.from('fanvue_transactions').upsert(
           {
             model_id: modelId,
             fanvue_user_uuid: creator.uuid,
-            transaction_date: earning.period,
-            amount: earning.revenue,
-            currency: earning.currency,
-            description: 'Earnings via agency sync',
+            transaction_date: earning.date,
+            amount: amountDollars,
+            currency: earning.currency || 'USD',
+            description: `${earning.source || 'earnings'} via agency sync`,
             source: 'agency_api',
             created_at: new Date().toISOString(),
           },
@@ -178,7 +181,7 @@ async function syncAllCreatorsEarnings(
         .from('models')
         .update({
           last_transaction_sync: new Date().toISOString(),
-          revenue_30d: earnings.reduce((sum, e) => sum + e.revenue, 0),
+          revenue_30d: earnings.reduce((sum, e) => sum + (e.net || e.gross || 0) / 100, 0),
         })
         .eq('id', modelId)
 

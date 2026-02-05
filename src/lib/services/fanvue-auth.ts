@@ -5,7 +5,7 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/server'
-import { refreshAccessToken } from '@/lib/fanvue/oauth'
+import { refreshAccessToken, getClientId, getClientSecret } from '@/lib/fanvue/oauth'
 
 interface FanvueTokenResponse {
   access_token: string
@@ -198,11 +198,13 @@ async function refreshFanvueToken(refreshToken: string): Promise<{
   expires_in: number
   token_type: string
 }> {
-  const clientId = process.env.FANVUE_CLIENT_ID || process.env.NEXT_PUBLIC_FANVUE_CLIENT_ID
-  const clientSecret = process.env.FANVUE_CLIENT_SECRET
+  const clientId = getClientId()
+  const clientSecret = getClientSecret()
 
   if (!clientId || !clientSecret) {
-    throw new Error('Fanvue OAuth credentials not configured')
+    throw new Error(
+      'Fanvue OAuth credentials not configured (FANVUE_CLIENT_ID / FANVUE_CLIENT_SECRET)'
+    )
   }
 
   console.log('🔄 Refreshing Fanvue access token using official OAuth helper...')

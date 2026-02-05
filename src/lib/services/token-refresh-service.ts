@@ -7,7 +7,7 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/server'
-import { refreshAccessToken } from '@/lib/fanvue/oauth'
+import { refreshAccessToken, getClientId, getClientSecret } from '@/lib/fanvue/oauth'
 
 interface RefreshResult {
   modelId: string
@@ -77,11 +77,13 @@ async function refreshSingleToken(modelId: string, refreshToken: string): Promis
   const supabase = createAdminClient()
 
   try {
-    const clientId = process.env.FANVUE_CLIENT_ID || process.env.NEXT_PUBLIC_FANVUE_CLIENT_ID
-    const clientSecret = process.env.FANVUE_CLIENT_SECRET
+    const clientId = getClientId()
+    const clientSecret = getClientSecret()
 
     if (!clientId || !clientSecret) {
-      throw new Error('Fanvue OAuth credentials not configured')
+      throw new Error(
+        'Fanvue OAuth credentials not configured (FANVUE_CLIENT_ID / FANVUE_CLIENT_SECRET)'
+      )
     }
 
     console.log(`[Proactive Refresh] Refreshing token for model ${modelId}...`)

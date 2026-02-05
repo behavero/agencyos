@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { generatePkce, getAuthorizeUrl } from '@/lib/fanvue/oauth'
+import { generatePkce, getAuthorizeUrl, getClientId } from '@/lib/fanvue/oauth'
 import { createClient } from '@/lib/supabase/server'
 
 /**
@@ -8,24 +8,26 @@ import { createClient } from '@/lib/supabase/server'
  * Initiates Fanvue OAuth flow for AGENCY-LEVEL connection.
  * Agency admins connect their Fanvue account to manage all creators.
  *
- * Required scope: read:creator (for GET /creators agency endpoint)
+ * Scopes are read from the OAUTH_SCOPES environment variable.
+ * These must exactly match what's configured in the Fanvue developer portal.
+ * See: https://api.fanvue.com/docs/authentication/scopes
  */
-
-const AGENCY_SCOPES = 'read:creator'
-
 export async function GET(request: Request) {
   const url = new URL(request.url)
 
   console.log('[Agency OAuth Login] Starting agency OAuth flow')
 
   // Validate env vars first
-  const clientId = process.env.FANVUE_CLIENT_ID || process.env.NEXT_PUBLIC_FANVUE_CLIENT_ID
+  const clientId = getClientId()
   const appUrl = process.env.NEXT_PUBLIC_APP_URL
 
   if (!clientId || !appUrl) {
     console.error('[Agency OAuth Login] Missing env vars:', {
       clientId: !!clientId,
       appUrl: !!appUrl,
+      FANVUE_CLIENT_ID: !!process.env.FANVUE_CLIENT_ID,
+      NEXT_PUBLIC_FANVUE_CLIENT_ID: !!process.env.NEXT_PUBLIC_FANVUE_CLIENT_ID,
+      NEXT_PUBLIC_APP_URL: !!process.env.NEXT_PUBLIC_APP_URL,
     })
     return NextResponse.redirect(
       new URL('/dashboard/creator-management?error=oauth_not_configured', url.origin)
@@ -72,14 +74,18 @@ export async function GET(request: Request) {
   console.log('[Agency OAuth Login] Agency:', profile.agency_id)
   console.log('[Agency OAuth Login] Client ID:', clientId.substring(0, 8) + '...')
   console.log('[Agency OAuth Login] Redirect URI:', redirectUri)
+  console.log(
+    '[Agency OAuth Login] OAUTH_SCOPES:',
+    process.env.OAUTH_SCOPES || '(not set, defaulting to read:self)'
+  )
 
-  // Build authorize URL
+  // Build authorize URL — scopes come from OAUTH_SCOPES env var
   const authUrl = getAuthorizeUrl({
     state,
     codeChallenge: challenge,
     clientId,
     redirectUri,
-    scopes: AGENCY_SCOPES,
+    // Don't pass scopes — let getAuthorizeUrl read from OAUTH_SCOPES env
   })
 
   console.log('[Agency OAuth Login] Auth URL:', authUrl)

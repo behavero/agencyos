@@ -7,7 +7,7 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/server'
-import { refreshAccessToken } from '@/lib/fanvue/oauth'
+import { refreshAccessToken, getClientId, getClientSecret } from '@/lib/fanvue/oauth'
 
 const API_URL = 'https://api.fanvue.com'
 
@@ -35,17 +35,28 @@ interface FanvueCreator {
 interface FanvueCreatorsResponse {
   data: FanvueCreator[]
   pagination: {
+    page: number
+    size: number
     hasMore: boolean
-    nextPage: number | null
   }
 }
 
 interface FanvueEarningsResponse {
   data: {
-    period: string
-    revenue: number
-    currency: string
+    date: string
+    gross: number
+    net: number
+    currency: string | null
+    source: string
+    user: {
+      uuid: string
+      handle: string
+      displayName: string
+      nickname: string | null
+      isTopSpender: boolean
+    } | null
   }[]
+  nextCursor: string | null
 }
 
 /**
@@ -115,11 +126,13 @@ export async function getAgencyFanvueToken(agencyId: string): Promise<string> {
 export async function refreshAgencyToken(agencyId: string): Promise<void> {
   const adminClient = createAdminClient()
 
-  const clientId = process.env.FANVUE_CLIENT_ID || process.env.NEXT_PUBLIC_FANVUE_CLIENT_ID
-  const clientSecret = process.env.FANVUE_CLIENT_SECRET
+  const clientId = getClientId()
+  const clientSecret = getClientSecret()
 
   if (!clientId || !clientSecret) {
-    throw new Error('Fanvue OAuth credentials not configured')
+    throw new Error(
+      'Fanvue OAuth credentials not configured (FANVUE_CLIENT_ID / FANVUE_CLIENT_SECRET)'
+    )
   }
 
   // Get current connection
@@ -242,8 +255,11 @@ export async function storeAgencyConnection(
 }
 
 /**
- * Fetches all creators from the agency's Fanvue account
- * Uses the /agencies/creators endpoint
+ * Fetches all creators from the agency's Fanvue account.
+ *
+ * Endpoint: GET https://api.fanvue.com/creators
+ * Scope required: read:creator
+ * Docs: https://api.fanvue.com/docs/api-reference/reference/agencies/list-creators
  */
 export async function fetchAgencyCreators(agencyId: string): Promise<FanvueCreator[]> {
   const token = await getAgencyFanvueToken(agencyId)
@@ -251,10 +267,10 @@ export async function fetchAgencyCreators(agencyId: string): Promise<FanvueCreat
   let page = 1
   let hasMore = true
 
-  console.log('👥 Fetching agency creators from /agencies/creators...')
+  console.log('👥 Fetching agency creators from GET /creators...')
 
   while (hasMore) {
-    const response = await fetch(`${API_URL}/agencies/creators?page=${page}&size=50`, {
+    const response = await fetch(`${API_URL}/creators?page=${page}&size=50`, {
       headers: {
         Authorization: `Bearer ${token}`,
         'X-Fanvue-API-Version': '2025-06-26',
@@ -264,11 +280,10 @@ export async function fetchAgencyCreators(agencyId: string): Promise<FanvueCreat
     if (!response.ok) {
       const errorText = await response.text()
 
-      // Handle specific error cases
       if (response.status === 403) {
         throw new Error(
           'INSUFFICIENT_PERMISSIONS: The connected Fanvue account does not have agency access. ' +
-            'Make sure you are connecting an admin/owner account with read:agency scope.'
+            'Make sure you are connecting an admin/owner account with read:creator scope.'
         )
       }
 
@@ -296,8 +311,13 @@ export async function fetchAgencyCreators(agencyId: string): Promise<FanvueCreat
 }
 
 /**
- * Fetches earnings for a specific creator
- * Uses the /agencies/creators/{uuid}/earnings endpoint
+ * Fetches earnings for a specific creator.
+ *
+ * Endpoint: GET https://api.fanvue.com/creators/{creatorUserUuid}/insights/earnings
+ * Scopes required: read:creator, read:insights
+ * Docs: https://api.fanvue.com/docs/api-reference/reference/agencies/get-creator-earnings
+ *
+ * Returns cursor-paginated invoice data. Amounts are in CENTS.
  */
 export async function fetchCreatorEarnings(
   agencyId: string,
@@ -306,29 +326,49 @@ export async function fetchCreatorEarnings(
   endDate?: string
 ): Promise<FanvueEarningsResponse['data']> {
   const token = await getAgencyFanvueToken(agencyId)
+  const allEarnings: FanvueEarningsResponse['data'] = []
+  let cursor: string | null = null
 
-  const params = new URLSearchParams()
-  if (startDate) params.set('startDate', startDate)
-  if (endDate) params.set('endDate', endDate)
-
-  const url = `${API_URL}/agencies/creators/${creatorUuid}/earnings?${params.toString()}`
+  const baseParams = new URLSearchParams()
+  if (startDate) baseParams.set('startDate', startDate)
+  if (endDate) baseParams.set('endDate', endDate)
+  baseParams.set('size', '50')
 
   console.log(`💰 Fetching earnings for creator ${creatorUuid}...`)
 
-  const response = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'X-Fanvue-API-Version': '2025-06-26',
-    },
-  })
+  let pages = 0
+  do {
+    const params = new URLSearchParams(baseParams)
+    if (cursor) params.set('cursor', cursor)
 
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(`Failed to fetch earnings: ${response.status} ${errorText}`)
-  }
+    const url = `${API_URL}/creators/${creatorUuid}/insights/earnings?${params.toString()}`
 
-  const data: FanvueEarningsResponse = await response.json()
-  return data.data || []
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'X-Fanvue-API-Version': '2025-06-26',
+      },
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`Failed to fetch earnings: ${response.status} ${errorText}`)
+    }
+
+    const data: FanvueEarningsResponse = await response.json()
+    allEarnings.push(...(data.data || []))
+
+    cursor = data.nextCursor
+    pages++
+
+    if (pages > 20) {
+      console.warn('⚠️ Reached page limit for earnings, stopping')
+      break
+    }
+  } while (cursor)
+
+  console.log(`✅ Total earnings records: ${allEarnings.length}`)
+  return allEarnings
 }
 
 /**

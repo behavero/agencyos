@@ -30,6 +30,12 @@ const ENV_VARS: EnvVar[] = [
   },
   { name: 'FANVUE_CLIENT_SECRET', required: false, description: 'Fanvue OAuth client secret' },
   {
+    name: 'OAUTH_SCOPES',
+    required: false,
+    description:
+      'Fanvue OAuth scopes — must exactly match what is configured in the Fanvue developer portal (e.g. "read:self read:creator read:insights")',
+  },
+  {
     name: 'FIRECRAWL_API_KEY',
     required: false,
     description: 'Firecrawl API key (Ghost Tracker web scraping)',
