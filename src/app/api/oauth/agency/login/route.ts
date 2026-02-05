@@ -1,30 +1,36 @@
 import { NextResponse } from 'next/server'
 import { generatePkce, getAuthorizeUrl } from '@/lib/fanvue/oauth'
-import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 
 /**
  * Agency OAuth Login Route
- * Phase 60 - SaaS Architecture
  *
  * Initiates Fanvue OAuth flow for AGENCY-LEVEL connection.
- * This is separate from model OAuth - agency admins connect their
- * own Fanvue account to manage all creators in the agency.
+ * Agency admins connect their Fanvue account to manage all creators.
  *
- * Required scopes for agency operations:
- * - read:agency - Access agency-level data
- * - read:creators - List all creators in the agency
- * - read:team - Access team member information
- * - read:earnings - Access earnings data for all creators
+ * Required scope: read:creator (for GET /creators agency endpoint)
  */
 
-// Agency-specific OAuth scopes (must match what's enabled in Fanvue app)
-const AGENCY_SCOPES = 'read:agency read:creator'
+const AGENCY_SCOPES = 'read:creator'
 
 export async function GET(request: Request) {
   const url = new URL(request.url)
 
   console.log('[Agency OAuth Login] Starting agency OAuth flow')
+
+  // Validate env vars first
+  const clientId = process.env.FANVUE_CLIENT_ID || process.env.NEXT_PUBLIC_FANVUE_CLIENT_ID
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL
+
+  if (!clientId || !appUrl) {
+    console.error('[Agency OAuth Login] Missing env vars:', {
+      clientId: !!clientId,
+      appUrl: !!appUrl,
+    })
+    return NextResponse.redirect(
+      new URL('/dashboard/creator-management?error=oauth_not_configured', url.origin)
+    )
+  }
 
   // Check if user is authenticated
   const supabase = await createClient()
@@ -61,16 +67,13 @@ export async function GET(request: Request) {
   // Generate PKCE and state
   const { verifier, challenge } = generatePkce()
   const state = crypto.randomUUID()
-
-  const clientId = process.env.NEXT_PUBLIC_FANVUE_CLIENT_ID!
-  const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL}/api/oauth/agency/callback`
+  const redirectUri = `${appUrl}/api/oauth/agency/callback`
 
   console.log('[Agency OAuth Login] Agency:', profile.agency_id)
-  console.log('[Agency OAuth Login] Admin:', user.id)
+  console.log('[Agency OAuth Login] Client ID:', clientId.substring(0, 8) + '...')
   console.log('[Agency OAuth Login] Redirect URI:', redirectUri)
-  console.log('[Agency OAuth Login] Scopes:', AGENCY_SCOPES)
 
-  // Build authorize URL with agency-specific scopes
+  // Build authorize URL
   const authUrl = getAuthorizeUrl({
     state,
     codeChallenge: challenge,
@@ -79,77 +82,23 @@ export async function GET(request: Request) {
     scopes: AGENCY_SCOPES,
   })
 
-  console.log('[Agency OAuth Login] Full Auth URL:', authUrl)
+  console.log('[Agency OAuth Login] Auth URL:', authUrl)
 
-  // Store OAuth state in cookies
-  const cookieStore = await cookies()
+  // Create redirect and set cookies DIRECTLY on the response object
   const secure = url.protocol === 'https:'
-
-  cookieStore.set('agency_oauth_state', state, {
+  const cookieOpts = {
     httpOnly: true,
     path: '/',
-    sameSite: 'lax',
+    sameSite: 'lax' as const,
     secure,
     maxAge: 600,
-  })
-  cookieStore.set('agency_oauth_verifier', verifier, {
-    httpOnly: true,
-    path: '/',
-    sameSite: 'lax',
-    secure,
-    maxAge: 600,
-  })
-
-  // Store agency context for callback
-  cookieStore.set('agency_oauth_agency_id', profile.agency_id, {
-    httpOnly: true,
-    path: '/',
-    sameSite: 'lax',
-    secure,
-    maxAge: 600,
-  })
-  cookieStore.set('agency_oauth_admin_id', user.id, {
-    httpOnly: true,
-    path: '/',
-    sameSite: 'lax',
-    secure,
-    maxAge: 600,
-  })
+  }
 
   const res = NextResponse.redirect(authUrl)
-  res.headers.set('Content-Security-Policy', "frame-ancestors 'self'")
-  res.headers.set('X-Frame-Options', 'SAMEORIGIN')
+  res.cookies.set('agency_oauth_state', state, cookieOpts)
+  res.cookies.set('agency_oauth_verifier', verifier, cookieOpts)
+  res.cookies.set('agency_oauth_agency_id', profile.agency_id, cookieOpts)
+  res.cookies.set('agency_oauth_admin_id', user.id, cookieOpts)
+
   return res
-}
-
-/**
- * Builds the authorize URL with agency-specific scopes
- */
-function getAgencyAuthorizeUrl({
-  state,
-  codeChallenge,
-  clientId,
-  redirectUri,
-}: {
-  state: string
-  codeChallenge: string
-  clientId: string
-  redirectUri: string
-}) {
-  const OAUTH_ISSUER_BASE_URL = 'https://auth.fanvue.com'
-
-  // Base scopes + agency-specific scopes
-  const scopes = `openid offline_access offline ${AGENCY_SCOPES}`
-
-  const params = new URLSearchParams({
-    response_type: 'code',
-    client_id: clientId,
-    redirect_uri: redirectUri,
-    scope: scopes,
-    state,
-    code_challenge: codeChallenge,
-    code_challenge_method: 'S256',
-  })
-
-  return `${OAUTH_ISSUER_BASE_URL}/oauth2/auth?${params.toString()}`
 }

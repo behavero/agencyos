@@ -96,7 +96,11 @@ export default function CreatorManagementClient() {
     const success = searchParams.get('success')
     const error = searchParams.get('error')
 
-    if (success === 'connected') {
+    if (success === 'agency_connected') {
+      toast.success('🎉 Agency Fanvue connected! Your creators will be imported.')
+      window.history.replaceState({}, '', '/dashboard/creator-management')
+      router.refresh()
+    } else if (success === 'connected') {
       toast.success('🎉 Creator connected successfully!')
       window.history.replaceState({}, '', '/dashboard/creator-management')
 
@@ -117,6 +121,13 @@ export default function CreatorManagementClient() {
         user_fetch_failed: 'Failed to fetch user info',
         no_agency: 'No agency found for this user',
         oauth_failed: 'OAuth authentication failed',
+        oauth_not_configured: 'Fanvue OAuth is not configured. Contact admin.',
+        not_admin: 'Only agency admins can connect Fanvue.',
+        session_expired: 'Session expired. Please try again.',
+        session_mismatch: 'Session mismatch. Please try again.',
+        agency_mismatch: 'Agency mismatch error.',
+        oauth_state_mismatch: 'Security state mismatch. Please try again.',
+        oauth_token_exchange_failed: 'Failed to exchange OAuth token with Fanvue.',
       }
       toast.error(errorMessages[error] || 'An error occurred')
       window.history.replaceState({}, '', '/dashboard/creator-management')

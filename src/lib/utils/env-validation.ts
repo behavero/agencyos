@@ -23,8 +23,17 @@ const ENV_VARS: EnvVar[] = [
 
   // Recommended - Features degrade without these
   { name: 'GROQ_API_KEY', required: false, description: 'Groq API key (Alfred AI chat)' },
-  { name: 'FANVUE_CLIENT_ID', required: false, description: 'Fanvue OAuth client ID' },
+  {
+    name: 'FANVUE_CLIENT_ID',
+    required: false,
+    description: 'Fanvue OAuth client ID (or NEXT_PUBLIC_FANVUE_CLIENT_ID)',
+  },
   { name: 'FANVUE_CLIENT_SECRET', required: false, description: 'Fanvue OAuth client secret' },
+  {
+    name: 'FIRECRAWL_API_KEY',
+    required: false,
+    description: 'Firecrawl API key (Ghost Tracker web scraping)',
+  },
   { name: 'CRON_SECRET', required: false, description: 'Secret for cron job authentication' },
   { name: 'NEXT_PUBLIC_APP_URL', required: false, description: 'App URL for OAuth callbacks' },
 ]

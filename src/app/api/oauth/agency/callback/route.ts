@@ -74,8 +74,8 @@ export async function GET(request: Request) {
     )
   }
 
-  const clientId = process.env.NEXT_PUBLIC_FANVUE_CLIENT_ID!
-  const clientSecret = process.env.FANVUE_CLIENT_SECRET!
+  const clientId = process.env.FANVUE_CLIENT_ID || process.env.NEXT_PUBLIC_FANVUE_CLIENT_ID || ''
+  const clientSecret = process.env.FANVUE_CLIENT_SECRET || ''
   const redirectUri = `${baseUrl}/api/oauth/agency/callback`
 
   try {

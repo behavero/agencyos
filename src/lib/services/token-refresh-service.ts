@@ -77,7 +77,7 @@ async function refreshSingleToken(modelId: string, refreshToken: string): Promis
   const supabase = createAdminClient()
 
   try {
-    const clientId = process.env.NEXT_PUBLIC_FANVUE_CLIENT_ID
+    const clientId = process.env.FANVUE_CLIENT_ID || process.env.NEXT_PUBLIC_FANVUE_CLIENT_ID
     const clientSecret = process.env.FANVUE_CLIENT_SECRET
 
     if (!clientId || !clientSecret) {
