@@ -55,7 +55,7 @@ export async function GET(request: Request) {
     search.set('error', providerError)
     if (providerErrorDescription) search.set('error_description', providerErrorDescription)
     return NextResponse.redirect(
-      new URL(`${baseUrl}/dashboard/agency-settings?${search.toString()}`)
+      new URL(`${baseUrl}/dashboard/creator-management?${search.toString()}`)
     )
   }
 
@@ -63,14 +63,14 @@ export async function GET(request: Request) {
   if (!code || !state || !storedState || !verifier || state !== storedState) {
     console.error('[Agency OAuth Callback] State mismatch or missing data')
     return NextResponse.redirect(
-      new URL(`${baseUrl}/dashboard/agency-settings?error=oauth_state_mismatch`)
+      new URL(`${baseUrl}/dashboard/creator-management?error=oauth_state_mismatch`)
     )
   }
 
   if (!agencyId || !adminId) {
     console.error('[Agency OAuth Callback] Missing agency context')
     return NextResponse.redirect(
-      new URL(`${baseUrl}/dashboard/agency-settings?error=session_expired`)
+      new URL(`${baseUrl}/dashboard/creator-management?error=session_expired`)
     )
   }
 
@@ -139,7 +139,7 @@ export async function GET(request: Request) {
     if (!user || user.id !== adminId) {
       console.error('[Agency OAuth Callback] User session mismatch')
       return NextResponse.redirect(
-        new URL(`${baseUrl}/dashboard/agency-settings?error=session_mismatch`)
+        new URL(`${baseUrl}/dashboard/creator-management?error=session_mismatch`)
       )
     }
 
@@ -153,13 +153,15 @@ export async function GET(request: Request) {
     if (!profile || profile.agency_id !== agencyId) {
       console.error('[Agency OAuth Callback] Agency mismatch')
       return NextResponse.redirect(
-        new URL(`${baseUrl}/dashboard/agency-settings?error=agency_mismatch`)
+        new URL(`${baseUrl}/dashboard/creator-management?error=agency_mismatch`)
       )
     }
 
     if (!['admin', 'owner', 'grandmaster'].includes(profile.role || '')) {
       console.error('[Agency OAuth Callback] User is not an admin')
-      return NextResponse.redirect(new URL(`${baseUrl}/dashboard/agency-settings?error=not_admin`))
+      return NextResponse.redirect(
+        new URL(`${baseUrl}/dashboard/creator-management?error=not_admin`)
+      )
     }
 
     // Store the agency connection
@@ -178,13 +180,13 @@ export async function GET(request: Request) {
     console.log('[Agency OAuth Callback] Redirecting to agency settings...')
 
     return NextResponse.redirect(
-      new URL(`${baseUrl}/dashboard/agency-settings?success=agency_connected`)
+      new URL(`${baseUrl}/dashboard/creator-management?success=agency_connected`)
     )
   } catch (e: any) {
     console.error('[Agency OAuth Callback] Error:', e)
     return NextResponse.redirect(
       new URL(
-        `${baseUrl}/dashboard/agency-settings?error=oauth_token_exchange_failed&details=${encodeURIComponent(e.message)}`
+        `${baseUrl}/dashboard/creator-management?error=oauth_token_exchange_failed&details=${encodeURIComponent(e.message)}`
       )
     )
   }
@@ -206,7 +208,7 @@ export async function POST(request: Request) {
     search.set('error', error)
     if (errorDescription) search.set('error_description', errorDescription)
     return NextResponse.redirect(
-      new URL(`${baseUrl}/dashboard/agency-settings?${search.toString()}`)
+      new URL(`${baseUrl}/dashboard/creator-management?${search.toString()}`)
     )
   }
 

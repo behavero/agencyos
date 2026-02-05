@@ -2,10 +2,10 @@ import { createAdminClient } from '@/lib/supabase/server'
 
 /**
  * Ghost Tracker Service
- * 
+ *
  * Monitors public social media profiles WITHOUT requiring login.
  * Uses Firecrawl for web scraping public profile pages.
- * 
+ *
  * Supported platforms:
  * - Instagram (public profiles only)
  * - TikTok (public profiles)
@@ -51,11 +51,11 @@ export interface WatchedAccount {
 
 // Platform URL builders
 const PLATFORM_URLS: Record<string, (username: string) => string> = {
-  instagram: (u) => `https://www.instagram.com/${u}/`,
-  tiktok: (u) => `https://www.tiktok.com/@${u}`,
-  x: (u) => `https://x.com/${u}`,
-  youtube: (u) => `https://www.youtube.com/@${u}`,
-  facebook: (u) => `https://www.facebook.com/${u}`,
+  instagram: u => `https://www.instagram.com/${u}/`,
+  tiktok: u => `https://www.tiktok.com/@${u}`,
+  x: u => `https://x.com/${u}`,
+  youtube: u => `https://www.youtube.com/@${u}`,
+  facebook: u => `https://www.facebook.com/${u}`,
 }
 
 /**
@@ -70,7 +70,10 @@ async function scrapeWithFirecrawl(url: string): Promise<{
   const apiKey = process.env.FIRECRAWL_API_KEY
 
   if (!apiKey) {
-    return { success: false, error: 'FIRECRAWL_API_KEY not configured' }
+    return {
+      success: false,
+      error: 'Web scraping not configured — set FIRECRAWL_API_KEY in Vercel env vars',
+    }
   }
 
   try {
@@ -78,7 +81,7 @@ async function scrapeWithFirecrawl(url: string): Promise<{
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         url,
@@ -90,14 +93,14 @@ async function scrapeWithFirecrawl(url: string): Promise<{
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
-      return { 
-        success: false, 
-        error: `Scrape failed: ${response.status} - ${errorData.error || 'Unknown error'}` 
+      return {
+        success: false,
+        error: `Scrape failed: ${response.status} - ${errorData.error || 'Unknown error'}`,
       }
     }
 
     const data = await response.json()
-    
+
     if (!data.success) {
       return { success: false, error: data.error || 'Scrape unsuccessful' }
     }
@@ -229,7 +232,7 @@ function parseYouTubeProfile(markdown: string, username: string): Partial<Public
 function parseMetricNumber(str: string): number {
   const cleaned = str.replace(/,/g, '')
   const num = parseFloat(cleaned)
-  
+
   if (cleaned.toUpperCase().endsWith('K')) {
     return Math.round(num * 1000)
   }
@@ -239,7 +242,7 @@ function parseMetricNumber(str: string): number {
   if (cleaned.toUpperCase().endsWith('B')) {
     return Math.round(num * 1000000000)
   }
-  
+
   return Math.round(num)
 }
 
@@ -252,7 +255,7 @@ export async function scanPublicProfile(
 ): Promise<PublicProfileStats | null> {
   // Clean username (remove @ if present)
   const cleanUsername = username.replace(/^@/, '').trim()
-  
+
   if (!cleanUsername) {
     console.error('[GhostTracker] Empty username')
     return null
@@ -268,7 +271,7 @@ export async function scanPublicProfile(
 
   // Scrape the profile
   const scrapeResult = await scrapeWithFirecrawl(profileUrl)
-  
+
   if (!scrapeResult.success || !scrapeResult.markdown) {
     console.error('[GhostTracker] Scrape failed:', scrapeResult.error)
     return null
@@ -276,7 +279,7 @@ export async function scanPublicProfile(
 
   // Parse based on platform
   let parsedStats: Partial<PublicProfileStats>
-  
+
   switch (platform) {
     case 'instagram':
       parsedStats = parseInstagramProfile(scrapeResult.markdown, cleanUsername)
@@ -340,9 +343,9 @@ export async function addWatchedAccount(params: {
   userId?: string
 }): Promise<WatchedAccount | null> {
   const supabase = await createAdminClient()
-  
+
   const cleanUsername = params.username.replace(/^@/, '').trim()
-  
+
   // Check if already exists
   const { data: existing } = await supabase
     .from('watched_accounts')
@@ -375,7 +378,7 @@ export async function addWatchedAccount(params: {
       last_stats: stats || {},
       stats_history: stats ? [stats] : [],
       last_scanned_at: stats ? new Date().toISOString() : null,
-      scan_error: stats ? null : 'Initial scan failed',
+      scan_error: stats ? null : 'Scan unavailable — FIRECRAWL_API_KEY not configured',
       notes: params.notes || null,
       tags: params.tags || [],
       created_by: params.userId || null,
@@ -435,10 +438,7 @@ export async function refreshWatchedAccount(accountId: string): Promise<PublicPr
     updateData.scan_error = 'Scan failed'
   }
 
-  await supabase
-    .from('watched_accounts')
-    .update(updateData)
-    .eq('id', accountId)
+  await supabase.from('watched_accounts').update(updateData).eq('id', accountId)
 
   return stats
 }
@@ -485,10 +485,7 @@ export async function getWatchedAccountsByType(
 export async function deleteWatchedAccount(accountId: string): Promise<boolean> {
   const supabase = await createAdminClient()
 
-  const { error } = await supabase
-    .from('watched_accounts')
-    .delete()
-    .eq('id', accountId)
+  const { error } = await supabase.from('watched_accounts').delete().eq('id', accountId)
 
   return !error
 }
@@ -501,7 +498,7 @@ export async function refreshAllWatchedAccounts(agencyId: string): Promise<{
   failed: number
 }> {
   const accounts = await getWatchedAccounts(agencyId)
-  
+
   let success = 0
   let failed = 0
 

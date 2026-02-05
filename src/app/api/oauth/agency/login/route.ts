@@ -46,12 +46,16 @@ export async function GET(request: Request) {
 
   if (profileError || !profile?.agency_id) {
     console.error('[Agency OAuth Login] User has no agency')
-    return NextResponse.redirect(new URL('/dashboard/agency-settings?error=no_agency', url.origin))
+    return NextResponse.redirect(
+      new URL('/dashboard/creator-management?error=no_agency', url.origin)
+    )
   }
 
   if (!['admin', 'owner', 'grandmaster'].includes(profile.role || '')) {
     console.error('[Agency OAuth Login] User is not an agency admin')
-    return NextResponse.redirect(new URL('/dashboard/agency-settings?error=not_admin', url.origin))
+    return NextResponse.redirect(
+      new URL('/dashboard/creator-management?error=not_admin', url.origin)
+    )
   }
 
   // Generate PKCE and state

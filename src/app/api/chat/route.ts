@@ -1,4 +1,4 @@
-import { streamText } from 'ai'
+import { streamText, convertToModelMessages } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createAdminClient } from '@/lib/supabase/server'
 
@@ -9,6 +9,9 @@ export const maxDuration = 60
  *
  * Uses Groq (Llama 3.3 70B) via OpenAI-compatible API.
  * Compatible with AI SDK v6 useChat (returns UI message stream).
+ *
+ * The client sends UIMessage[] (with `parts`), so we convert
+ * to ModelMessage[] (with `role`/`content`) before calling streamText.
  */
 export async function POST(request: Request) {
   const apiKey = process.env.GROQ_API_KEY
@@ -21,7 +24,10 @@ export async function POST(request: Request) {
     )
   }
 
-  const { messages } = await request.json()
+  const { messages: uiMessages } = await request.json()
+
+  // Convert UIMessage[] (parts-based) → ModelMessage[] (content-based)
+  const modelMessages = await convertToModelMessages(uiMessages)
 
   // Gather agency context for the system prompt
   let contextSnippet = ''
@@ -87,7 +93,7 @@ RULES:
   const result = streamText({
     model: groq('llama-3.3-70b-versatile'),
     system: systemPrompt,
-    messages,
+    messages: modelMessages,
     maxOutputTokens: 1024,
     temperature: 0.7,
   })
