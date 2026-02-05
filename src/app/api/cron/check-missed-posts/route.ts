@@ -3,17 +3,19 @@ import { createAdminClient } from '@/lib/supabase/server'
 
 /**
  * POST /api/cron/check-missed-posts
- * 
+ *
  * Cron job to check for posts that are scheduled but past their time.
  * - Marks posts as "missed" if >2 hours late
  * - Sends Telegram alert if configured
- * 
+ *
  * Should be called hourly via Supabase pg_cron or external scheduler.
  */
 
 // Verify cron secret
 function isAuthorized(request: NextRequest): boolean {
   const authHeader = request.headers.get('authorization')
+  const url = new URL(request.url)
+  const querySecret = url.searchParams.get('secret')
   const cronSecret = process.env.CRON_SECRET
 
   if (!cronSecret) {
@@ -21,7 +23,7 @@ function isAuthorized(request: NextRequest): boolean {
     return false
   }
 
-  return authHeader === `Bearer ${cronSecret}`
+  return authHeader === `Bearer ${cronSecret}` || querySecret === cronSecret
 }
 
 // Send Telegram alert
@@ -111,7 +113,7 @@ export async function POST(request: NextRequest) {
       const scheduledTime = new Date(post.scheduled_at!)
       const hoursLate = Math.round((now.getTime() - scheduledTime.getTime()) / (1000 * 60 * 60))
       const modelName = (post.model as { name?: string } | null)?.name || 'Unknown'
-      
+
       const platformEmoji: Record<string, string> = {
         instagram: '📸',
         tiktok: '🎵',
@@ -148,10 +150,7 @@ _Check the Content Calendar for details._`
     })
   } catch (error) {
     console.error('[Cron] Error:', error)
-    return NextResponse.json(
-      { error: 'Check failed' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Check failed' }, { status: 500 })
   }
 }
 
@@ -173,9 +172,6 @@ export async function GET() {
     },
     frequency: 'Hourly recommended',
     description: 'Checks for scheduled posts that are >2 hours late and marks them as missed',
-    actions: [
-      'Marks overdue posts as missed',
-      'Sends Telegram alert to configured users',
-    ],
+    actions: ['Marks overdue posts as missed', 'Sends Telegram alert to configured users'],
   })
 }

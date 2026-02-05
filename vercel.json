@@ -9,31 +9,31 @@
   },
   "crons": [
     {
-      "path": "/api/cron/sync-transactions",
+      "path": "/api/cron/sync-transactions?secret=${CRON_SECRET}",
       "schedule": "0 */2 * * *"
     },
     {
-      "path": "/api/cron/daily-refresh",
+      "path": "/api/cron/daily-refresh?secret=${CRON_SECRET}",
       "schedule": "0 */1 * * *"
     },
     {
-      "path": "/api/cron/sync-tracking-links",
+      "path": "/api/cron/sync-tracking-links?secret=${CRON_SECRET}",
       "schedule": "0 */3 * * *"
     },
     {
-      "path": "/api/cron/check-late-shifts",
+      "path": "/api/cron/check-late-shifts?secret=${CRON_SECRET}",
       "schedule": "0 */6 * * *"
     },
     {
-      "path": "/api/cron/check-missed-posts",
+      "path": "/api/cron/check-missed-posts?secret=${CRON_SECRET}",
       "schedule": "0 */6 * * *"
     },
     {
-      "path": "/api/cron/refresh-tokens",
+      "path": "/api/cron/refresh-tokens?secret=${CRON_SECRET}",
       "schedule": "*/30 * * * *"
     },
     {
-      "path": "/api/cron/revenue-heartbeat",
+      "path": "/api/cron/revenue-heartbeat?secret=${CRON_SECRET}",
       "schedule": "*/10 * * * *"
     }
   ],

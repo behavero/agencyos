@@ -14,7 +14,9 @@ export async function POST(request: NextRequest) {
   try {
     // Verify cron secret
     const authHeader = request.headers.get('authorization')
-    if (!CRON_SECRET || authHeader !== `Bearer ${CRON_SECRET}`) {
+    const url = new URL(request.url)
+    const querySecret = url.searchParams.get('secret')
+    if (!CRON_SECRET || (authHeader !== `Bearer ${CRON_SECRET}` && querySecret !== CRON_SECRET)) {
       console.log('[Cron Late Shifts] Unauthorized attempt')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
