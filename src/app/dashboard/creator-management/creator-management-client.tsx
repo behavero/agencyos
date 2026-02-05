@@ -31,7 +31,6 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import Link from 'next/link'
 import { AddCreatorDialog } from '@/components/creators/add-creator-dialog'
-import { AgencyImportButton } from '@/components/creators/agency-import-button'
 import { ConnectAgencyFanvueButton } from '@/components/creators/connect-agency-fanvue-button'
 import { useAgencyData } from '@/providers/agency-data-provider'
 
@@ -97,7 +96,12 @@ export default function CreatorManagementClient() {
     const error = searchParams.get('error')
 
     if (success === 'agency_connected') {
-      toast.success('🎉 Agency Fanvue connected! Your creators will be imported.')
+      const importedCount = searchParams.get('imported')
+      if (importedCount && parseInt(importedCount) > 0) {
+        toast.success(`Fanvue connected! ${importedCount} creators imported.`)
+      } else {
+        toast.success('Fanvue connected! No creators found in your agency account.')
+      }
       window.history.replaceState({}, '', '/dashboard/creator-management')
       router.refresh()
     } else if (success === 'connected') {
@@ -227,7 +231,6 @@ export default function CreatorManagementClient() {
             </Button>
           )}
           <ConnectAgencyFanvueButton />
-          <AgencyImportButton />
           <AddCreatorDialog agencyId={agencyId || ''} />
         </div>
       </div>
@@ -268,7 +271,6 @@ export default function CreatorManagementClient() {
 
             <div className="flex gap-3 justify-center flex-wrap">
               <ConnectAgencyFanvueButton />
-              <AgencyImportButton />
               <AddCreatorDialog agencyId={agencyId || ''} />
             </div>
           </CardContent>

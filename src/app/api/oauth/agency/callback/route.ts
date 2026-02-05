@@ -2,7 +2,11 @@ import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { exchangeCodeForToken, getClientId, getClientSecret } from '@/lib/fanvue/oauth'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
-import { storeAgencyConnection } from '@/lib/services/agency-fanvue-auth'
+import {
+  storeAgencyConnection,
+  fetchAgencyCreators,
+  updateAgencyLastSync,
+} from '@/lib/services/agency-fanvue-auth'
 
 const FANVUE_API_BASE = 'https://api.fanvue.com'
 
@@ -177,10 +181,68 @@ export async function GET(request: Request) {
     )
 
     console.log('[Agency OAuth Callback] ✅ Agency connection stored successfully!')
-    console.log('[Agency OAuth Callback] Redirecting to agency settings...')
+
+    // Auto-import creators immediately after connecting
+    let importedCount = 0
+    let importError = ''
+    try {
+      console.log('[Agency OAuth Callback] 🔄 Auto-importing creators...')
+      const creators = await fetchAgencyCreators(agencyId)
+
+      if (creators.length > 0) {
+        const adminClient = createAdminClient()
+
+        for (const creator of creators) {
+          try {
+            const { data: existing } = await adminClient
+              .from('models')
+              .select('id')
+              .eq('fanvue_user_uuid', creator.uuid)
+              .single()
+
+            const modelData = {
+              agency_id: agencyId,
+              name: creator.displayName,
+              fanvue_username: creator.handle,
+              fanvue_user_uuid: creator.uuid,
+              avatar_url: creator.avatarUrl,
+              status: 'active',
+              updated_at: new Date().toISOString(),
+            }
+
+            if (existing) {
+              await adminClient.from('models').update(modelData).eq('id', existing.id)
+            } else {
+              await adminClient.from('models').insert(modelData)
+            }
+            importedCount++
+          } catch (creatorErr) {
+            console.error(
+              `[Agency OAuth Callback] Failed to import ${creator.displayName}:`,
+              creatorErr
+            )
+          }
+        }
+
+        await updateAgencyLastSync(agencyId)
+        console.log(
+          `[Agency OAuth Callback] ✅ Imported ${importedCount}/${creators.length} creators`
+        )
+      } else {
+        console.log('[Agency OAuth Callback] No creators found in agency account')
+        importError = 'no_creators'
+      }
+    } catch (importErr: any) {
+      console.error('[Agency OAuth Callback] Auto-import failed (non-fatal):', importErr.message)
+      importError = importErr.message
+    }
+
+    const successParams = new URLSearchParams({ success: 'agency_connected' })
+    if (importedCount > 0) successParams.set('imported', String(importedCount))
+    if (importError) successParams.set('import_note', importError)
 
     return NextResponse.redirect(
-      new URL(`${baseUrl}/dashboard/creator-management?success=agency_connected`)
+      new URL(`${baseUrl}/dashboard/creator-management?${successParams.toString()}`)
     )
   } catch (e: any) {
     console.error('[Agency OAuth Callback] Error:', e)
