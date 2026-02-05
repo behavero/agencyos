@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { createFanvueClient } from '@/lib/fanvue/client'
 import { getModelAccessToken } from '@/lib/services/fanvue-auth'
+import { getAgencyFanvueToken } from '@/lib/services/agency-fanvue-auth'
 
 /**
  * Fetch and update real stats from Fanvue API
@@ -50,34 +51,52 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       useAgencyEndpoint = true
     }
 
-    // If using agency endpoint, get the agency admin token
+    // If using agency endpoint, get the token from the agency_fanvue_connections table
     if (useAgencyEndpoint) {
       try {
-        // Find any model in this agency with a valid token (typically the agency admin)
-        const { data: adminModel } = await adminClient
-          .from('models')
-          .select('id')
-          .eq('agency_id', model.agency_id)
-          .not('fanvue_access_token', 'is', null)
-          .order('fanvue_token_expires_at', { ascending: false, nullsFirst: false })
-          .limit(1)
-          .single()
-
-        if (!adminModel) {
-          return NextResponse.json(
-            {
-              error:
-                'No connected accounts in this agency. Connect the agency admin via OAuth first.',
-            },
-            { status: 400 }
-          )
-        }
-
-        accessToken = await getModelAccessToken(adminModel.id)
-        console.log('[Stats API] Using agency admin token')
+        accessToken = await getAgencyFanvueToken(model.agency_id)
+        console.log('[Stats API] Using agency connection token')
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-        return NextResponse.json({ error: `Agency token error: ${errorMessage}` }, { status: 401 })
+
+        // If agency token not found, fall back to checking models table
+        if (errorMessage.includes('NO_AGENCY_FANVUE_CONNECTION')) {
+          console.log('[Stats API] No agency connection, checking models table...')
+          try {
+            const { data: adminModel } = await adminClient
+              .from('models')
+              .select('id')
+              .eq('agency_id', model.agency_id)
+              .not('fanvue_access_token', 'is', null)
+              .order('fanvue_token_expires_at', { ascending: false, nullsFirst: false })
+              .limit(1)
+              .single()
+
+            if (!adminModel) {
+              return NextResponse.json(
+                {
+                  error:
+                    'No Fanvue connection found. Click "Connect Fanvue" on the Creator Management page first.',
+                },
+                { status: 400 }
+              )
+            }
+
+            accessToken = await getModelAccessToken(adminModel.id)
+            console.log('[Stats API] Using model token as fallback')
+          } catch (fallbackErr) {
+            const fallbackMsg = fallbackErr instanceof Error ? fallbackErr.message : 'Unknown error'
+            return NextResponse.json(
+              { error: `No Fanvue token available: ${fallbackMsg}` },
+              { status: 401 }
+            )
+          }
+        } else {
+          return NextResponse.json(
+            { error: `Agency token error: ${errorMessage}` },
+            { status: 401 }
+          )
+        }
       }
     }
 

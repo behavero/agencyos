@@ -10,6 +10,7 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { createFanvueClient, FanvueAPIError } from '@/lib/fanvue/client'
 import { getModelAccessToken } from '@/lib/services/fanvue-auth'
+import { getAgencyFanvueToken } from '@/lib/services/agency-fanvue-auth'
 
 export interface SyncResult {
   success: boolean
@@ -19,17 +20,25 @@ export interface SyncResult {
 }
 
 /**
- * Get the agency admin token for accessing all creators' data
- * Looks for any model in the agency with a valid token (typically the agency admin)
+ * Get the agency admin token for accessing all creators' data.
+ * First checks the agency_fanvue_connections table (set by "Connect Fanvue" button),
+ * then falls back to checking individual model tokens.
  */
 async function getAgencyAdminToken(agencyId: string): Promise<string> {
-  const supabase = createAdminClient()
+  // First: try the agency connection (from "Connect Fanvue" OAuth)
+  try {
+    const token = await getAgencyFanvueToken(agencyId)
+    console.log('🔑 Using agency Fanvue connection token')
+    return token
+  } catch {
+    console.log('🔑 No agency connection, checking individual model tokens...')
+  }
 
-  // Find any model in this agency with a Fanvue token
-  // Prioritize models with the most recent token expiry (likely the admin)
+  // Fallback: look for any model with a personal token
+  const supabase = createAdminClient()
   const { data: models } = await supabase
     .from('models')
-    .select('id, name, fanvue_access_token, fanvue_refresh_token, fanvue_token_expires_at')
+    .select('id, name')
     .eq('agency_id', agencyId)
     .not('fanvue_access_token', 'is', null)
     .order('fanvue_token_expires_at', { ascending: false, nullsFirst: false })
@@ -37,14 +46,12 @@ async function getAgencyAdminToken(agencyId: string): Promise<string> {
 
   if (!models || models.length === 0) {
     throw new Error(
-      'No connected accounts in this agency. Connect the agency admin via OAuth first.'
+      'No Fanvue connection found. Click "Connect Fanvue" on the Creator Management page first.'
     )
   }
 
   const model = models[0]
-  console.log(`🔑 Using agency token from: ${model.name}`)
-
-  // Use the existing token refresh logic
+  console.log(`🔑 Using model token from: ${model.name}`)
   const token = await getModelAccessToken(model.id)
   return token
 }
