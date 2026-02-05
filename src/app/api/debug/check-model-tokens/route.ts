@@ -2,13 +2,17 @@
  * DEBUG: Check if we have valid model tokens in the database
  */
 
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
+import { requireAdminAuth } from '@/lib/utils/debug-auth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const authError = await requireAdminAuth(request)
+  if (authError) return authError
+
   try {
     const supabase = createAdminClient()
 

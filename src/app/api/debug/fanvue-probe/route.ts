@@ -3,14 +3,18 @@
  * Phase 54C - Test Model Tokens + API Access (with Rate Limiting)
  */
 
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { fetchWithRateLimit, getRateLimitInfo } from '@/lib/fanvue/rate-limiter'
+import { requireAdminAuth } from '@/lib/utils/debug-auth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const authError = await requireAdminAuth(request)
+  if (authError) return authError
+
   try {
     const supabase = createAdminClient()
 

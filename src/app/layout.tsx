@@ -3,7 +3,7 @@ import { Inter } from 'next/font/google'
 import { Toaster } from '@/components/ui/sonner'
 import { SpeedInsights } from '@vercel/speed-insights/next'
 import { Analytics } from '@vercel/analytics/react'
-// import { AlfredFloatingChat } from '@/components/alfred/floating-chat' // TODO: Fix AI SDK v6 compatibility
+import { AlfredFloatingChat } from '@/components/alfred/floating-chat'
 import './globals.css'
 
 // Vega Style uses Inter font
@@ -30,7 +30,7 @@ export default function RootLayout({
         <Toaster />
         <Analytics />
         <SpeedInsights />
-        {/* <AlfredFloatingChat /> */}
+        <AlfredFloatingChat />
       </body>
     </html>
   )

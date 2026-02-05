@@ -5,8 +5,12 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { requireAdminAuth } from '@/lib/utils/debug-auth'
 
 export async function GET(request: NextRequest) {
+  const authError = await requireAdminAuth(request)
+  if (authError) return authError
+
   try {
     const supabase = await createClient()
     const {

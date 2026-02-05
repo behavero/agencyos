@@ -9,10 +9,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { getKPIMetrics, getCategoryBreakdown, getChartData } from '@/lib/services/analytics-engine'
+import { requireAdminAuth } from '@/lib/utils/debug-auth'
 
 export const maxDuration = 300 // 5 minutes
 
 export async function GET(request: NextRequest) {
+  const authError = await requireAdminAuth(request)
+  if (authError) return authError
+
   const startTime = Date.now()
   const results: Array<{
     agencyId: string

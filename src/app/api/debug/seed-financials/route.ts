@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
+import { requireAdminAuth } from '@/lib/utils/debug-auth'
 
 /**
  * DEBUG ENDPOINT: Seed Financial Transaction Data
@@ -12,7 +13,10 @@ import { createAdminClient } from '@/lib/supabase/server'
  * This creates 90 transactions spread over the last 30 days
  * with realistic amounts and categories.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const authError = await requireAdminAuth(request)
+  if (authError) return authError
+
   try {
     const supabase = await createAdminClient()
 

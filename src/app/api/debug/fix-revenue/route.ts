@@ -9,8 +9,12 @@ import {
   getAccurateAllTimeRevenue,
   fixStaleRevenueTotals,
 } from '@/lib/services/emergency-revenue-fix'
+import { requireAdminAuth } from '@/lib/utils/debug-auth'
 
 export async function GET(request: NextRequest) {
+  const authError = await requireAdminAuth(request)
+  if (authError) return authError
+
   try {
     const supabase = await createClient()
     const {
@@ -52,6 +56,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminAuth(request)
+  if (authError) return authError
+
   try {
     const supabase = await createClient()
     const {

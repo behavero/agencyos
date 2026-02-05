@@ -3,13 +3,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import {
-  CreditCard,
-  DollarSign,
-  CheckCircle2,
-  Clock,
-  Calendar
-} from 'lucide-react'
+import { CreditCard, DollarSign, CheckCircle2, Clock, Calendar } from 'lucide-react'
 
 export default function BillingClient() {
   return (
@@ -17,9 +11,7 @@ export default function BillingClient() {
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Billing & Subscription</h1>
-        <p className="text-muted-foreground mt-1">
-          Manage your subscription and payment methods
-        </p>
+        <p className="text-muted-foreground mt-1">Manage your subscription and payment methods</p>
       </div>
 
       {/* Current Plan */}
@@ -30,9 +22,7 @@ export default function BillingClient() {
               <CardTitle className="text-2xl">Free Plan</CardTitle>
               <CardDescription>Currently active</CardDescription>
             </div>
-            <Badge className="bg-primary text-lg px-4 py-2">
-              $0/mo
-            </Badge>
+            <Badge className="bg-primary text-lg px-4 py-2">$0/mo</Badge>
           </div>
         </CardHeader>
         <CardContent>
@@ -62,6 +52,7 @@ export default function BillingClient() {
                     <Calendar className="w-4 h-4 text-muted-foreground" />
                     No expiration
                   </li>
+
                   <li className="flex items-center gap-2 text-sm">
                     <Clock className="w-4 h-4 text-muted-foreground" />
                     Unlimited usage

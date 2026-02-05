@@ -8,10 +8,14 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
+import { requireAdminAuth } from '@/lib/utils/debug-auth'
 
 export const maxDuration = 300 // 5 minutes
 
 export async function GET(request: NextRequest) {
+  const authError = await requireAdminAuth(request)
+  if (authError) return authError
+
   const startTime = Date.now()
   const supabase = createAdminClient()
 
@@ -165,6 +169,9 @@ export async function GET(request: NextRequest) {
  * This recalculates model_id for every transaction based on current model data
  */
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminAuth(request)
+  if (authError) return authError
+
   const supabase = createAdminClient()
 
   try {
