@@ -254,7 +254,8 @@ export function useChatRosterWithWhalePriority(
   useEffect(() => {
     setPage(1)
     fetchChats(1, false)
-  }, [fetchChats])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [creatorId, size, filter, search])
 
   const refresh = useCallback(async () => {
     setPage(1)
