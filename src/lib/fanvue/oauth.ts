@@ -5,7 +5,7 @@ import { randomBytes, createHash } from 'crypto'
  * https://github.com/fanvue/fanvue-app-starter
  */
 
-const OAUTH_ISSUER_BASE_URL = 'https://www.fanvue.com'
+const OAUTH_ISSUER_BASE_URL = 'https://api.fanvue.com'
 
 function base64url(input: Buffer) {
   return input.toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
