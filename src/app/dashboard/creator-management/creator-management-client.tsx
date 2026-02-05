@@ -32,6 +32,7 @@ import { toast } from 'sonner'
 import Link from 'next/link'
 import { AddCreatorDialog } from '@/components/creators/add-creator-dialog'
 import { AgencyImportButton } from '@/components/creators/agency-import-button'
+import { ConnectAgencyFanvueButton } from '@/components/creators/connect-agency-fanvue-button'
 import { useAgencyData } from '@/providers/agency-data-provider'
 
 // Props interface removed - now using useAgencyData() context
@@ -214,6 +215,7 @@ export default function CreatorManagementClient() {
               Refresh All
             </Button>
           )}
+          <ConnectAgencyFanvueButton />
           <AgencyImportButton />
           <AddCreatorDialog agencyId={agencyId || ''} />
         </div>
@@ -253,7 +255,8 @@ export default function CreatorManagementClient() {
               Add your first creator to start managing their content and performance
             </p>
 
-            <div className="flex gap-3 justify-center">
+            <div className="flex gap-3 justify-center flex-wrap">
+              <ConnectAgencyFanvueButton />
               <AgencyImportButton />
               <AddCreatorDialog agencyId={agencyId || ''} />
             </div>
