@@ -192,7 +192,7 @@ export async function POST(request: NextRequest) {
         .update({ model_id: models[0].id })
         .eq('agency_id', agencyId)
         .is('model_id', null)
-        .select('id', { count: 'exact', head: true })
+        .select('id')
 
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 })
