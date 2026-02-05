@@ -18,8 +18,8 @@ import { createClient } from '@/lib/supabase/server'
  * - read:earnings - Access earnings data for all creators
  */
 
-// Agency-specific OAuth scopes
-const AGENCY_SCOPES = 'read:agency read:creators read:team read:earnings'
+// Agency-specific OAuth scopes (must match what's enabled in Fanvue app)
+const AGENCY_SCOPES = 'read:agency read:creator'
 
 export async function GET(request: Request) {
   const url = new URL(request.url)
