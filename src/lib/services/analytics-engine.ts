@@ -183,6 +183,41 @@ export async function getChartData(
     }
   })
 
+  // FALLBACK: When no transaction chart data exists, generate a summary point from model stats
+  if (mergedDataPoints.length === 0) {
+    let modelStatsQuery = supabase
+      .from('models')
+      .select('revenue_total, subscribers_count, followers_count')
+      .eq('agency_id', agencyId)
+
+    if (options.modelId) {
+      modelStatsQuery = modelStatsQuery.eq('id', options.modelId)
+    }
+
+    const { data: modelStats } = await modelStatsQuery
+    const modelRevTotal =
+      modelStats?.reduce((sum, m) => sum + (Number(m.revenue_total) || 0), 0) || 0
+    const modelSubs =
+      modelStats?.reduce((sum, m) => sum + (Number(m.subscribers_count) || 0), 0) || 0
+    const modelFollowers =
+      modelStats?.reduce((sum, m) => sum + (Number(m.followers_count) || 0), 0) || 0
+
+    if (modelRevTotal > 0) {
+      return [
+        {
+          date: 'All Time',
+          subscriptions: 0,
+          tips: 0,
+          messages: 0,
+          posts: 0,
+          total: modelRevTotal,
+          subscribers: modelSubs,
+          followers: modelFollowers,
+        },
+      ]
+    }
+  }
+
   // Fill missing dates with zeros
   return fillMissingDates(mergedDataPoints, startDate, endDate)
 }
@@ -419,23 +454,40 @@ export async function getKPIMetrics(
   }
 
   // Calculate metrics from complete dataset
-  const totalRevenue = allTransactions.reduce((sum, tx) => sum + Number(tx.amount), 0)
-  const netRevenue = allTransactions.reduce((sum, tx) => sum + Number(tx.net_amount), 0)
+  let totalRevenue = allTransactions.reduce((sum, tx) => sum + Number(tx.amount), 0)
+  let netRevenue = allTransactions.reduce((sum, tx) => sum + Number(tx.net_amount), 0)
   const prevTotalRevenue = prevAllTransactions.reduce((sum, tx) => sum + Number(tx.amount), 0)
+
+  // FALLBACK: When no transactions exist yet, use model stats (revenue_total from Fanvue stats API)
+  // This handles the bootstrapping period before the first transaction sync completes.
+  if (totalRevenue === 0 && allTransactions.length === 0) {
+    let modelRevenueQuery = supabase
+      .from('models')
+      .select('revenue_total')
+      .eq('agency_id', agencyId)
+
+    if (options.modelId) {
+      modelRevenueQuery = modelRevenueQuery.eq('id', options.modelId)
+    }
+
+    const { data: modelRevenueData } = await modelRevenueQuery
+    const modelRevTotal =
+      modelRevenueData?.reduce((sum, m) => sum + (Number(m.revenue_total) || 0), 0) || 0
+
+    if (modelRevTotal > 0) {
+      totalRevenue = modelRevTotal
+      netRevenue = Math.round(modelRevTotal * 0.8) // Fanvue takes 20% platform fee
+      console.log('[analytics-engine] Using model stats fallback for revenue:', {
+        totalRevenue,
+        netRevenue,
+      })
+    }
+  }
 
   console.log('[analytics-engine] Revenue calculation:', {
     transactionCount: allTransactions.length,
     totalRevenue,
     netRevenue,
-  })
-
-  console.log('[analytics-engine] Revenue calculation:', {
-    transactionsCount: allTransactions?.length,
-    totalRevenue,
-    netRevenue,
-    sampleTransactions: allTransactions
-      ?.slice(0, 3)
-      .map(t => ({ amount: t.amount, net: t.net_amount })),
   })
 
   // Calculate Avg Tip from ALL tip transactions (not just sample)

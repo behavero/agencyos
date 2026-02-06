@@ -501,7 +501,12 @@ export default function DashboardClient() {
   const totalGrossRevenue = isAllTimeView
     ? liveTotalRevenue
     : (overviewData?.kpiMetrics?.totalRevenue ?? 0)
-  const totalNetRevenue = overviewData?.kpiMetrics?.netRevenue ?? 0
+  // Net revenue from analytics engine (transaction-based). When transactions haven't been synced
+  // yet, this will be 0 even though gross revenue exists from model stats. In that case, estimate
+  // net revenue as 80% of gross (Fanvue's standard 20% platform fee).
+  const analyticsNetRevenue = overviewData?.kpiMetrics?.netRevenue ?? 0
+  const totalNetRevenue =
+    analyticsNetRevenue > 0 ? analyticsNetRevenue : Math.round(totalGrossRevenue * 0.8)
   const platformFee = totalGrossRevenue - totalNetRevenue
   const afterPlatformFee = totalNetRevenue
   const taxRate = agency?.tax_rate ?? 0.2
@@ -522,14 +527,9 @@ export default function DashboardClient() {
 
   // ===== DYNAMIC DATA FROM API (filtered by date range) =====
   // Format revenue + expense data for "Revenue vs Expenses" chart
-  // ALWAYS use dynamic overviewData (no static fallbacks!)
   const monthlyData = useMemo(() => {
-    console.log('[monthlyData] overviewData:', overviewData)
-
-    // Use dynamic overview data (filtered by date)
+    // Use dynamic overview data (filtered by date) when transactions exist
     if (overviewData?.chartData && overviewData.chartData.length > 0) {
-      console.log('[monthlyData] Using filtered overview data from API')
-      // Distribute monthly expenses evenly across chart data points
       const pointCount = overviewData.chartData.length
       const expensePerPoint = pointCount > 0 ? totalExpenses / pointCount : 0
       return overviewData.chartData.map(point => ({
@@ -541,10 +541,22 @@ export default function DashboardClient() {
       }))
     }
 
-    // No fallback - return empty if no data (show loading state in UI)
-    console.log('[monthlyData] No data available yet - still loading or no transactions')
+    // FALLBACK: When no transaction chart data exists but we have model revenue,
+    // generate a single summary data point so the chart isn't blank
+    if (liveTotalRevenue > 0) {
+      return [
+        {
+          month: 'All Time',
+          revenue: liveTotalRevenue,
+          expenses: totalExpenses,
+          subscribers: 0,
+          followers: 0,
+        },
+      ]
+    }
+
     return []
-  }, [overviewData])
+  }, [overviewData, liveTotalRevenue, totalExpenses])
 
   // Model performance data from analytics service
   const modelPerformanceData = useMemo(() => {
@@ -872,6 +884,27 @@ export default function DashboardClient() {
                       />
                     </LineChart>
                   </ChartContainer>
+                ) : totalSubscribers > 0 || totalFollowers > 0 ? (
+                  // Fallback: Show current audience snapshot when no historical data
+                  <div className="h-[250px] flex flex-col items-center justify-center gap-4">
+                    <div className="grid grid-cols-2 gap-6 text-center">
+                      <div>
+                        <p className="text-3xl font-bold text-teal-400">
+                          {totalSubscribers.toLocaleString()}
+                        </p>
+                        <p className="text-sm text-muted-foreground">Subscribers</p>
+                      </div>
+                      <div>
+                        <p className="text-3xl font-bold text-primary">
+                          {totalFollowers.toLocaleString()}
+                        </p>
+                        <p className="text-sm text-muted-foreground">Followers</p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Growth trends will appear once transaction history is synced
+                    </p>
+                  </div>
                 ) : (
                   <div className="h-[250px] flex items-center justify-center">
                     <div className="text-center text-muted-foreground">
