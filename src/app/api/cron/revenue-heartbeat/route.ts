@@ -6,6 +6,7 @@ import { aggregateFanInsights } from '@/lib/services/fan-insights-aggregator'
 import { syncAgencySubscriberHistory } from '@/lib/services/subscriber-history-syncer'
 import { syncAgencyTopSpenders } from '@/lib/services/top-spenders-syncer'
 import { getAgencyFanvueToken } from '@/lib/services/agency-fanvue-auth'
+import { buildAgencyDigest } from '@/lib/openclaw/context-engine'
 
 /**
  * GET /api/cron/revenue-heartbeat
@@ -249,6 +250,26 @@ export async function GET(request: NextRequest) {
       console.error('[Revenue Heartbeat] Subscriber/spenders sync error:', e)
     }
 
+    // Build OpenClaw agency digests (pre-computed AI context)
+    let digestsBuilt = 0
+    try {
+      const { data: agencies } = await adminClient.from('agencies').select('id')
+      for (const agency of agencies || []) {
+        try {
+          await buildAgencyDigest(agency.id)
+          digestsBuilt++
+        } catch (digestError) {
+          console.error(
+            `[Revenue Heartbeat] Digest build failed for agency ${agency.id}:`,
+            digestError
+          )
+        }
+      }
+      console.log(`[Revenue Heartbeat] Built ${digestsBuilt} OpenClaw digests`)
+    } catch (digestError) {
+      console.error('[Revenue Heartbeat] Digest build error:', digestError)
+    }
+
     const successful = results.filter(r => r.success).length
     const failed = results.filter(r => !r.success).length
     const totalTransactionsSynced = results.reduce((sum, r) => sum + r.transactionsSynced, 0)
@@ -264,6 +285,7 @@ export async function GET(request: NextRequest) {
       fanInsightsProcessed,
       subscriberHistoryDays,
       topSpendersCount,
+      digestsBuilt,
       results,
       timestamp: new Date().toISOString(),
     })

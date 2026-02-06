@@ -1,9 +1,13 @@
 /**
  * Cron Job: Refresh Agency Fanvue Tokens
- * Phase 60 - SaaS Architecture
  *
- * Runs daily to refresh all agency tokens before they expire.
- * Prevents agency operations from failing due to expired tokens.
+ * Runs every 30 minutes to keep all agency tokens alive.
+ * This is the ONLY mechanism responsible for token lifecycle — it must be autonomous.
+ *
+ * Logic:
+ * 1. Refresh active tokens expiring within 35 minutes (proactive)
+ * 2. Attempt to revive expired tokens that still have a refresh_token (auto-recovery)
+ * 3. Never mark a connection as expired without first attempting a refresh
  *
  * Endpoint: /api/cron/refresh-agency-tokens?secret=CRON_SECRET
  * Method: GET
@@ -19,17 +23,19 @@ export const dynamic = 'force-dynamic'
 interface RefreshResult {
   agencyId: string
   success: boolean
+  phase: 'proactive' | 'recovery'
   error?: string
 }
 
 export async function GET(request: NextRequest) {
-  console.log('[cron/refresh-agency-tokens] Starting agency token refresh...')
+  console.log('[cron/refresh-agency-tokens] Starting autonomous token refresh...')
 
   // Verify cron secret
   const { searchParams } = new URL(request.url)
   const secret = searchParams.get('secret')
+  const authHeader = request.headers.get('authorization')
 
-  if (secret !== process.env.CRON_SECRET) {
+  if (secret !== process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     console.error('[cron/refresh-agency-tokens] Invalid or missing CRON_SECRET')
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -38,102 +44,156 @@ export async function GET(request: NextRequest) {
   const results: RefreshResult[] = []
   let refreshed = 0
   let failed = 0
-  const skipped = 0
+  let recovered = 0
 
   try {
-    // Find all agency connections that need refreshing
+    // ─── Phase 1: Proactive refresh (active tokens expiring soon) ───
     // Refresh tokens expiring within 35 minutes (cron runs every 30 min)
-    // Using 35min ensures every expiring token is caught between cron runs
-    // while still avoiding unnecessary refreshes for tokens with >35min left.
     const thirtyFiveMinutesFromNow = new Date(Date.now() + 35 * 60 * 1000).toISOString()
 
-    const { data: connections, error } = await adminClient
+    const { data: expiringConnections, error: expiringError } = await adminClient
       .from('agency_fanvue_connections')
-      .select('agency_id, fanvue_token_expires_at, status')
+      .select('agency_id, fanvue_token_expires_at')
       .eq('status', 'active')
       .lte('fanvue_token_expires_at', thirtyFiveMinutesFromNow)
 
-    if (error) {
-      throw new Error(`Failed to fetch agency connections: ${error.message}`)
+    if (expiringError) {
+      console.error('[cron/refresh-agency-tokens] Failed to query expiring:', expiringError)
     }
 
-    if (!connections || connections.length === 0) {
-      console.log('[cron/refresh-agency-tokens] No tokens need refreshing')
-      return NextResponse.json({
-        success: true,
-        message: 'No tokens need refreshing',
-        refreshed: 0,
-        failed: 0,
-        skipped: 0,
-      })
+    const expiringList = expiringConnections || []
+    if (expiringList.length > 0) {
+      console.log(
+        `[cron/refresh-agency-tokens] Phase 1: ${expiringList.length} active tokens expiring soon`
+      )
     }
 
-    console.log(`[cron/refresh-agency-tokens] Found ${connections.length} tokens to refresh`)
-
-    // Refresh each token
-    for (const connection of connections) {
+    for (const connection of expiringList) {
       try {
-        console.log(`[cron/refresh-agency-tokens] Refreshing agency ${connection.agency_id}...`)
-
         await refreshAgencyToken(connection.agency_id)
-
-        results.push({
-          agencyId: connection.agency_id,
-          success: true,
-        })
-
+        results.push({ agencyId: connection.agency_id, success: true, phase: 'proactive' })
         refreshed++
-        console.log(`[cron/refresh-agency-tokens] ✅ Refreshed agency ${connection.agency_id}`)
-      } catch (error: any) {
-        console.error(
-          `[cron/refresh-agency-tokens] ❌ Failed to refresh agency ${connection.agency_id}:`,
-          error.message
-        )
-
+        console.log(`[cron/refresh-agency-tokens] ✅ Proactive refresh: ${connection.agency_id}`)
+      } catch (err: any) {
         results.push({
           agencyId: connection.agency_id,
           success: false,
-          error: error.message,
+          phase: 'proactive',
+          error: err.message,
         })
-
         failed++
+        console.error(
+          `[cron/refresh-agency-tokens] ❌ Proactive refresh failed: ${connection.agency_id}:`,
+          err.message
+        )
       }
     }
 
-    // Also check for expired tokens to mark them
-    const { data: expiredConnections } = await adminClient
+    // ─── Phase 2: Auto-recovery (expired connections with refresh tokens) ───
+    // This is the critical fix: connections that previously failed should be
+    // retried automatically, not left dead until the user manually reconnects.
+    const { data: expiredConnections, error: expiredError } = await adminClient
+      .from('agency_fanvue_connections')
+      .select('agency_id, fanvue_refresh_token, updated_at')
+      .eq('status', 'expired')
+      .not('fanvue_refresh_token', 'is', null)
+
+    if (expiredError) {
+      console.error('[cron/refresh-agency-tokens] Failed to query expired:', expiredError)
+    }
+
+    const expiredList = expiredConnections || []
+    if (expiredList.length > 0) {
+      console.log(
+        `[cron/refresh-agency-tokens] Phase 2: ${expiredList.length} expired connections to recover`
+      )
+    }
+
+    for (const connection of expiredList) {
+      // Don't retry connections that have been expired for more than 7 days
+      // (refresh tokens may have been revoked by Fanvue at that point)
+      const expiredSince = connection.updated_at
+        ? Date.now() - new Date(connection.updated_at).getTime()
+        : Infinity
+      const sevenDaysMs = 7 * 24 * 60 * 60 * 1000
+
+      if (expiredSince > sevenDaysMs) {
+        console.log(
+          `[cron/refresh-agency-tokens] ⏭️ Skipping ${connection.agency_id} — expired >7 days`
+        )
+        continue
+      }
+
+      try {
+        await refreshAgencyToken(connection.agency_id)
+        results.push({ agencyId: connection.agency_id, success: true, phase: 'recovery' })
+        recovered++
+        console.log(`[cron/refresh-agency-tokens] ✅ Auto-recovered: ${connection.agency_id}`)
+      } catch (err: any) {
+        results.push({
+          agencyId: connection.agency_id,
+          success: false,
+          phase: 'recovery',
+          error: err.message,
+        })
+        failed++
+        console.error(
+          `[cron/refresh-agency-tokens] ❌ Auto-recovery failed: ${connection.agency_id}:`,
+          err.message
+        )
+        // Do NOT mark as expired again — refreshAgencyToken already handles that.
+        // We just log and move on. Next cron run will retry.
+      }
+    }
+
+    // ─── Phase 3: Proactive refresh for tokens not yet expiring but expired in DB ───
+    // Edge case: a token's `fanvue_token_expires_at` is in the past but status is still
+    // `active` (e.g., server was down when expiry happened). Refresh immediately.
+    const now = new Date().toISOString()
+    const { data: alreadyExpiredActive } = await adminClient
       .from('agency_fanvue_connections')
       .select('agency_id')
       .eq('status', 'active')
-      .lt('fanvue_token_expires_at', new Date().toISOString())
+      .lt('fanvue_token_expires_at', now)
+      .not('fanvue_refresh_token', 'is', null)
 
-    if (expiredConnections && expiredConnections.length > 0) {
-      console.log(
-        `[cron/refresh-agency-tokens] Marking ${expiredConnections.length} expired connections`
-      )
+    for (const connection of alreadyExpiredActive || []) {
+      // Skip if we already processed this agency in Phase 1
+      if (results.some(r => r.agencyId === connection.agency_id)) continue
 
-      for (const conn of expiredConnections) {
-        await adminClient
-          .from('agency_fanvue_connections')
-          .update({ status: 'expired' })
-          .eq('agency_id', conn.agency_id)
+      try {
+        await refreshAgencyToken(connection.agency_id)
+        results.push({ agencyId: connection.agency_id, success: true, phase: 'proactive' })
+        refreshed++
+        console.log(
+          `[cron/refresh-agency-tokens] ✅ Caught stale-active token: ${connection.agency_id}`
+        )
+      } catch (err: any) {
+        results.push({
+          agencyId: connection.agency_id,
+          success: false,
+          phase: 'proactive',
+          error: err.message,
+        })
+        failed++
       }
     }
 
     console.log('[cron/refresh-agency-tokens] Complete:', {
       refreshed,
+      recovered,
       failed,
-      skipped,
-      total: connections.length,
+      total: results.length,
     })
 
     return NextResponse.json({
       success: true,
-      message: `Refreshed ${refreshed} tokens, ${failed} failed`,
       refreshed,
+      recovered,
       failed,
-      skipped,
+      total: results.length,
       results,
+      timestamp: new Date().toISOString(),
     })
   } catch (error: any) {
     console.error('[cron/refresh-agency-tokens] Fatal error:', error)
@@ -142,6 +202,7 @@ export async function GET(request: NextRequest) {
         success: false,
         error: error.message,
         refreshed,
+        recovered,
         failed,
         results,
       },

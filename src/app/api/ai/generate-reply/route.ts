@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { generateText } from 'ai'
+import { createOpenAI } from '@ai-sdk/openai'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
-
-const GROQ_API_KEY = process.env.GROQ_API_KEY
-const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
+import { getModelForAgency } from '@/lib/openclaw/provider-router'
+import { logGenerateReply } from '@/lib/openclaw/audit'
 
 interface ConversationMessage {
   role: 'user' | 'assistant' | 'system'
@@ -20,8 +21,10 @@ interface GenerateReplyRequest {
 /**
  * POST /api/ai/generate-reply
  *
- * Generates a GFE-style (Girlfriend Experience) reply using Groq (Llama-3.3-70b)
- * for chat conversations.
+ * Generates a GFE-style (Girlfriend Experience) reply using the agency's
+ * configured LLM via the OpenClaw Provider Router.
+ *
+ * Falls back to system Groq key if no user key is configured.
  *
  * Input:
  * - conversationHistory: Array of messages (user/assistant/system)
@@ -45,12 +48,38 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    if (!GROQ_API_KEY) {
-      console.error('[Generate Reply] GROQ_API_KEY not configured')
-      return NextResponse.json(
-        { error: 'AI service unavailable', message: 'GROQ_API_KEY not configured' },
-        { status: 503 }
-      )
+    // Resolve agency for provider routing
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('agency_id')
+      .eq('id', user.id)
+      .single()
+
+    const agencyId = profile?.agency_id
+
+    // Resolve LLM provider via OpenClaw router
+    let model
+    try {
+      if (agencyId) {
+        const resolved = await getModelForAgency(agencyId)
+        model = resolved.model
+      }
+    } catch {
+      // Fall through to system key fallback
+    }
+
+    // Fallback: system Groq key
+    if (!model) {
+      const groqKey = process.env.GROQ_API_KEY
+      if (!groqKey) {
+        console.error('[Generate Reply] No LLM key configured')
+        return NextResponse.json(
+          { error: 'AI service unavailable', message: 'No LLM key configured' },
+          { status: 503 }
+        )
+      }
+      const groq = createOpenAI({ apiKey: groqKey, baseURL: 'https://api.groq.com/openai/v1' })
+      model = groq('llama-3.3-70b-versatile')
     }
 
     let body: GenerateReplyRequest
@@ -123,42 +152,24 @@ Instructions:
 
 Generate a reply that feels natural and engaging.`
 
-    // Prepare messages for Groq API
-    const messages: Array<{ role: string; content: string }> = [
-      { role: 'system', content: systemPrompt },
-      ...conversationHistory.map(msg => ({
-        role: msg.role,
-        content: msg.content,
-      })),
-    ]
-
-    // Call Groq API
-    const groqResponse = await fetch(GROQ_API_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${GROQ_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        messages,
-        temperature: 0.8,
-        max_tokens: 200,
-        top_p: 0.9,
-      }),
-    })
-
-    if (!groqResponse.ok) {
-      const errorText = await groqResponse.text()
-      console.error('[Generate Reply] Groq API error:', errorText)
-      return NextResponse.json(
-        { error: 'Failed to generate reply', details: errorText },
-        { status: groqResponse.status }
-      )
+    // Audit log (fire-and-forget)
+    if (agencyId) {
+      logGenerateReply(agencyId, user.id, 'generate-reply', 'copilot')
     }
 
-    const groqData = await groqResponse.json()
-    const suggestedText = groqData.choices?.[0]?.message?.content?.trim() || ''
+    // Use Vercel AI SDK generateText (non-streaming) via OpenClaw router
+    const result = await generateText({
+      model,
+      system: systemPrompt,
+      messages: conversationHistory.map(msg => ({
+        role: msg.role as 'user' | 'assistant' | 'system',
+        content: msg.content,
+      })),
+      maxOutputTokens: 200,
+      temperature: 0.8,
+    })
+
+    const suggestedText = result.text?.trim() || ''
 
     if (!suggestedText) {
       return NextResponse.json({ error: 'No reply generated' }, { status: 500 })

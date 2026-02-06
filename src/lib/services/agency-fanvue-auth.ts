@@ -121,9 +121,16 @@ export async function getAgencyFanvueToken(agencyId: string): Promise<string> {
       return await fetchUpdatedToken(adminClient, agencyId)
     } catch (err: any) {
       console.error(`❌ Failed to refresh expiring agency token:`, err.message)
+      // If the token hasn't actually expired yet, use it anyway — it's better than nothing.
+      // The cron will retry the refresh on the next run.
+      const expiresAt = new Date(activeConnection.fanvue_token_expires_at)
+      if (expiresAt > new Date()) {
+        console.log(`⚠️ Using existing token (still valid until ${expiresAt.toISOString()})`)
+        return activeConnection.fanvue_access_token
+      }
       throw new Error(
         `Agency token refresh failed: ${err.message}. ` +
-          'Agency admin may need to reconnect their Fanvue account.'
+          'The cron job will retry automatically. If this persists, reconnect Fanvue in settings.'
       )
     }
   }
@@ -277,19 +284,38 @@ export async function refreshAgencyToken(agencyId: string): Promise<void> {
     }
   }
 
-  // All retries exhausted -- mark connection as expired
-  console.error(
-    `❌ All ${MAX_RETRIES} refresh attempts failed for agency ${agencyId}. Marking expired.`
-  )
+  // All retries exhausted
+  // Only mark as expired if the error was an auth error (refresh token revoked/invalid).
+  // For transient errors (network, 500, timeout), keep the status unchanged so the
+  // next cron run will retry automatically.
+  const isAuthError =
+    lastError?.message?.includes('400') ||
+    lastError?.message?.includes('401') ||
+    lastError?.message?.includes('invalid_grant') ||
+    lastError?.message?.includes('token has been revoked')
 
-  await adminClient
-    .from('agency_fanvue_connections')
-    .update({
-      status: 'expired',
-      refreshing_since: null, // Release lock
-      updated_at: new Date().toISOString(),
-    })
-    .eq('agency_id', agencyId)
+  if (isAuthError) {
+    console.error(`❌ Agency ${agencyId} refresh token is permanently invalid. Marking expired.`)
+    await adminClient
+      .from('agency_fanvue_connections')
+      .update({
+        status: 'expired',
+        refreshing_since: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('agency_id', agencyId)
+  } else {
+    console.error(
+      `❌ All ${MAX_RETRIES} refresh attempts failed for agency ${agencyId} (transient error). ` +
+        'Keeping status unchanged — next cron run will retry.'
+    )
+    await adminClient
+      .from('agency_fanvue_connections')
+      .update({
+        refreshing_since: null, // Release lock only
+      })
+      .eq('agency_id', agencyId)
+  }
 
   throw lastError || new Error('Token refresh failed after all retries')
 }

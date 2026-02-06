@@ -40,8 +40,8 @@ const SUGGESTED_PROMPTS = [
 
 // Tool name to display name and icon mapping
 const TOOL_INFO: Record<string, { name: string; icon: React.ReactNode; color?: string }> = {
+  // Legacy tools
   get_agency_financials: { name: 'Financials', icon: <DollarSign className="w-3 h-3" /> },
-  get_model_stats: { name: 'Model Stats', icon: <Database className="w-3 h-3" /> },
   check_quest_status: { name: 'Quests', icon: <Target className="w-3 h-3" /> },
   get_expense_summary: { name: 'Expenses', icon: <Receipt className="w-3 h-3" /> },
   get_payroll_overview: { name: 'Payroll', icon: <Users className="w-3 h-3" /> },
@@ -51,7 +51,45 @@ const TOOL_INFO: Record<string, { name: string; icon: React.ReactNode; color?: s
     icon: <Instagram className="w-3 h-3" />,
     color: 'purple',
   },
+  // OpenClaw Read tools
+  get_agency_kpis: { name: 'Agency KPIs', icon: <Target className="w-3 h-3" /> },
+  get_model_stats: { name: 'Model Stats', icon: <Database className="w-3 h-3" /> },
+  get_fan_profile: { name: 'Fan Profile', icon: <Users className="w-3 h-3" /> },
+  get_tracking_links: { name: 'Tracking Links', icon: <Globe className="w-3 h-3" /> },
+  get_revenue_breakdown: { name: 'Revenue', icon: <DollarSign className="w-3 h-3" /> },
+  search_vault: { name: 'Vault Search', icon: <Database className="w-3 h-3" />, color: 'purple' },
+  // OpenClaw Suggest tools
+  draft_message: { name: 'Draft Message', icon: <Wrench className="w-3 h-3" />, color: 'blue' },
+  suggest_ppv_price: {
+    name: 'PPV Pricing',
+    icon: <DollarSign className="w-3 h-3" />,
+    color: 'blue',
+  },
+  flag_underperformer: {
+    name: 'Performance Check',
+    icon: <Target className="w-3 h-3" />,
+    color: 'blue',
+  },
+  // OpenClaw Write tools
+  create_content_task: {
+    name: 'Create Task',
+    icon: <Wrench className="w-3 h-3" />,
+    color: 'purple',
+  },
+  adjust_recommended_price: {
+    name: 'Adjust Price',
+    icon: <DollarSign className="w-3 h-3" />,
+    color: 'purple',
+  },
+  send_mass_message: { name: 'Mass Message', icon: <Users className="w-3 h-3" />, color: 'purple' },
 }
+
+// Write tools that require confirmation
+const WRITE_TOOL_NAMES = new Set([
+  'create_content_task',
+  'adjust_recommended_price',
+  'send_mass_message',
+])
 
 /** Extract text content from a message's parts array */
 function getMessageText(message: { parts: Array<{ type: string; text?: string }> }): string {
@@ -179,7 +217,7 @@ export function AlfredFloatingChat() {
             <h3 className="font-semibold text-foreground">Alfred</h3>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-              <span>AI Strategist &bull; Llama 3.3 70B</span>
+              <span>AI Strategist &bull; OpenClaw</span>
             </div>
           </div>
         </div>
@@ -217,14 +255,18 @@ export function AlfredFloatingChat() {
                 {toolParts.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 ml-11">
                     {toolParts.map((tool, idx) => {
-                      const toolInfo = TOOL_INFO[tool.toolInvocation.toolName] || {
-                        name: tool.toolInvocation.toolName,
+                      const toolName = tool.toolInvocation.toolName
+                      const toolInfo = TOOL_INFO[toolName] || {
+                        name: toolName,
                         icon: <Wrench className="w-3 h-3" />,
                       }
                       const isComplete = tool.toolInvocation.state === 'result'
+                      const isWriteTool = WRITE_TOOL_NAMES.has(toolName)
 
                       const getToolStyles = () => {
                         if (isComplete) {
+                          if (isWriteTool)
+                            return 'border-amber-500/30 text-amber-400 bg-amber-500/5'
                           if (toolInfo.color === 'blue')
                             return 'border-blue-500/30 text-blue-400 bg-blue-500/5'
                           if (toolInfo.color === 'purple')
@@ -245,7 +287,11 @@ export function AlfredFloatingChat() {
                           className={cn('text-xs gap-1 transition-all', getToolStyles())}
                         >
                           {toolInfo.icon}
-                          {isComplete ? toolInfo.name : `Fetching ${toolInfo.name}...`}
+                          {isComplete
+                            ? isWriteTool
+                              ? `${toolInfo.name} (done)`
+                              : toolInfo.name
+                            : `Fetching ${toolInfo.name}...`}
                         </Badge>
                       )
                     })}
@@ -371,7 +417,7 @@ export function AlfredFloatingChat() {
           </Button>
         </form>
         <p className="text-xs text-muted-foreground mt-2 text-center">
-          Powered by Llama 3.3 70B via Groq
+          Powered by OpenClaw Neural Core
         </p>
       </div>
     </div>

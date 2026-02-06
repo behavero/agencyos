@@ -36,6 +36,10 @@ import {
   RefreshCw,
   Loader2,
   AlertTriangle,
+  Brain,
+  Key,
+  Trash2,
+  Zap,
 } from 'lucide-react'
 
 type Agency = Database['public']['Tables']['agencies']['Row']
@@ -142,9 +146,51 @@ export default function AgencySettingsClient({ agency }: AgencySettingsClientPro
   // Team members count
   const [teamCount, setTeamCount] = useState(0)
 
+  // OpenClaw API Key state
+  const [openclawKeys, setOpenclawKeys] = useState<
+    Array<{
+      id: string
+      provider: string
+      model_preference: string | null
+      key_prefix: string
+      is_active: boolean
+      is_valid: boolean
+      created_at: string
+      last_used_at: string | null
+    }>
+  >([])
+  const [loadingKeys, setLoadingKeys] = useState(true)
+  const [newKeyProvider, setNewKeyProvider] = useState<string>('openai')
+  const [newKeyValue, setNewKeyValue] = useState('')
+  const [newKeyModel, setNewKeyModel] = useState('')
+  const [savingKey, setSavingKey] = useState(false)
+  const [deletingProvider, setDeletingProvider] = useState<string | null>(null)
+
+  const PROVIDER_OPTIONS = [
+    {
+      value: 'openai',
+      label: 'OpenAI',
+      models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'o1-mini'],
+      icon: '🟢',
+    },
+    {
+      value: 'anthropic',
+      label: 'Anthropic',
+      models: ['claude-sonnet-4-20250514', 'claude-3-5-haiku-20241022'],
+      icon: '🟠',
+    },
+    {
+      value: 'groq',
+      label: 'Groq',
+      models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768'],
+      icon: '⚡',
+    },
+  ]
+
   useEffect(() => {
     fetchFanvueStatus()
     fetchTeamCount()
+    fetchOpenclawKeys()
   }, [agency?.id])
 
   async function fetchFanvueStatus() {
@@ -171,6 +217,79 @@ export default function AgencySettingsClient({ agency }: AgencySettingsClientPro
       .select('id', { count: 'exact', head: true })
       .eq('agency_id', agency.id)
     setTeamCount(count || 0)
+  }
+
+  async function fetchOpenclawKeys() {
+    if (!agency?.id) return
+    try {
+      const res = await fetch(`/api/agency/api-keys?agencyId=${agency.id}`)
+      if (res.ok) {
+        const data = await res.json()
+        setOpenclawKeys(data.keys || [])
+      }
+    } catch {
+      // Silently fail — keys tab just shows empty
+    } finally {
+      setLoadingKeys(false)
+    }
+  }
+
+  async function handleSaveApiKey() {
+    if (!agency?.id || !newKeyValue.trim()) {
+      toast.error('Please enter an API key')
+      return
+    }
+    setSavingKey(true)
+    try {
+      const res = await fetch('/api/agency/api-keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          agencyId: agency.id,
+          provider: newKeyProvider,
+          apiKey: newKeyValue.trim(),
+          modelPreference: newKeyModel || undefined,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to save API key')
+        return
+      }
+      toast.success(
+        `${newKeyProvider.charAt(0).toUpperCase() + newKeyProvider.slice(1)} key activated — OpenClaw is ready`
+      )
+      setNewKeyValue('')
+      setNewKeyModel('')
+      fetchOpenclawKeys()
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save API key')
+    } finally {
+      setSavingKey(false)
+    }
+  }
+
+  async function handleDeleteApiKey(provider: string) {
+    if (!agency?.id) return
+    setDeletingProvider(provider)
+    try {
+      const res = await fetch('/api/agency/api-keys', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agencyId: agency.id, provider }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        toast.error(data.error || 'Failed to delete key')
+        return
+      }
+      toast.success(`${provider} key removed`)
+      fetchOpenclawKeys()
+    } catch {
+      toast.error('Failed to delete key')
+    } finally {
+      setDeletingProvider(null)
+    }
   }
 
   const handleSave = async () => {
@@ -242,6 +361,10 @@ export default function AgencySettingsClient({ agency }: AgencySettingsClientPro
           <TabsTrigger value="integrations" className="flex items-center gap-2">
             <Link2 className="w-4 h-4" />
             Integrations
+          </TabsTrigger>
+          <TabsTrigger value="openclaw" className="flex items-center gap-2">
+            <Brain className="w-4 h-4" />
+            AI / OpenClaw
           </TabsTrigger>
           <TabsTrigger value="security" className="flex items-center gap-2">
             <Shield className="w-4 h-4" />
@@ -751,6 +874,240 @@ export default function AgencySettingsClient({ agency }: AgencySettingsClientPro
             Integrations are on the roadmap. Vote for the ones you want most — reach out to the
             team.
           </p>
+        </TabsContent>
+
+        {/* ====== AI / OpenClaw Tab ====== */}
+        <TabsContent value="openclaw" className="space-y-6">
+          {/* Status Banner */}
+          <Card
+            className={`glass ${openclawKeys.some(k => k.is_active && k.is_valid) ? 'border-green-500/30' : 'border-zinc-500/30'}`}
+          >
+            <CardContent className="p-6">
+              <div className="flex items-center gap-4">
+                <div
+                  className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl ${openclawKeys.some(k => k.is_active && k.is_valid) ? 'bg-green-500/10' : 'bg-zinc-500/10'}`}
+                >
+                  <Brain
+                    className={`w-6 h-6 ${openclawKeys.some(k => k.is_active && k.is_valid) ? 'text-green-400' : 'text-zinc-400'}`}
+                  />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-lg">OpenClaw Neural Core</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {openclawKeys.some(k => k.is_active && k.is_valid)
+                      ? `Active — using ${openclawKeys.find(k => k.is_active && k.is_valid)?.provider?.toUpperCase()} (${openclawKeys.find(k => k.is_active && k.is_valid)?.model_preference || 'default model'})`
+                      : 'Inactive — add an API key to activate Alfred AI with your own LLM'}
+                  </p>
+                </div>
+                {openclawKeys.some(k => k.is_active && k.is_valid) ? (
+                  <Badge variant="outline" className="border-green-500/50 text-green-400">
+                    <Zap className="w-3 h-3 mr-1" /> Online
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="border-zinc-500/50 text-zinc-400">
+                    Free Tier (Groq)
+                  </Badge>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Active Keys */}
+          {loadingKeys ? (
+            <Card className="glass">
+              <CardContent className="p-6 flex items-center justify-center">
+                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+              </CardContent>
+            </Card>
+          ) : openclawKeys.length > 0 ? (
+            <Card className="glass">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Key className="w-5 h-5 text-muted-foreground" />
+                  Configured Providers
+                </CardTitle>
+                <CardDescription>Your active LLM API keys</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {openclawKeys.map(key => {
+                  const providerInfo = PROVIDER_OPTIONS.find(p => p.value === key.provider)
+                  return (
+                    <div
+                      key={key.id}
+                      className="flex items-center justify-between p-4 rounded-lg border border-border"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-muted/50 flex items-center justify-center text-lg">
+                          {providerInfo?.icon || '?'}
+                        </div>
+                        <div>
+                          <p className="font-medium">{providerInfo?.label || key.provider}</p>
+                          <p className="text-xs text-muted-foreground font-mono">
+                            {key.key_prefix} &middot; {key.model_preference || 'default'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {key.is_valid ? (
+                          <Badge variant="outline" className="border-green-500/50 text-green-400">
+                            <CheckCircle2 className="w-3 h-3 mr-1" /> Valid
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="border-red-500/50 text-red-400">
+                            <XCircle className="w-3 h-3 mr-1" /> Invalid
+                          </Badge>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => handleDeleteApiKey(key.provider)}
+                          disabled={deletingProvider === key.provider}
+                        >
+                          {deletingProvider === key.provider ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-4 h-4" />
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {/* Add New Key */}
+          <Card className="glass">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Key className="w-5 h-5 text-muted-foreground" />
+                {openclawKeys.length > 0 ? 'Add Another Provider' : 'Add API Key'}
+              </CardTitle>
+              <CardDescription>
+                Bring your own LLM key — OpenClaw works with OpenAI, Anthropic, and Groq. Keys are
+                encrypted at rest (AES-256-GCM) and never exposed to the client.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Provider</Label>
+                <Select
+                  value={newKeyProvider}
+                  onValueChange={v => {
+                    setNewKeyProvider(v)
+                    setNewKeyModel('')
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PROVIDER_OPTIONS.map(p => (
+                      <SelectItem key={p.value} value={p.value}>
+                        <span className="flex items-center gap-2">
+                          <span>{p.icon}</span>
+                          {p.label}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>API Key</Label>
+                <Input
+                  type="password"
+                  value={newKeyValue}
+                  onChange={e => setNewKeyValue(e.target.value)}
+                  placeholder={
+                    newKeyProvider === 'openai'
+                      ? 'sk-proj-...'
+                      : newKeyProvider === 'anthropic'
+                        ? 'sk-ant-...'
+                        : 'gsk_...'
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  Your key is validated, encrypted, and stored securely. It is never logged or
+                  exposed.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Model (optional)</Label>
+                <Select value={newKeyModel} onValueChange={setNewKeyModel}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Use provider default" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(PROVIDER_OPTIONS.find(p => p.value === newKeyProvider)?.models || []).map(
+                      m => (
+                        <SelectItem key={m} value={m}>
+                          {m}
+                        </SelectItem>
+                      )
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Button
+                onClick={handleSaveApiKey}
+                disabled={savingKey || !newKeyValue.trim()}
+                className="w-full gap-2"
+              >
+                {savingKey ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Validating & Saving...
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-4 h-4" />
+                    Validate & Activate
+                  </>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* How it works */}
+          <Card className="glass">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Info className="w-5 h-5 text-muted-foreground" />
+                How OpenClaw Works
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-4 rounded-lg bg-muted/30 border border-border">
+                  <p className="font-medium mb-1">1. Add Your Key</p>
+                  <p className="text-sm text-muted-foreground">
+                    Paste your API key from OpenAI, Anthropic, or Groq. We validate it instantly and
+                    encrypt it.
+                  </p>
+                </div>
+                <div className="p-4 rounded-lg bg-muted/30 border border-border">
+                  <p className="font-medium mb-1">2. Alfred Upgrades</p>
+                  <p className="text-sm text-muted-foreground">
+                    Alfred (your AI advisor) switches to your chosen model. GPT-4o for creativity,
+                    Claude for logic, Groq for speed.
+                  </p>
+                </div>
+                <div className="p-4 rounded-lg bg-muted/30 border border-border">
+                  <p className="font-medium mb-1">3. Full Agency Context</p>
+                  <p className="text-sm text-muted-foreground">
+                    OpenClaw feeds Alfred 30 days of your KPIs, revenue trends, and model
+                    performance — real-time intelligence.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* ====== Security Tab ====== */}
