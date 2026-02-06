@@ -9,7 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Link2, MousePointerClick } from 'lucide-react'
+import { Link2, MousePointerClick, Users, DollarSign, TrendingUp } from 'lucide-react'
 
 interface TrackingLink {
   id: string
@@ -54,11 +54,21 @@ const platformIcons: Record<string, string> = {
   other: '🔗',
 }
 
+const formatCurrency = (amount: number) => {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount)
+}
+
 const formatNumber = (num: number) => {
   return new Intl.NumberFormat('en-US').format(num)
 }
 
 export function TopTrackingLinksCard({ models = [], initialModelId }: TopTrackingLinksCardProps) {
+  const [sortBy, setSortBy] = useState<string>('clicks')
   const [selectedModelId, setSelectedModelId] = useState<string>(initialModelId || 'all')
   const [links, setLinks] = useState<TrackingLink[]>([])
   const [stats, setStats] = useState<TrackingLinksStats | null>(null)
@@ -72,9 +82,8 @@ export function TopTrackingLinksCard({ models = [], initialModelId }: TopTrackin
       setError(null)
 
       try {
-        // Always sort by clicks — it's the only metric available from Fanvue API
         const params = new URLSearchParams({
-          sortBy: 'clicks',
+          sortBy,
           limit: '3',
         })
         if (selectedModelId && selectedModelId !== 'all') {
@@ -99,10 +108,17 @@ export function TopTrackingLinksCard({ models = [], initialModelId }: TopTrackin
     }
 
     fetchData()
-  }, [selectedModelId])
+  }, [sortBy, selectedModelId])
 
   const getPlatformIcon = (platform: string | null) => {
     return platformIcons[platform?.toLowerCase() || 'other'] || '🔗'
+  }
+
+  const getPerformanceColor = (roi: number) => {
+    if (roi >= 5) return 'text-green-400'
+    if (roi >= 2) return 'text-lime-400'
+    if (roi >= 1) return 'text-yellow-400'
+    return 'text-orange-400'
   }
 
   return (
@@ -134,14 +150,34 @@ export function TopTrackingLinksCard({ models = [], initialModelId }: TopTrackin
               ))}
             </SelectContent>
           </Select>
+          {/* Sort Filter */}
+          <Select value={sortBy} onValueChange={setSortBy}>
+            <SelectTrigger className="w-[140px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="clicks">Most Clicks</SelectItem>
+              <SelectItem value="subs_count">Most Subs</SelectItem>
+              <SelectItem value="total_revenue">Most Revenue</SelectItem>
+              <SelectItem value="roi">Best ROI</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
-        {/* Summary Stats — only show clicks (subs/revenue not available from Fanvue API) */}
-        {stats && stats.totalClicks > 0 && (
+        {/* Summary Stats */}
+        {stats && (
           <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
             <span className="flex items-center gap-1">
               <MousePointerClick className="h-4 w-4" />
               {formatNumber(stats.totalClicks)} total clicks
+            </span>
+            <span className="flex items-center gap-1">
+              <Users className="h-4 w-4" />
+              {formatNumber(stats.totalSubs)} subs
+            </span>
+            <span className="flex items-center gap-1">
+              <TrendingUp className="h-4 w-4" />
+              {stats.clickToSubRate.toFixed(1)}% conversion
             </span>
           </div>
         )}
@@ -198,13 +234,38 @@ export function TopTrackingLinksCard({ models = [], initialModelId }: TopTrackin
                     )}
                   </div>
 
-                  {/* Metrics Row — only clicks available from Fanvue API */}
+                  {/* Metrics Row */}
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-sm">
                     <div className="flex items-center gap-1 text-blue-400">
                       <MousePointerClick className="h-3.5 w-3.5" />
                       <span>{formatNumber(link.clicks)} clicks</span>
                     </div>
+
+                    <div className="flex items-center gap-1 text-teal-400">
+                      <Users className="h-3.5 w-3.5" />
+                      <span>{link.subsCount} subs</span>
+                      <span className="text-muted-foreground">
+                        ({link.conversionRate.toFixed(1)}%)
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1 text-green-400">
+                      <DollarSign className="h-3.5 w-3.5" />
+                      <span>{formatCurrency(link.totalRevenue)}</span>
+                    </div>
+
+                    <div className={`flex items-center gap-1 ${getPerformanceColor(link.roi)}`}>
+                      <TrendingUp className="h-3.5 w-3.5" />
+                      <span>{formatCurrency(link.roi)}/click</span>
+                    </div>
                   </div>
+
+                  {/* Additional info */}
+                  {link.followsCount > 0 && (
+                    <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                      <span>+{link.followsCount} followers</span>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
