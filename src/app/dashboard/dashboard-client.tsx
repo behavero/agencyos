@@ -1051,7 +1051,7 @@ export default function DashboardClient() {
                   <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                     <div className="flex items-center gap-2">
                       <Eye className="h-4 w-4 text-green-500" />
-                      <span className="text-sm">Total Posts</span>
+                      <span className="text-sm">Total Content</span>
                     </div>
                     <span className="font-bold">{totalPosts}</span>
                   </div>
@@ -1146,7 +1146,7 @@ export default function DashboardClient() {
                           </div>
                           <div>
                             <div className="font-semibold">{Number(model.posts_count || 0)}</div>
-                            <div className="text-muted-foreground">Posts</div>
+                            <div className="text-muted-foreground">Content</div>
                           </div>
                         </div>
                       </div>
@@ -1796,7 +1796,7 @@ export default function DashboardClient() {
                       <p className="text-2xl font-bold">{models.length}</p>
                     </div>
                     <div className="p-4 rounded-lg bg-muted/30 border border-border">
-                      <p className="text-sm text-muted-foreground">Total Posts</p>
+                      <p className="text-sm text-muted-foreground">Total Content</p>
                       <p className="text-2xl font-bold">
                         {models.reduce((sum, m) => sum + Number(m.posts_count || 0), 0)}
                       </p>

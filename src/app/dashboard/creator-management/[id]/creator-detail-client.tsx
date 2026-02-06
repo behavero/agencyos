@@ -230,7 +230,7 @@ export default function CreatorDetailClient({ model, agencyId }: CreatorDetailCl
               <CardContent>
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Total Posts</span>
+                    <span className="text-sm text-muted-foreground">Total Content</span>
                     <span className="font-semibold">{model.posts_count || 0}</span>
                   </div>
                   <div className="flex items-center justify-between">

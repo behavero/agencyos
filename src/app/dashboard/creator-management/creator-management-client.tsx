@@ -476,7 +476,7 @@ export default function CreatorManagementClient() {
                         <Image className="w-3 h-3" />
                       </div>
                       <p className="text-sm font-medium">{model.posts_count || 0}</p>
-                      <p className="text-xs text-muted-foreground">Posts</p>
+                      <p className="text-xs text-muted-foreground">Content</p>
                     </div>
                     <div>
                       <div className="flex items-center justify-center text-muted-foreground mb-1">
