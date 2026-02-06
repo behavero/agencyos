@@ -3,10 +3,8 @@
  *
  * Syncs tracking link data from Fanvue API to database.
  * Uses the agency endpoint: GET /creators/{creatorUserUuid}/tracking-links
- * which returns: uuid, name, linkUrl, externalSocialPlatform, createdAt, clicks
- *
- * NOTE: The Fanvue API does NOT return engagement (followers/subs) or earnings
- * data per tracking link. Only clicks are available from the API.
+ * Documented fields: uuid, name, linkUrl, externalSocialPlatform, createdAt, clicks
+ * Undocumented fields (confirmed via Fanvue dashboard): followsCount, subsCount, subsRevenue, userSpend
  */
 
 import { createAdminClient } from '@/lib/supabase/server'
@@ -84,19 +82,12 @@ export async function syncTrackingLinksForModel(
       `[tracking-links] Total fetched: ${allLinks.length} links for model ${modelId} (creator ${creatorUuid})`
     )
 
-    // Log first link's fields to verify what the API returns
+    // Log first link's ALL fields to see exact API response shape
     if (allLinks.length > 0) {
-      const sample = allLinks[0]
       console.log(
-        `[tracking-links] Sample link fields: ${JSON.stringify({
-          name: sample.name,
-          clicks: sample.clicks,
-          followsCount: sample.followsCount,
-          subsCount: sample.subsCount,
-          subsRevenue: sample.subsRevenue,
-          userSpend: sample.userSpend,
-        })}`
+        `[tracking-links] Sample link ALL KEYS: ${JSON.stringify(Object.keys(allLinks[0] as Record<string, unknown>))}`
       )
+      console.log(`[tracking-links] Sample link FULL DATA: ${JSON.stringify(allLinks[0])}`)
     }
 
     // Upsert each tracking link
