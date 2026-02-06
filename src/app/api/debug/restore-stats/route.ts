@@ -2,21 +2,26 @@
  * DEBUG: Restore model stats from existing transaction data and Fanvue API
  *
  * This endpoint:
- * 1. Recalculates revenue_total from fanvue_transactions (which has 482 records)
+ * 1. Recalculates revenue_total from fanvue_transactions
  * 2. Re-fetches subscribers, followers, posts, likes from Fanvue API
  * 3. Only writes non-zero values (never overwrites with 0)
+ *
+ * Protected by admin auth.
  */
 
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { getAgencyFanvueToken } from '@/lib/services/agency-fanvue-auth'
 import { createFanvueClient } from '@/lib/fanvue/client'
+import { requireAdminAuth } from '@/lib/utils/debug-auth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const authError = await requireAdminAuth(request)
+  if (authError) return authError
   try {
     const supabase = createAdminClient()
     const results: any[] = []
@@ -169,12 +174,6 @@ export async function POST() {
       finalState: finalModels,
     })
   } catch (error: any) {
-    return NextResponse.json(
-      {
-        error: error.message,
-        stack: error.stack?.split('\n').slice(0, 5),
-      },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 })
   }
 }

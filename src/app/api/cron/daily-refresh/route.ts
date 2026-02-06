@@ -102,17 +102,31 @@ export async function POST(request: NextRequest) {
         if (currentUser) {
           updateData.name = currentUser.displayName || model.name
           updateData.fanvue_username = currentUser.handle
-          updateData.avatar_url = currentUser.avatarUrl
-          updateData.bio = currentUser.bio
-          // Use available counts from Fanvue API
-          updateData.subscribers_count = currentUser.fanCounts?.subscribersCount || 0
-          updateData.followers_count = currentUser.fanCounts?.followersCount || 0
-          updateData.posts_count = 0 // Not available in API
-          updateData.likes_count = currentUser.likesCount || 0
-          // Media counts not available in API response
-          updateData.image_count = 0
-          updateData.video_count = 0
-          updateData.audio_count = 0
+          if (currentUser.avatarUrl) updateData.avatar_url = currentUser.avatarUrl
+          if (currentUser.bio) updateData.bio = currentUser.bio
+
+          // Only update counts when API returns real values (never overwrite with 0)
+          if (
+            currentUser.fanCounts?.subscribersCount != null &&
+            currentUser.fanCounts.subscribersCount > 0
+          ) {
+            updateData.subscribers_count = currentUser.fanCounts.subscribersCount
+          }
+          if (
+            currentUser.fanCounts?.followersCount != null &&
+            currentUser.fanCounts.followersCount > 0
+          ) {
+            updateData.followers_count = currentUser.fanCounts.followersCount
+          }
+          if (currentUser.likesCount != null && currentUser.likesCount > 0) {
+            updateData.likes_count = currentUser.likesCount
+          }
+          if (
+            currentUser.contentCounts?.postCount != null &&
+            currentUser.contentCounts.postCount > 0
+          ) {
+            updateData.posts_count = currentUser.contentCounts.postCount
+          }
         }
 
         // PHASE 68: Only update revenue if we successfully calculated it

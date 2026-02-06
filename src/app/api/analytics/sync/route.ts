@@ -88,8 +88,6 @@ export async function POST(request: NextRequest) {
       {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
-        stack: error instanceof Error ? error.stack : undefined,
-        phase: 'SYNC_ERROR',
       },
       { status: 500 }
     )

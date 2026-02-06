@@ -181,10 +181,14 @@ async function syncAllCreatorsEarnings(
         }
       }
 
-      // Strategy 2: Use personal endpoint for the connected user OR as fallback
-      if (allEarnings.length === 0 && (isConnectedUser || true)) {
+      // Strategy 2: Use personal endpoint for the connected user
+      // The personal endpoint (/insights/earnings) returns the authenticated user's own data.
+      // It only makes sense for the creator whose account is connected.
+      if (allEarnings.length === 0 && isConnectedUser) {
         try {
-          console.log(`   🔄 Trying personal endpoint for ${creator.displayName}...`)
+          console.log(
+            `   🔄 Using personal endpoint for ${creator.displayName} (connected account)...`
+          )
           const fanvue = createFanvueClient(agencyToken)
           let cursor: string | undefined
           let pages = 0
@@ -198,18 +202,7 @@ async function syncAllCreatorsEarnings(
             })
 
             if (response?.data?.length) {
-              // For the personal endpoint, ALL earnings belong to the connected user.
-              // Only add them if this IS the connected user's model.
-              if (isConnectedUser) {
-                allEarnings.push(...response.data)
-              } else {
-                // For non-connected users, personal endpoint returns the CONNECTED user's data,
-                // not this creator's. Skip.
-                console.log(
-                  `   ℹ️ Personal endpoint returns connected user's data, not ${creator.displayName}'s`
-                )
-                break
-              }
+              allEarnings.push(...response.data)
               cursor = response.nextCursor || undefined
               pages++
             } else {

@@ -1,16 +1,20 @@
 /**
  * DEBUG: Database health check
  * Quick snapshot of models, connections, and transactions status.
- * No auth required (debug-only, remove in production).
+ * Protected by admin auth.
  */
 
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
+import { requireAdminAuth } from '@/lib/utils/debug-auth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const authError = await requireAdminAuth(request)
+  if (authError) return authError
+
   try {
     const supabase = createAdminClient()
 
@@ -96,12 +100,6 @@ export async function GET() {
       },
     })
   } catch (error: any) {
-    return NextResponse.json(
-      {
-        error: error.message,
-        stack: error.stack?.split('\n').slice(0, 5),
-      },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 })
   }
 }

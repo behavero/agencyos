@@ -133,7 +133,6 @@ export async function GET(request: NextRequest) {
       {
         phase: 'FATAL_ERROR',
         error: error.message,
-        stack: error.stack,
         hint: 'Check server logs for more details',
       },
       { status: 500 }

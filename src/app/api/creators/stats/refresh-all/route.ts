@@ -147,10 +147,10 @@ export async function POST(request: Request) {
               updated_at: new Date().toISOString(),
             }
 
-            // Only update followers/subs if we got real data (API call succeeded)
+            // Only update followers/subs if we got real non-zero data
             if (smartListsResult.status === 'fulfilled' && smartListsResult.value) {
-              stats.followers_count = totalFollowers
-              stats.subscribers_count = totalSubscribers
+              if (totalFollowers > 0) stats.followers_count = totalFollowers
+              if (totalSubscribers > 0) stats.subscribers_count = totalSubscribers
             }
 
             // Only update revenue if we got earnings data (never overwrite with 0)
@@ -228,12 +228,20 @@ export async function POST(request: Request) {
               updated_at: new Date().toISOString(),
             }
 
-            // Only update user stats if we got user info
+            // Only update user stats with non-zero values (never overwrite with 0)
             if (user) {
-              stats.followers_count = user.fanCounts?.followersCount || 0
-              stats.subscribers_count = user.fanCounts?.subscribersCount || 0
-              stats.posts_count = user.contentCounts?.postCount || 0
-              stats.likes_count = user.likesCount || 0
+              if (user.fanCounts?.followersCount != null && user.fanCounts.followersCount > 0) {
+                stats.followers_count = user.fanCounts.followersCount
+              }
+              if (user.fanCounts?.subscribersCount != null && user.fanCounts.subscribersCount > 0) {
+                stats.subscribers_count = user.fanCounts.subscribersCount
+              }
+              if (user.contentCounts?.postCount != null && user.contentCounts.postCount > 0) {
+                stats.posts_count = user.contentCounts.postCount
+              }
+              if (user.likesCount != null && user.likesCount > 0) {
+                stats.likes_count = user.likesCount
+              }
               if (user.avatarUrl) stats.avatar_url = user.avatarUrl
               if (user.bannerUrl) stats.banner_url = user.bannerUrl
               if (user.bio) stats.bio = user.bio

@@ -101,16 +101,19 @@ export async function syncStatsRealtime(modelId: string): Promise<{
     // Get current user (includes stats)
     const user = await fanvue.getCurrentUser()
 
-    // Update model stats
-    const { error } = await supabase
-      .from('models')
-      .update({
-        subscribers_count: user.fanCounts?.subscribersCount || user.fanCounts?.followersCount || 0,
-        // Don't overwrite revenue_total - let transaction sync handle that
-        last_stats_sync: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', modelId)
+    // Update model stats — only write non-zero values to prevent data wipe
+    const statsUpdate: Record<string, any> = {
+      last_stats_sync: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+    if (user.fanCounts?.subscribersCount != null && user.fanCounts.subscribersCount > 0) {
+      statsUpdate.subscribers_count = user.fanCounts.subscribersCount
+    }
+    if (user.fanCounts?.followersCount != null && user.fanCounts.followersCount > 0) {
+      statsUpdate.followers_count = user.fanCounts.followersCount
+    }
+
+    const { error } = await supabase.from('models').update(statsUpdate).eq('id', modelId)
 
     if (error) {
       throw new Error(`Database update failed: ${error.message}`)
