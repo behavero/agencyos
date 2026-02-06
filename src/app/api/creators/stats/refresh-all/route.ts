@@ -128,12 +128,22 @@ export async function POST(request: Request) {
               }
             }
 
-            const stats = {
-              followers_count: totalFollowers,
-              subscribers_count: totalSubscribers,
-              revenue_total: totalRevenueCents / 100,
+            // SAFETY: Only update fields that have real data from API
+            // This prevents overwriting good existing data with 0s when API calls fail
+            const stats: Record<string, any> = {
               stats_updated_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
+            }
+
+            // Only update followers/subs if we got real data (API call succeeded)
+            if (smartListsResult.status === 'fulfilled' && smartListsResult.value) {
+              stats.followers_count = totalFollowers
+              stats.subscribers_count = totalSubscribers
+            }
+
+            // Only update revenue if we got earnings data (never overwrite with 0)
+            if (totalRevenueCents > 0) {
+              stats.revenue_total = totalRevenueCents / 100
             }
 
             await adminClient.from('models').update(stats).eq('id', model.id)
@@ -194,17 +204,27 @@ export async function POST(request: Request) {
             }
 
             const user = userInfo.status === 'fulfilled' ? userInfo.value : null
-            const stats = {
-              followers_count: user?.fanCounts?.followersCount || 0,
-              subscribers_count: user?.fanCounts?.subscribersCount || 0,
-              posts_count: user?.contentCounts?.postCount || 0,
-              likes_count: user?.likesCount || 0,
-              revenue_total: totalRevenueCents / 100,
-              avatar_url: user?.avatarUrl || undefined,
-              banner_url: user?.bannerUrl || undefined,
-              bio: user?.bio || undefined,
+
+            // SAFETY: Only update fields that have real data from API
+            const stats: Record<string, any> = {
               stats_updated_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
+            }
+
+            // Only update user stats if we got user info
+            if (user) {
+              stats.followers_count = user.fanCounts?.followersCount || 0
+              stats.subscribers_count = user.fanCounts?.subscribersCount || 0
+              stats.posts_count = user.contentCounts?.postCount || 0
+              stats.likes_count = user.likesCount || 0
+              if (user.avatarUrl) stats.avatar_url = user.avatarUrl
+              if (user.bannerUrl) stats.banner_url = user.bannerUrl
+              if (user.bio) stats.bio = user.bio
+            }
+
+            // Only update revenue if we got earnings data (never overwrite with 0)
+            if (totalRevenueCents > 0) {
+              stats.revenue_total = totalRevenueCents / 100
             }
 
             await adminClient.from('models').update(stats).eq('id', model.id)

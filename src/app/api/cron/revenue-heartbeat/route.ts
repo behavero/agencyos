@@ -95,13 +95,22 @@ export async function GET(request: NextRequest) {
           ? transactions.reduce((sum, tx) => sum + Number(tx.amount || 0), 0)
           : 0
 
-        // Step 3: Update models.revenue_total immediately
+        // SAFETY: Only update revenue_total if transaction-based total is higher
+        // This prevents overwriting good Fanvue API stats with incomplete transaction data
+        const currentRevenue = Number(model.revenue_total || 0)
+        const shouldUpdateRevenue = totalRevenue >= currentRevenue
+
+        // Step 3: Update models.revenue_total (only if higher than existing)
+        const updateData: Record<string, any> = {
+          updated_at: new Date().toISOString(),
+        }
+        if (shouldUpdateRevenue) {
+          updateData.revenue_total = totalRevenue
+        }
+
         const { error: updateError } = await adminClient
           .from('models')
-          .update({
-            revenue_total: totalRevenue,
-            updated_at: new Date().toISOString(),
-          })
+          .update(updateData)
           .eq('id', model.id)
 
         if (updateError) {

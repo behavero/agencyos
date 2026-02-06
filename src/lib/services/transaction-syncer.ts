@@ -279,7 +279,11 @@ export async function syncModelTransactions(modelId: string): Promise<SyncResult
 
 /**
  * Update model stats (revenue_total, transaction counts) from fanvue_transactions
- * This ensures the models table stays in sync with actual transaction data
+ * This ensures the models table stays in sync with actual transaction data.
+ *
+ * SAFETY: Only INCREASES revenue_total. Never overwrites with a lower value
+ * to prevent wiping good data from Fanvue API stats when transaction table
+ * is incomplete or partially synced.
  */
 async function updateModelStats(modelId: string): Promise<void> {
   const supabase = createAdminClient()
@@ -291,20 +295,39 @@ async function updateModelStats(modelId: string): Promise<void> {
       .select('amount, transaction_type')
       .eq('model_id', modelId)
 
-    if (!stats) return
+    if (!stats || stats.length === 0) {
+      console.log(`⏭️ No transactions found for model ${modelId}, skipping stats update`)
+      return
+    }
 
     const totalRevenue = stats.reduce((sum, tx) => sum + Number(tx.amount), 0)
 
-    // Update the models table
-    await supabase
+    // SAFETY: Only update if transaction-based revenue is higher than existing
+    // This prevents wiping good data from Fanvue API stats when transactions are partial
+    const { data: currentModel } = await supabase
       .from('models')
-      .update({
-        revenue_total: totalRevenue,
-        updated_at: new Date().toISOString(),
-      })
+      .select('revenue_total')
       .eq('id', modelId)
+      .single()
 
-    console.log(`✅ Updated model stats: $${totalRevenue.toFixed(2)}`)
+    const currentRevenue = Number(currentModel?.revenue_total || 0)
+
+    if (totalRevenue >= currentRevenue) {
+      await supabase
+        .from('models')
+        .update({
+          revenue_total: totalRevenue,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', modelId)
+      console.log(
+        `✅ Updated model stats: $${totalRevenue.toFixed(2)} (was $${currentRevenue.toFixed(2)})`
+      )
+    } else {
+      console.log(
+        `⏭️ Skipping stats update: transaction total ($${totalRevenue.toFixed(2)}) < existing ($${currentRevenue.toFixed(2)})`
+      )
+    }
   } catch (error) {
     console.error('Failed to update model stats:', error)
     // Don't throw - this is a non-critical update

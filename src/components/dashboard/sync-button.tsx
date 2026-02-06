@@ -34,28 +34,46 @@ export function SyncButton() {
         headers: { 'Content-Type': 'application/json' },
       })
 
-      const result = await response.json()
+      // Handle non-JSON responses (timeouts, 502, etc.)
+      let result
+      try {
+        result = await response.json()
+      } catch {
+        toast.error('Sync request failed', {
+          id: 'sync-toast',
+          description: `Server returned ${response.status}. The sync may have timed out — try again in a minute.`,
+          duration: 8000,
+        })
+        return
+      }
 
       if (result.success) {
         // Format creator names for display
-        const creatorNames = result.syncResults
-          ?.filter((r: { success: boolean }) => r.success)
-          .map((r: { creatorName: string }) => r.creatorName)
-          .join(', ')
+        const creatorNames =
+          result.syncResults
+            ?.filter((r: { success: boolean }) => r.success)
+            .map((r: { creatorName: string }) => r.creatorName)
+            .join(', ') || 'none'
+
+        const totalEarnings =
+          result.summary?.totalEarnings ?? result.summary?.totalTransactions ?? 0
 
         toast.success(`✅ Agency Sync Complete!`, {
           id: 'sync-toast',
-          description: `Synced ${result.summary.successfulSyncs} creators: ${creatorNames}\n💰 ${result.summary.totalTransactions} total transactions`,
+          description: `Synced ${result.summary?.successfulSyncs ?? 0} creators: ${creatorNames}\n💰 ${totalEarnings} total earnings`,
           duration: 5000,
         })
         router.refresh()
       } else {
+        // Get the actual error message for display
+        const errorMsg = result.error || result.message || result.details || 'Unknown error'
+
         // Detect connection issues and show reconnect action
         const isConnectionIssue =
-          result.error?.includes('NO_AGENCY_FANVUE_CONNECTION') ||
-          result.error?.includes('token refresh failed') ||
-          result.error?.includes('expired') ||
-          result.error?.includes('reconnect')
+          errorMsg.includes('NO_AGENCY_FANVUE_CONNECTION') ||
+          errorMsg.includes('token refresh failed') ||
+          errorMsg.includes('expired') ||
+          errorMsg.includes('reconnect')
 
         if (isConnectionIssue) {
           setShowReconnect(true)
@@ -67,15 +85,16 @@ export function SyncButton() {
         } else {
           toast.error('Agency sync failed', {
             id: 'sync-toast',
-            description: result.error || 'Please try again',
+            description: errorMsg,
             duration: 8000,
           })
         }
       }
     } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Network error'
       toast.error('Failed to sync agency', {
         id: 'sync-toast',
-        description: 'Check your connection and try again',
+        description: `${msg}. Check your connection and try again.`,
       })
     } finally {
       setIsSyncing(false)
