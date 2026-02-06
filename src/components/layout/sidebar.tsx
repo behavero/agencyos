@@ -25,7 +25,6 @@ import {
   Calendar,
   CalendarClock,
   Link2,
-  UserPlus,
   GraduationCap,
   ScrollText,
 } from 'lucide-react'
@@ -129,7 +128,6 @@ const fullNavigation: NavigationSection[] = [
         icon: CalendarClock,
         permission: 'showTeam',
       },
-      { name: 'Invite', href: '/dashboard/team/invite', icon: UserPlus, permission: 'showTeam' },
     ],
   },
 ]

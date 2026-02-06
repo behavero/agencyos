@@ -92,7 +92,7 @@ export async function syncTrackingLinksForModel(
   creatorUuid: string,
   accessToken: string
 ): Promise<SyncResult> {
-  const supabase = await createAdminClient()
+  const supabase = createAdminClient()
   const result: SyncResult = { synced: 0, errors: [] }
 
   try {
@@ -253,16 +253,18 @@ export async function getTopTrackingLinks(
     conversionRate: number
     roi: number
     createdAt: string
+    modelName?: string
   }[]
 > {
-  const supabase = await createAdminClient()
+  const supabase = createAdminClient()
   const { sortBy = 'total_revenue', limit = 10, modelId } = options
 
+  // Build query — include model name for "all models" view
   let query = supabase
     .from('tracking_links')
-    .select('*')
+    .select('*, models(name)')
     .eq('agency_id', agencyId)
-    .or('clicks.gt.0,total_revenue.gt.0') // Show links with either clicks or revenue
+    .gt('clicks', 0)
     .order(sortBy === 'roi' ? 'total_revenue' : sortBy, { ascending: false })
     .limit(limit)
 
@@ -273,24 +275,32 @@ export async function getTopTrackingLinks(
   const { data: links, error } = await query
 
   if (error) {
-    console.error('[tracking-links] Error fetching top links:', error)
+    console.error('[tracking-links] Error fetching top links:', error.message, error.details)
     return []
   }
 
+  console.log(
+    `[tracking-links] getTopTrackingLinks: agencyId=${agencyId}, modelId=${modelId || 'all'}, found=${links?.length || 0}`
+  )
+
   // Calculate derived metrics and sort by ROI if needed
-  const enrichedLinks = (links || []).map(link => ({
-    id: link.id,
-    name: link.name,
-    platform: link.external_social_platform,
-    clicks: link.clicks,
-    followsCount: link.follows_count,
-    subsCount: link.subs_count,
+  const enrichedLinks = (links || []).map((link: Record<string, unknown>) => ({
+    id: link.id as string,
+    name: link.name as string,
+    platform: link.external_social_platform as string | null,
+    clicks: link.clicks as number,
+    followsCount: link.follows_count as number,
+    subsCount: link.subs_count as number,
     subsRevenue: Number(link.subs_revenue),
     userSpend: Number(link.user_spend),
     totalRevenue: Number(link.total_revenue),
-    conversionRate: link.clicks > 0 ? (link.subs_count / link.clicks) * 100 : 0,
-    roi: link.clicks > 0 ? Number(link.total_revenue) / link.clicks : 0,
-    createdAt: link.link_created_at,
+    conversionRate:
+      (link.clicks as number) > 0
+        ? ((link.subs_count as number) / (link.clicks as number)) * 100
+        : 0,
+    roi: (link.clicks as number) > 0 ? Number(link.total_revenue) / (link.clicks as number) : 0,
+    createdAt: link.link_created_at as string,
+    modelName: (link.models as Record<string, unknown> | null)?.name as string | undefined,
   }))
 
   // Sort by ROI if requested
@@ -312,7 +322,7 @@ export async function getClickToSubRate(
   totalSubs: number
   rate: number
 }> {
-  const supabase = await createAdminClient()
+  const supabase = createAdminClient()
 
   let query = supabase.from('tracking_links').select('clicks, subs_count').eq('agency_id', agencyId)
 

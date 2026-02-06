@@ -2,7 +2,13 @@
 
 import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Link2, MousePointerClick, Users, DollarSign, TrendingUp } from 'lucide-react'
 
 interface TrackingLink {
@@ -18,7 +24,7 @@ interface TrackingLink {
   conversionRate: number
   roi: number
   createdAt: string
-  modelName?: string
+  modelName?: string | null
 }
 
 interface TrackingLinksStats {
@@ -73,7 +79,7 @@ export function TopTrackingLinksCard({ models = [], initialModelId }: TopTrackin
     const fetchData = async () => {
       setIsLoading(true)
       setError(null)
-      
+
       try {
         const params = new URLSearchParams({
           sortBy,
@@ -82,10 +88,10 @@ export function TopTrackingLinksCard({ models = [], initialModelId }: TopTrackin
         if (selectedModelId && selectedModelId !== 'all') {
           params.set('modelId', selectedModelId)
         }
-        
+
         const response = await fetch(`/api/analytics/tracking-links?${params}`)
         const data = await response.json()
-        
+
         if (data.success) {
           setLinks(data.data.topLinks)
           setStats(data.data.stats)
@@ -122,12 +128,10 @@ export function TopTrackingLinksCard({ models = [], initialModelId }: TopTrackin
               <Link2 className="h-5 w-5 text-primary" />
               Top Tracking Links
             </CardTitle>
-            <CardDescription>
-              Traffic sources ranked by performance
-            </CardDescription>
+            <CardDescription>Traffic sources ranked by performance</CardDescription>
           </div>
         </div>
-        
+
         {/* Filters Row */}
         <div className="flex items-center gap-2 mt-3">
           {/* Model Filter */}
@@ -137,14 +141,14 @@ export function TopTrackingLinksCard({ models = [], initialModelId }: TopTrackin
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Models</SelectItem>
-              {models.map((model) => (
+              {models.map(model => (
                 <SelectItem key={model.id} value={model.id}>
                   {model.name}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-          
+
           {/* Sort Filter */}
           <Select value={sortBy} onValueChange={setSortBy}>
             <SelectTrigger className="w-[140px]">
@@ -158,7 +162,7 @@ export function TopTrackingLinksCard({ models = [], initialModelId }: TopTrackin
             </SelectContent>
           </Select>
         </div>
-        
+
         {/* Summary Stats */}
         {stats && stats.totalClicks > 0 && (
           <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
@@ -177,7 +181,7 @@ export function TopTrackingLinksCard({ models = [], initialModelId }: TopTrackin
           </div>
         )}
       </CardHeader>
-      
+
       <CardContent>
         {isLoading ? (
           <div className="flex items-center justify-center h-[200px]">
@@ -204,7 +208,7 @@ export function TopTrackingLinksCard({ models = [], initialModelId }: TopTrackin
                 <div className="flex-shrink-0 w-8 h-8 rounded-full bg-muted flex items-center justify-center text-sm font-bold text-muted-foreground">
                   {index + 1}
                 </div>
-                
+
                 {/* Link Info */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
@@ -219,15 +223,20 @@ export function TopTrackingLinksCard({ models = [], initialModelId }: TopTrackin
                         })}
                       </span>
                     )}
+                    {selectedModelId === 'all' && link.modelName && (
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                        {link.modelName}
+                      </span>
+                    )}
                   </div>
-                  
+
                   {/* Metrics Row */}
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-sm">
                     <div className="flex items-center gap-1 text-blue-400">
                       <MousePointerClick className="h-3.5 w-3.5" />
                       <span>{formatNumber(link.clicks)} clicks</span>
                     </div>
-                    
+
                     <div className="flex items-center gap-1 text-teal-400">
                       <Users className="h-3.5 w-3.5" />
                       <span>{link.subsCount} subs</span>
@@ -235,18 +244,18 @@ export function TopTrackingLinksCard({ models = [], initialModelId }: TopTrackin
                         ({link.conversionRate.toFixed(1)}%)
                       </span>
                     </div>
-                    
+
                     <div className="flex items-center gap-1 text-green-400">
                       <DollarSign className="h-3.5 w-3.5" />
                       <span>{formatCurrency(link.totalRevenue)}</span>
                     </div>
-                    
+
                     <div className={`flex items-center gap-1 ${getPerformanceColor(link.roi)}`}>
                       <TrendingUp className="h-3.5 w-3.5" />
                       <span>{formatCurrency(link.roi)}/click</span>
                     </div>
                   </div>
-                  
+
                   {/* Additional info */}
                   {link.followsCount > 0 && (
                     <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
