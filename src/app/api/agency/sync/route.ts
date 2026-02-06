@@ -23,6 +23,7 @@ import { createFanvueClient } from '@/lib/fanvue/client'
 import { syncAgencyTopSpenders } from '@/lib/services/top-spenders-syncer'
 import { syncAgencySubscriberHistory } from '@/lib/services/subscriber-history-syncer'
 import { syncAllTrackingLinks } from '@/lib/services/tracking-links-syncer'
+import { buildTransactionId } from '@/lib/services/transaction-id'
 
 const API_URL = 'https://api.fanvue.com'
 
@@ -165,6 +166,7 @@ async function syncAllCreatorsEarnings(
         net: number
         currency: string | null
         source: string
+        user?: { uuid: string; handle: string; displayName: string } | null
       }> = []
 
       // Strategy 1: Try the agency endpoint first
@@ -233,23 +235,36 @@ async function syncAllCreatorsEarnings(
         const netDollars = (earning.net || 0) / 100
         const platformFee = grossDollars - netDollars
 
+        // Use shared buildTransactionId for deterministic dedup across ALL sync paths
+        const txId = buildTransactionId(
+          earning.date,
+          earning.source,
+          earning.gross || 0,
+          earning.net || 0,
+          earning.user?.uuid || 'unknown',
+          modelId
+        )
+
         const { error: insertError } = await adminClient.from('fanvue_transactions').upsert(
           {
             agency_id: agencyId,
             model_id: modelId,
             fanvue_user_uuid: creator.uuid,
+            fanvue_transaction_id: txId,
             transaction_date: earning.date,
             amount: grossDollars,
             net_amount: netDollars,
             platform_fee: platformFee > 0 ? platformFee : 0,
             currency: earning.currency || 'USD',
-            description: `${earning.source || 'earnings'} via agency sync`,
+            description: earning.source || 'earnings',
             transaction_type: categorizeSource(earning.source),
+            fan_id: earning.user?.uuid || null,
+            fan_username: earning.user?.handle || null,
             source: 'agency_api',
-            created_at: new Date().toISOString(),
+            synced_at: new Date().toISOString(),
           },
           {
-            onConflict: 'model_id,transaction_date',
+            onConflict: 'fanvue_transaction_id',
           }
         )
 
@@ -259,7 +274,7 @@ async function syncAllCreatorsEarnings(
       }
 
       // Update model's last sync timestamp and revenue
-      const totalRevenue = allEarnings.reduce((sum, e) => (sum + (e.gross || 0)) / 100, 0)
+      const totalRevenue = allEarnings.reduce((sum, e) => sum + (e.gross || 0) / 100, 0)
       const updateFields: Record<string, any> = {
         last_transaction_sync: new Date().toISOString(),
       }
@@ -296,6 +311,32 @@ async function syncAllCreatorsEarnings(
         errors: [error.message],
       })
     }
+  }
+
+  // Post-sync duplicate check: compare total rows vs distinct fanvue_transaction_id
+  try {
+    const { data: dupCheck } = await adminClient.rpc('exec_sql', {
+      sql: `SELECT COUNT(*) as total, COUNT(DISTINCT fanvue_transaction_id) as distinct_ids FROM fanvue_transactions WHERE agency_id = '${agencyId}'`,
+    })
+    // Fallback: simple count queries if rpc not available
+    const { count: totalRows } = await adminClient
+      .from('fanvue_transactions')
+      .select('*', { count: 'exact', head: true })
+      .eq('agency_id', agencyId)
+
+    console.log(`\n🔍 Post-sync integrity check: ${totalRows} total rows for agency ${agencyId}`)
+
+    if (dupCheck && Array.isArray(dupCheck) && dupCheck.length > 0) {
+      const { total, distinct_ids } = dupCheck[0]
+      if (total !== distinct_ids) {
+        console.warn(
+          `⚠️ DUPLICATE DETECTED: ${total} rows but only ${distinct_ids} distinct transaction IDs!`
+        )
+      }
+    }
+  } catch {
+    // Non-critical — log and continue
+    console.log('   ℹ️ Skipped post-sync duplicate check (rpc not available)')
   }
 
   return results

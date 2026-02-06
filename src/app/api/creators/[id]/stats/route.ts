@@ -114,8 +114,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       isConnectedUser = conn?.fanvue_user_id === model.fanvue_user_uuid
     }
 
-    // If this model is the connected user, use personal endpoints (more data available)
-    const usePersonalEndpoints = !useAgencyEndpoint || isConnectedUser
+    // Always use agency endpoints (smart lists) when we have an agency token.
+    // The personal endpoint's subscribersCount includes expired+free trial (inflated number).
+    // Smart lists give us accurate auto_renewing + non_renewing + free_trial breakdown.
+    const usePersonalEndpoints = !useAgencyEndpoint
     const tokenLabel = isConnectedUser
       ? 'agency-personal'
       : useAgencyEndpoint

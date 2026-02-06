@@ -12,6 +12,7 @@ import { syncAgencyTransactions, syncModelTransactions } from '@/lib/services/tr
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+export const maxDuration = 120 // Allow up to 2 minutes for full history re-sync
 
 export async function POST(request: NextRequest) {
   try {
@@ -42,6 +43,9 @@ export async function POST(request: NextRequest) {
     const { modelId, forceAll } = body
 
     // PHASE 58: Force full history sync by resetting cursor
+    // NOTE: This re-fetches ALL historical transactions. Deduplication relies on
+    // the UNIQUE INDEX on fanvue_transaction_id. If the buildTransactionId() hash
+    // ever changes, this could create duplicates. Use with caution.
     if (forceAll) {
       console.log('🔴 FORCE SYNC INITIATED: Resetting last_transaction_sync to 2020...')
 

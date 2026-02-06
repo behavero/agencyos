@@ -7,11 +7,11 @@
  * pagination and automatic token refresh for resilient, scalable syncing.
  */
 
-import { createHash } from 'crypto'
 import { createAdminClient } from '@/lib/supabase/server'
 import { createFanvueClient, FanvueAPIError } from '@/lib/fanvue/client'
 import { getModelAccessToken } from '@/lib/services/fanvue-auth'
 import { getAgencyFanvueToken } from '@/lib/services/agency-fanvue-auth'
+import { buildTransactionId } from '@/lib/services/transaction-id'
 
 export interface SyncResult {
   success: boolean
@@ -257,12 +257,14 @@ export async function syncModelTransactions(modelId: string): Promise<SyncResult
       return {
         agency_id: model.agency_id,
         model_id: model.id,
-        fanvue_transaction_id: createHash('sha256')
-          .update(
-            `${earning.date}_${earning.source}_${earning.gross}_${earning.net}_${earning.user?.uuid || 'unknown'}_${model.id}`
-          )
-          .digest('hex')
-          .substring(0, 24), // Deterministic hash for idempotent upserts
+        fanvue_transaction_id: buildTransactionId(
+          earning.date,
+          earning.source,
+          earning.gross,
+          earning.net,
+          earning.user?.uuid || 'unknown',
+          model.id
+        ),
         transaction_type: category, // Must match CHECK constraint: subscription, tip, ppv, message, post, stream, other
         amount: earning.gross / 100, // Convert cents to dollars (gross amount)
         // net_amount is auto-calculated by DB: (amount - platform_fee)
