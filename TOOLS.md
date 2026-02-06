@@ -1,40 +1,73 @@
-# TOOLS.md - Local Notes
+# TOOLS.md - OnyxOS Project Notes
 
-Skills define _how_ tools work. This file is for _your_ specifics — the stuff that's unique to your setup.
+## Project Details
 
-## What Goes Here
+- **Repo:** https://github.com/behavero/agencyos.git
+- **Production:** https://onyxos.vercel.app
+- **Vercel project:** agencyos / behavero
+- **Supabase:** Check `NEXT_PUBLIC_SUPABASE_URL` in Vercel env vars
 
-Things like:
+## Fanvue Integration
 
-- Camera names and locations
-- SSH hosts and aliases
-- Preferred voices for TTS
-- Speaker/room names
-- Device nicknames
-- Anything environment-specific
+- **API Base:** https://api.fanvue.com
+- **API Docs (local):** `docs/fanvue-api-docs/` -- 78 endpoint docs organized by category
+- **API Docs (remote):** https://api.fanvue.com/docs/api-reference/
+- **API Version:** `2025-06-26`
+- **Developer Portal:** https://www.fanvue.com/developers (Martin's account)
+- **App ID:** bd5a9810-b0c1-4e4c-b290-a2271114b6c1
+- **OAuth Callback:** `https://onyxos.vercel.app/api/oauth/agency/callback`
 
-## Examples
+## Key File Locations
 
-```markdown
-### Cameras
+### Core Services
 
-- living-room → Main area, 180° wide angle
-- front-door → Entrance, motion-triggered
+- `src/lib/fanvue/client.ts` -- Fanvue API client (all endpoints)
+- `src/lib/fanvue/oauth.ts` -- OAuth helpers (authorize URL, token exchange)
+- `src/lib/fanvue/rate-limiter.ts` -- Rate limit handling with retry
+- `src/lib/services/agency-fanvue-auth.ts` -- Agency token management
+- `src/lib/services/fanvue-auth.ts` -- Individual model token management
+- `src/lib/services/transaction-syncer.ts` -- Revenue sync logic
 
-### SSH
+### API Routes
 
-- home-server → 192.168.1.100, user: admin
+- `src/app/api/creators/[id]/stats/route.ts` -- Single creator stats
+- `src/app/api/creators/stats/refresh-all/route.ts` -- Bulk stats refresh
+- `src/app/api/oauth/agency/` -- Agency OAuth (login + callback)
+- `src/app/api/cron/revenue-heartbeat/route.ts` -- Revenue sync cron
 
-### TTS
+### UI Components
 
-- Preferred voice: "Nova" (warm, slightly British)
-- Default speaker: Kitchen HomePod
+- `src/components/creators/` -- Creator management UI
+- `src/components/dashboard/` -- Dashboard cards and charts
+- `src/providers/agency-data-provider.tsx` -- Global data context
+
+## Dev Commands
+
+```bash
+npm run dev                    # Start dev server (localhost:3000)
+npm run build                  # Production build
+git push                       # Triggers Vercel deploy
 ```
 
-## Why Separate?
+## Debug Endpoints (require admin auth)
 
-Skills are shared. Your setup is yours. Keeping them apart means you can update skills without losing your notes, and share skills without leaking your infrastructure.
+- `/api/debug/fanvue-creators` -- Test Fanvue GET /creators with stored token
+- `/api/debug/check-env` -- Verify environment variables
+- `/api/debug/agency-status` -- Agency connection status
 
----
+## Common Operations
 
-Add whatever helps you do your job. This is your cheat sheet.
+### Force refresh all creator stats
+
+```bash
+curl -X POST https://onyxos.vercel.app/api/creators/stats/refresh-all \
+  -H "Content-Type: application/json" \
+  -d '{"agencyId": "AGENCY_UUID"}'
+```
+
+### Trigger revenue heartbeat manually
+
+```bash
+curl "https://onyxos.vercel.app/api/cron/revenue-heartbeat" \
+  -H "Authorization: Bearer $CRON_SECRET"
+```

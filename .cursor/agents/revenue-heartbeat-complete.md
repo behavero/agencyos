@@ -1,154 +1,41 @@
-# Revenue Heartbeat - Implementation Complete ✅
-
-## Mission: Real-Time Revenue Sync
-
-**Status:** ✅ **COMPLETE**
-
+---
+name: revenue-heartbeat-complete
+description: Monitors Fanvue data sync health. Checks token validity, stats freshness, and sync pipeline.
 ---
 
-## ✅ What Was Built
+You are the Revenue Heartbeat monitor for **OnyxOS**.
 
-### 1. Backend: Vercel Cron Job
+**Your job:** Verify that the Fanvue data pipeline is healthy.
 
-**File:** `src/app/api/cron/revenue-heartbeat/route.ts`
+**Checks to perform:**
 
-**Features:**
+1. **Token Health**
+   - Query `agency_fanvue_connections` -- is there an active connection?
+   - Is the token expiring soon (within 1 hour)?
+   - If expired, report it -- Martin needs to re-authorize via "Connect Fanvue"
 
-- Runs every **10 minutes** via Vercel Cron
-- Incremental sync (only fetches new transactions since `last_transaction_sync` cursor)
-- Recalculates `revenue_total` from `fanvue_transactions` table
-- Updates `models` table immediately after sync
-- Handles rate limits gracefully
-- Processes all models in parallel
+2. **Stats Freshness**
+   - Query `models` table -- check `stats_updated_at` for each creator
+   - If any creator's stats are older than 15 minutes, flag it
+   - If stats_updated_at is NULL, the auto-refresh isn't working
 
-**Configuration:**
+3. **Revenue Sync**
+   - Check `fanvue_transactions` -- when was the last transaction synced?
+   - Compare `models.revenue_total` against sum of `fanvue_transactions.amount`
+   - If they don't match, the revenue calculation might be stale
 
-- Added to `vercel.json`: `"schedule": "*/10 * * * *"` (every 10 minutes)
-- Protected with `CRON_SECRET` authentication
+4. **Build Health**
+   - Run `npm run build` to verify no type errors were introduced
 
-### 2. Frontend: Live Polling
+**Report format:**
 
-**File:** `src/app/dashboard/dashboard-client.tsx`
+- GREEN: All checks pass
+- YELLOW: Minor issues (stale data, approaching token expiry)
+- RED: Critical (expired token, broken build, zero revenue when there should be data)
 
-**Features:**
+**Context files:**
 
-- TanStack Query polling every **60 seconds**
-- Fetches latest revenue from `/api/analytics/dashboard`
-- Uses live models data (from heartbeat) when available
-- Falls back to context models if heartbeat data unavailable
-
-**Visual Indicators:**
-
-- **Green pulsing dot + "Live"** = Data fresh (< 5 mins old)
-- **Spinning loader** = Currently syncing
-- **Grey dot** = Stale data (> 5 mins old)
-
-**Component:** `src/components/dashboard/live-revenue-indicator.tsx`
-
-### 3. Agency Provider Enhancement
-
-**File:** `src/providers/agency-data-provider.tsx`
-
-**Change:**
-
-- Auto-refresh interval reduced from **2 minutes** to **60 seconds** (Revenue Heartbeat)
-
----
-
-## 🔄 Data Flow
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  Vercel Cron (Every 10 minutes)                         │
-│  /api/cron/revenue-heartbeat                            │
-└─────────────────────────────────────────────────────────┘
-                    ↓
-┌─────────────────────────────────────────────────────────┐
-│  1. Fetch all models with Fanvue tokens                 │
-│  2. Sync new transactions (incremental)                 │
-│  3. Calculate revenue_total from fanvue_transactions     │
-│  4. UPDATE models.revenue_total immediately             │
-└─────────────────────────────────────────────────────────┘
-                    ↓
-┌─────────────────────────────────────────────────────────┐
-│  Frontend Polling (Every 60 seconds)                    │
-│  TanStack Query → /api/analytics/dashboard              │
-└─────────────────────────────────────────────────────────┘
-                    ↓
-┌─────────────────────────────────────────────────────────┐
-│  Dashboard UI Updates                                    │
-│  - Gross Revenue card shows live indicator              │
-│  - Model revenue cards show live indicator              │
-│  - Revenue updates WITHOUT page reload                  │
-└─────────────────────────────────────────────────────────┘
-```
-
----
-
-## 🎯 Key Features
-
-### Incremental Sync
-
-- Only fetches transactions since `last_transaction_sync` cursor
-- Lightweight (doesn't re-sync entire history)
-- Cursor automatically updates after successful sync
-
-### Rate Limit Safety
-
-- Handles 429 errors gracefully
-- Skips models if sync fails (doesn't block others)
-- Logs all errors for monitoring
-
-### Live Indicators
-
-- **Green "Live" badge** = Data < 5 minutes old
-- **Spinning icon** = Currently fetching
-- **Time since update** = Shows "2m ago", "1h ago", etc.
-
----
-
-## 📊 Where Indicators Appear
-
-1. **Gross Revenue Card** (Top KPI)
-   - Live indicator in header (next to dollar icon)
-   - Shows "Live" when data is fresh
-
-2. **Model Performance Cards** (Fanvue & Finance tab)
-   - Live indicator next to each model's revenue
-   - Shows sync status per model
-
----
-
-## 🧪 Verification Checklist
-
-- [x] Cron endpoint created (`/api/cron/revenue-heartbeat`)
-- [x] Vercel cron configured (every 10 minutes)
-- [x] Frontend polling implemented (60 seconds)
-- [x] Live indicators added to revenue cards
-- [x] Data freshness calculation (< 5 mins = Live)
-- [x] Revenue updates without page reload
-- [x] Rate limit handling in place
-
----
-
-## 🚀 Deployment
-
-**Next Steps:**
-
-1. Deploy to Vercel (cron will auto-activate)
-2. Monitor first heartbeat run in Vercel logs
-3. Watch dashboard update automatically
-
-**Test Command:**
-
-```bash
-# Manually trigger heartbeat (for testing)
-curl -X GET "https://onyxos.vercel.app/api/cron/revenue-heartbeat" \
-  -H "Authorization: Bearer $CRON_SECRET"
-```
-
----
-
-**The Revenue Heartbeat is now LIVE!** 💓
-
-Revenue updates automatically every 10 minutes (backend) and polls every 60 seconds (frontend) for real-time dashboard updates.
+- `MEMORY.md` -- past issues and fixes
+- `.cursor/rules/onyxos.md` -- architecture patterns
+- `src/lib/services/agency-fanvue-auth.ts` -- token management
+- `src/app/api/creators/stats/refresh-all/route.ts` -- bulk stats endpoint

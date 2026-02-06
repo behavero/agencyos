@@ -11,7 +11,8 @@
 **Problem:**  
 Dashboard was showing only $4,607 gross revenue when the actual total is $13,626 (3,517 transactions).
 
-**Root Cause:**  
+**Root Cause:**
+
 - The `.limit(50000)` on transaction queries was insufficient
 - Supabase's default 1,000-row limit was truncating results
 - Revenue calculation was based on limited dataset, not all transactions
@@ -19,9 +20,10 @@ Dashboard was showing only $4,607 gross revenue when the actual total is $13,626
 **Fix:**  
 ✅ Increased limit to **100,000** for ALL transaction queries  
 ✅ Added detailed logging to `analytics-engine.ts` for debugging  
-✅ Removed all artificially low `.limit()` constraints  
+✅ Removed all artificially low `.limit()` constraints
 
-**Expected Result:**  
+**Expected Result:**
+
 - **Gross Revenue:** $13,626 (full correct amount) ✅
 - **Transaction Count:** 3,517 (all transactions counted) ✅
 
@@ -32,7 +34,8 @@ Dashboard was showing only $4,607 gross revenue when the actual total is $13,626
 **Problem:**  
 The "Audience Growth" chart was displaying a flat line at 0 for both subscribers and followers, instead of showing historical trends.
 
-**Root Cause:**  
+**Root Cause:**
+
 1. `ChartDataPoint` interface missing `subscribers` and `followers` fields
 2. `getChartData()` function not querying `subscriber_history` table
 3. `aggregateDaily/Weekly/Monthly` functions not handling subscriber/follower data
@@ -42,9 +45,10 @@ The "Audience Growth" chart was displaying a flat line at 0 for both subscribers
 ✅ Added `subscribers?` and `followers?` to `ChartDataPoint` interface  
 ✅ Updated `getChartData()` to fetch from `subscriber_history` table  
 ✅ Updated all 3 aggregation functions to include subscriber/follower data  
-✅ **Fixed `daily-refresh` cron to INSERT daily snapshots into `subscriber_history`**  
+✅ **Fixed `daily-refresh` cron to INSERT daily snapshots into `subscriber_history`**
 
-**Expected Result:**  
+**Expected Result:**
+
 - Audience Growth chart will show **2 separate lines:**
   - 🔵 **Subscribers** (teal line)
   - 🟢 **Followers** (green line)
@@ -55,6 +59,7 @@ The "Audience Growth" chart was displaying a flat line at 0 for both subscribers
 ## 📊 REVENUE CALCULATION FIXES
 
 ### **Before:**
+
 ```typescript
 // OLD: Limited to 50,000 rows
 .select('amount, net_amount')
@@ -64,6 +69,7 @@ const totalRevenue = allTransactions?.reduce((sum, tx) => sum + Number(tx.amount
 ```
 
 ### **After:**
+
 ```typescript
 // NEW: Increased to 100,000 rows
 .select('amount, net_amount')
@@ -79,7 +85,8 @@ console.log('[analytics-engine] Revenue calculation:', {
 })
 ```
 
-**Why 100,000?**  
+**Why 100,000?**
+
 - Current: 3,517 transactions
 - Growth buffer: Supports up to 100k transactions
 - Performance: Still fast enough (only fetching 2 columns)
@@ -133,17 +140,20 @@ console.log('[analytics-engine] Revenue calculation:', {
 ## 🔄 WHAT HAPPENS NOW
 
 ### **Immediate (After Deployment):**
+
 1. ✅ **Gross Revenue:** Will display correct $13,626 value
 2. ✅ **Transaction Count:** Will show 3,517 transactions
 3. ✅ **Revenue vs Expenses Chart:** Works correctly (already fixed)
 4. ✅ **Earnings by Type:** Works correctly (already fixed)
 
 ### **After Next Cron Run (5 minutes):**
+
 1. 🔄 **Cron job runs:** `/api/cron/daily-refresh`
 2. 📊 **Inserts today's snapshot:** Into `subscriber_history` table
 3. 📈 **Audience Growth chart:** Starts showing data (1 data point)
 
 ### **Over Time (Daily):**
+
 - Every day, a new snapshot is added to `subscriber_history`
 - Audience Growth chart builds historical trend
 - You'll see subscriber/follower growth/decline over time
@@ -171,14 +181,17 @@ Open Developer Console (F12) and look for:
 
 ### **3. Check Audience Growth Chart**
 
-**Immediately after deployment:**  
+**Immediately after deployment:**
+
 - Chart may still show flat line (no historical data yet)
 
-**After 5-10 minutes:**  
+**After 5-10 minutes:**
+
 - Cron runs → Inserts today's snapshot
 - Hard refresh → Chart shows at least 1 data point
 
-**To manually trigger cron (optional):**  
+**To manually trigger cron (optional):**
+
 ```bash
 curl -X POST https://onyxos.vercel.app/api/cron/daily-refresh \
   -H "Authorization: Bearer YOUR_CRON_SECRET"
@@ -210,24 +223,27 @@ curl -X POST https://onyxos.vercel.app/api/cron/daily-refresh \
 **Commit:** `027d039`  
 **Message:** "Fix revenue calculation + audience growth chart"  
 **Deployed:** Feb 3, 2026  
-**ETA:** Live in ~2 minutes  
+**ETA:** Live in ~2 minutes
 
 ---
 
 ## 🔮 WHAT TO EXPECT
 
 ### **Gross Revenue**
+
 - ✅ Now: $13,626 (correct!)
 - ✅ All KPIs will update accordingly (ARPU, LTV, etc.)
 - ✅ Revenue vs Expenses chart will use correct data
 
 ### **Audience Growth Chart**
+
 - 🔄 Today (Feb 3): Shows 1 data point after cron runs
 - 📈 Tomorrow (Feb 4): Shows 2 data points (trend starts!)
 - 📊 Next week: Full 7-day trend visible
 - 🎯 After 30 days: Beautiful growth visualization
 
 ### **Live Data System**
+
 - ✅ Transactions sync: Every 15 minutes
 - ✅ Subscriber counts: Every 5 minutes
 - ✅ Dashboard refresh: Every 2 minutes (client-side)
@@ -249,8 +265,8 @@ curl -X POST https://onyxos.vercel.app/api/cron/daily-refresh \
 1. Wait 5-10 minutes for cron to run
 2. Check if `subscriber_history` table has data:
    ```sql
-   SELECT * FROM subscriber_history 
-   WHERE date = CURRENT_DATE 
+   SELECT * FROM subscriber_history
+   WHERE date = CURRENT_DATE
    ORDER BY date DESC;
    ```
 3. Manually trigger cron job (see above)

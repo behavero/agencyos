@@ -10,7 +10,7 @@
 Create a "Top Tracking Links" widget in the Overview dashboard showing the best-performing traffic sources with sortable metrics:
 
 - **Most Clicks** → Raw traffic volume
-- **Most Subscriptions** → Conversion performance  
+- **Most Subscriptions** → Conversion performance
 - **Best Revenue** → ROI and monetization
 - **Best ROI** → Revenue per click
 
@@ -36,6 +36,7 @@ Create a "Top Tracking Links" widget in the Overview dashboard showing the best-
 ```
 
 **Features:**
+
 - ✅ Sort by: Clicks, Subscriptions, Revenue, ROI
 - ✅ Shows: Click count, conversion rate, revenue, revenue per click
 - ✅ Color-coded performance indicators
@@ -53,18 +54,18 @@ CREATE TABLE tracking_links (
   id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   agency_id uuid NOT NULL REFERENCES agencies(id) ON DELETE CASCADE,
   model_id uuid REFERENCES models(id) ON DELETE CASCADE,
-  
+
   -- From Fanvue API
   fanvue_uuid uuid NOT NULL UNIQUE,
   name text NOT NULL,
   link_url text NOT NULL, -- e.g., 'fv-instagram-story'
   external_social_platform text, -- 'instagram', 'tiktok', 'twitter', etc.
-  
+
   -- Metrics (updated daily via cron)
   clicks integer DEFAULT 0,
   subscribers_gained integer DEFAULT 0, -- Calculated from subscriptions
   revenue_generated numeric(10,2) DEFAULT 0, -- Calculated from transactions
-  
+
   -- Timestamps
   created_at timestamptz NOT NULL,
   last_synced_at timestamptz,
@@ -183,6 +184,7 @@ const subscribersGained = await supabase
 ```
 
 **Note:** Fanvue API doesn't provide `tracking_link` in transaction data! We'll need to:
+
 - Store UTM parameters or link IDs when fans click links
 - Match fan signups to tracking links via timing/attribution window
 - **Alternative:** Use `clicks` data and estimate conversion based on new subscribers during click period
@@ -217,6 +219,7 @@ const roi = revenueGenerated / clicks
 ### **Problem: Fanvue API doesn't track which fan came from which link**
 
 **Fanvue API Provides:**
+
 - ✅ Link URL and click count
 - ❌ Which specific fans clicked which links
 - ❌ Attribution data
@@ -356,6 +359,7 @@ const clickToSubRate = totalClicks > 0 ? (totalSubs / totalClicks) * 100 : 0
 **Would you like me to implement this now?**
 
 I can:
+
 1. ✅ Create the database migration
 2. ✅ Build the sync cron job
 3. ✅ Create the API endpoint

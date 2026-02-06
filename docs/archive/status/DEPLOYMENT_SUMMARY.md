@@ -9,6 +9,7 @@
 ## 🎨 **Design System**
 
 ### **Color Palette** (Inspired by provided screenshots)
+
 - **Primary Blue:** `#3462EE` - Main actions, primary cards
 - **Secondary Teal:** `#4A91A8` - Secondary elements, accents
 - **Accent Yellow:** `#EFE347` - Highlights, important badges
@@ -16,11 +17,13 @@
 - **Light Background:** `#f5f7fa` - Light mode base
 
 ### **Typography**
+
 - **Font:** Plus Jakarta Sans (fallback to Lufga style)
 - **Weights:** 300-800
 - **Modern, clean, professional**
 
 ### **Components** (shadcn/ui)
+
 - ✅ Button, Card, Input, Label, Dialog
 - ✅ Badge, Avatar, Checkbox, Scroll Area
 - ✅ Responsive, accessible, customizable
@@ -30,7 +33,9 @@
 ## 📱 **Pages Implemented**
 
 ### **1. Dashboard** (`/dashboard`)
+
 **Features:**
+
 - ✅ Welcome header with user info, level, streak
 - ✅ 4 Metric cards (Treasury, Revenue, Models, Level)
 - ✅ XP Progress bar with visual feedback
@@ -39,6 +44,7 @@
 - ✅ Empty state for new users
 
 **Design Highlights:**
+
 - Glass morphism cards
 - Hover lift animations
 - Gradient backgrounds on metric cards
@@ -47,7 +53,9 @@
 ---
 
 ### **2. CRM / Models** (`/dashboard/crm`)
+
 **Features:**
+
 - ✅ Stats overview (Total Models, Revenue, Subscribers, Messages)
 - ✅ "Add Model" dialog with:
   - **Option 1:** One-click Fanvue OAuth (recommended)
@@ -60,6 +68,7 @@
 - ✅ Empty state with CTA
 
 **OAuth Flow:**
+
 - User clicks "Connect with Fanvue"
 - Redirects to `/api/auth/fanvue` → Fanvue OAuth
 - Callback at `/api/auth/fanvue/callback`
@@ -69,7 +78,9 @@
 ---
 
 ### **3. Content Intelligence** (`/dashboard/content`)
+
 **Features:**
+
 - ✅ AI-powered content analysis dashboard
 - ✅ 4 Key metrics (Avg Performance, Total Views, Engagement, Conversion)
 - ✅ **Performance Trend Chart** (Bar chart - views/conversions over time)
@@ -85,6 +96,7 @@
   - External link button
 
 **Charts:**
+
 - Uses `recharts` library
 - Responsive design
 - Custom colors matching design system
@@ -92,7 +104,9 @@
 ---
 
 ### **4. Quests** (`/dashboard/quests`)
+
 **Features:**
+
 - ✅ Gamified task management
 - ✅ 4 Stats cards (Total XP, Streak 🔥, Completed Today, Active Quests)
 - ✅ **Daily Quests** section:
@@ -106,6 +120,7 @@
 - ✅ Streak tracking
 
 **Quest System:**
+
 - Click checkbox → marks as completed
 - Awards XP to profile
 - Updates agency level (if threshold met)
@@ -114,13 +129,16 @@
 ---
 
 ### **5. Messages / Chat** (`/dashboard/messages`)
+
 **Features:**
+
 - ✅ **3-column layout:**
   1. **Left:** Conversations list
   2. **Center:** Chat messages
   3. **Right:** Fan profile sidebar
 
 **Left Sidebar (Conversations):**
+
 - Search bar
 - Filter badges (All, Hot, Whales, Pending)
 - Conversation cards with:
@@ -132,6 +150,7 @@
   - 💎 Whale indicator
 
 **Center (Chat):**
+
 - Chat header with:
   - Fan name, status
   - Whale badge (if applicable)
@@ -146,6 +165,7 @@
 - Message input with attachments, emojis, Send button
 
 **Right Sidebar (Fan Profile):**
+
 - Avatar, name, username
 - **Stats card:**
   - Total Spent: $485
@@ -160,6 +180,7 @@
 ## 🏗️ **Architecture**
 
 ### **Tech Stack**
+
 - **Framework:** Next.js 14 (App Router)
 - **Language:** TypeScript
 - **Styling:** Tailwind CSS
@@ -170,6 +191,7 @@
 - **Charts:** Recharts
 
 ### **Project Structure**
+
 ```
 agencyos-react/
 ├── src/
@@ -207,11 +229,13 @@ agencyos-react/
 ## 🔐 **Authentication Flow**
 
 ### **Email/Password Login**
+
 1. User enters email/password on `/` (login page)
 2. Supabase Auth validates
 3. Redirects to `/dashboard`
 
 ### **Fanvue OAuth (Add Model)**
+
 1. User clicks "Add Model" → Opens dialog
 2. Clicks "Connect with Fanvue"
 3. Redirects to `/api/auth/fanvue`:
@@ -242,6 +266,7 @@ agencyos-react/
 ## 📊 **Database Schema** (Supabase)
 
 ### **Tables**
+
 ```sql
 -- Agencies
 agencies (
@@ -311,9 +336,11 @@ webhook_logs (
 ## 🔗 **API Integrations**
 
 ### **Fanvue API**
+
 **Base URL:** `https://api.fanvue.com`
 
 **Endpoints Used:**
+
 - `POST /oauth/token` - Get access token
 - `GET /creator/stats` - Revenue, subscribers
 - `GET /transactions/earnings` - Transaction history
@@ -322,12 +349,14 @@ webhook_logs (
 - `POST /media/upload` - Upload PPV content
 
 **Webhooks:**
+
 - `transaction.created` - New tip/subscription
 - `subscription.renewed` - Renewal
 - `message.received` - New message from fan
 - Verified with HMAC-SHA256 signature
 
 ### **Supabase API**
+
 - Row Level Security (RLS) enabled
 - Policies:
   - Users can only access their own agency data
@@ -339,6 +368,7 @@ webhook_logs (
 ## 🚀 **Deployment**
 
 ### **Environment Variables** (Vercel)
+
 ```env
 # Supabase
 NEXT_PUBLIC_SUPABASE_URL=https://gcfinlqhodkbnqeidksp.supabase.co
@@ -354,6 +384,7 @@ NEXT_PUBLIC_APP_URL=https://onyxos.vercel.app
 ```
 
 ### **Vercel Configuration**
+
 ```json
 {
   "buildCommand": "npm run build",
@@ -369,6 +400,7 @@ NEXT_PUBLIC_APP_URL=https://onyxos.vercel.app
 ```
 
 ### **Deploy Commands**
+
 ```bash
 # Automatic (on git push)
 git push origin main
@@ -382,15 +414,19 @@ vercel --prod
 ## 📋 **Fanvue Settings to Update**
 
 ### **1. OAuth Redirect URIs**
+
 Go to: https://fanvue.com/settings/developer
 
 **Add:**
+
 - `https://onyxos.vercel.app/api/auth/fanvue/callback`
 
 ### **2. Webhook URL**
+
 Go to: https://fanvue.com/settings/webhooks
 
 **Add:**
+
 - URL: `https://onyxos.vercel.app/api/webhook`
 - Secret: `561a2cf71ad554cd29471d6482d7de63fa90e2f39c4234b2ddedda0a3711e12f`
 - Events: `transaction.created`, `subscription.renewed`, `message.received`, `tip.received`
@@ -400,6 +436,7 @@ Go to: https://fanvue.com/settings/webhooks
 ## 🎯 **Key Features**
 
 ### **✅ Completed**
+
 1. ✅ Modern design system (shadcn/ui + Tailwind)
 2. ✅ Responsive layout (sidebar + header)
 3. ✅ Dashboard with metrics and interaction cards
@@ -413,6 +450,7 @@ Go to: https://fanvue.com/settings/webhooks
 11. ✅ Vercel deployment
 
 ### **🚧 Future Enhancements**
+
 - Live Fanvue API data (currently using mock data)
 - Real-time chat with WebSockets
 - AI content analysis (OpenAI Vision API)
@@ -443,11 +481,13 @@ Go to: https://fanvue.com/settings/webhooks
 ## 📝 **Testing Checklist**
 
 ### **Login Flow**
+
 - ✅ Email/password login works
 - ✅ Redirects to `/dashboard` on success
 - ✅ Shows error toast on failure
 
 ### **Dashboard**
+
 - ✅ Displays user info, level, streak
 - ✅ Shows metrics cards
 - ✅ Renders interaction history cards
@@ -455,6 +495,7 @@ Go to: https://fanvue.com/settings/webhooks
 - ✅ "Add Model" button works
 
 ### **CRM**
+
 - ✅ Opens "Add Model" dialog
 - ✅ Fanvue OAuth button redirects
 - ✅ Manual add form submits
@@ -462,17 +503,20 @@ Go to: https://fanvue.com/settings/webhooks
 - ✅ Delete model works
 
 ### **Content Intel**
+
 - ✅ Charts render
 - ✅ Top content list shows
 - ✅ Winning recipe card highlights
 
 ### **Quests**
+
 - ✅ Quest list displays
 - ✅ Checkboxes toggle
 - ✅ XP updates on completion
 - ✅ Streak shows in header
 
 ### **Messages**
+
 - ✅ Conversations list scrollable
 - ✅ Chat messages render
 - ✅ Message input works
@@ -514,6 +558,7 @@ Go to: https://fanvue.com/settings/webhooks
 Your OnyxOS CRM is now live at **https://onyxos.vercel.app**!
 
 **Login and explore:**
+
 - Email: `martin@behave.ro`
 - Password: `5se9MMBJY#16L0%atNf6`
 

@@ -9,6 +9,7 @@
 ## 🎯 **What's Been Built:**
 
 ### **✅ Clean Architecture:**
+
 ```
 agencyos-react/
 ├── src/
@@ -87,6 +88,7 @@ Change to: `https://agencyos-react.vercel.app`
 👉 https://supabase.com/dashboard/project/gcfinlqhodkbnqeidksp/auth/url-configuration
 
 Add:
+
 ```
 https://agencyos-react.vercel.app/**
 https://agencyos-react.vercel.app/api/auth/fanvue/callback
@@ -101,6 +103,7 @@ https://agencyos-react.vercel.app/api/auth/fanvue/callback
 Find app: `f1cbc082-339e-47c7-8cd8-18a2a997d1b7`
 
 Update:
+
 - **OAuth Redirect:** `https://agencyos-react.vercel.app/api/auth/fanvue/callback`
 - **Webhook URL:** `https://agencyos-react.vercel.app/api/webhook`
 
@@ -123,6 +126,7 @@ After adding env vars and redeploying:
 ## 🎉 **Why This is Better:**
 
 ### **React vs Flutter:**
+
 ✅ **Works on Safari** (no CORS/CanvasKit issues)  
 ✅ **Clean codebase** (organized Next.js structure)  
 ✅ **shadcn/ui** (beautiful, modern components)  
@@ -131,6 +135,7 @@ After adding env vars and redeploying:
 ✅ **Web-first** (optimized for browsers)
 
 ### **Code Quality:**
+
 ✅ **Type-safe** (TypeScript everywhere)  
 ✅ **Modular** (clean separation of concerns)  
 ✅ **Scalable** (easy to add features)  
