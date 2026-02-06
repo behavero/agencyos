@@ -40,6 +40,10 @@ export async function syncTrackingLinksForModel(
       externalSocialPlatform: string
       createdAt: string
       clicks: number
+      followsCount?: number
+      subsCount?: number
+      subsRevenue?: number
+      userSpend?: number
     }> = []
 
     // Fetch all pages using the Fanvue client
@@ -80,6 +84,21 @@ export async function syncTrackingLinksForModel(
       `[tracking-links] Total fetched: ${allLinks.length} links for model ${modelId} (creator ${creatorUuid})`
     )
 
+    // Log first link's fields to verify what the API returns
+    if (allLinks.length > 0) {
+      const sample = allLinks[0]
+      console.log(
+        `[tracking-links] Sample link fields: ${JSON.stringify({
+          name: sample.name,
+          clicks: sample.clicks,
+          followsCount: sample.followsCount,
+          subsCount: sample.subsCount,
+          subsRevenue: sample.subsRevenue,
+          userSpend: sample.userSpend,
+        })}`
+      )
+    }
+
     // Upsert each tracking link
     for (const link of allLinks) {
       const { error } = await supabase.from('tracking_links').upsert(
@@ -91,10 +110,10 @@ export async function syncTrackingLinksForModel(
           link_url: link.linkUrl,
           external_social_platform: link.externalSocialPlatform,
           clicks: link.clicks || 0,
-          follows_count: 0, // Not available from Fanvue tracking links API
-          subs_count: 0, // Not available from Fanvue tracking links API
-          subs_revenue: 0, // Not available from Fanvue tracking links API
-          user_spend: 0, // Not available from Fanvue tracking links API
+          follows_count: link.followsCount || 0,
+          subs_count: link.subsCount || 0,
+          subs_revenue: link.subsRevenue || 0,
+          user_spend: link.userSpend || 0,
           // NOTE: total_revenue is a GENERATED column (subs_revenue + user_spend) — do NOT include it
           link_created_at: link.createdAt,
           last_synced_at: new Date().toISOString(),
