@@ -109,6 +109,63 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
+  // ─── Live Fanvue media for vault picker ────────────────────────────────
+  const [fanvueVaultMedia, setFanvueVaultMedia] = useState<
+    Array<{
+      id: string
+      title: string | null
+      file_name: string
+      file_type: 'image' | 'video'
+      file_url: string
+      thumbnail_url: string | null
+    }>
+  >([])
+
+  useEffect(() => {
+    if (!selectedModel?.id) {
+      setFanvueVaultMedia([])
+      return
+    }
+    let cancelled = false
+    const fetchMedia = async () => {
+      try {
+        const res = await fetch(`/api/vault/fanvue-media?modelId=${selectedModel.id}&size=50`)
+        const data = await res.json()
+        if (!cancelled && data.success && data.media) {
+          setFanvueVaultMedia(
+            data.media
+              .filter(
+                (m: { mediaType: string }) => m.mediaType === 'image' || m.mediaType === 'video'
+              )
+              .map(
+                (m: {
+                  uuid: string
+                  name: string | null
+                  caption: string | null
+                  mediaType: string
+                  url: string
+                  thumbnailUrl: string
+                }) => ({
+                  id: m.uuid, // Fanvue media UUID — used directly in send message API
+                  title: m.name || m.caption,
+                  file_name: m.name || m.caption || `${m.mediaType}-${m.uuid.slice(0, 8)}`,
+                  file_type: m.mediaType as 'image' | 'video',
+                  file_url: m.url,
+                  thumbnail_url: m.thumbnailUrl || m.url,
+                })
+              )
+          )
+        }
+      } catch (e) {
+        console.error('[Messages] Failed to load Fanvue vault media:', e)
+      }
+    }
+    fetchMedia()
+    return () => {
+      cancelled = true
+    }
+  }, [selectedModel?.id])
+
   // Chat roster hook with Whale Priority sorting
   const {
     chats,
@@ -573,21 +630,7 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
                     }}
                     isLoading={sendingMessage}
                     placeholder="Type a message..."
-                    vaultAssets={vaultAssets
-                      .filter(
-                        asset =>
-                          !selectedModel?.id ||
-                          !asset.model_id ||
-                          asset.model_id === selectedModel.id
-                      )
-                      .map(asset => ({
-                        id: asset.id,
-                        title: asset.title,
-                        file_name: asset.file_name,
-                        file_type: asset.file_type as 'image' | 'video',
-                        file_url: asset.url,
-                        thumbnail_url: asset.url,
-                      }))}
+                    vaultAssets={fanvueVaultMedia}
                     macros={[
                       { id: '1', name: 'Good Morning', text: 'Good morning baby! 💕' },
                       { id: '2', name: 'Good Night', text: 'Good night, sweet dreams! 😘' },
@@ -779,36 +822,50 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
           </DialogHeader>
 
           <div className="grid grid-cols-3 gap-3 max-h-96 overflow-y-auto py-4">
-            {vaultAssets.map(asset => (
+            {fanvueVaultMedia.map(media => (
               <button
-                key={asset.id}
+                key={media.id}
                 onClick={() => {
-                  setSelectedAttachment(asset)
+                  setSelectedAttachment({
+                    id: media.id,
+                    title: media.title,
+                    file_name: media.file_name,
+                    url: media.file_url,
+                    file_type: media.file_type,
+                    price: 0,
+                    content_type: 'ppv',
+                    model_id: selectedModel?.id || null,
+                  })
                   setIsVaultOpen(false)
                   toast.success('Attachment selected')
                 }}
                 className={`aspect-square rounded-lg overflow-hidden border transition-all hover:border-primary ${
-                  selectedAttachment?.id === asset.id
+                  selectedAttachment?.id === media.id
                     ? 'border-primary ring-2 ring-primary'
                     : 'border-border'
                 }`}
               >
-                {asset.file_type === 'image' ? (
-                  <img src={asset.url} alt="" className="w-full h-full object-cover" />
+                {media.file_type === 'image' ? (
+                  <img
+                    src={media.thumbnail_url || media.file_url}
+                    alt=""
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                  />
                 ) : (
                   <div className="w-full h-full flex flex-col items-center justify-center bg-muted">
                     <ImageIcon className="w-8 h-8 text-muted-foreground" />
                     <span className="text-xs text-muted-foreground mt-1 px-2 truncate max-w-full">
-                      {asset.title || asset.file_name}
+                      {media.title || media.file_name}
                     </span>
                   </div>
                 )}
               </button>
             ))}
-            {vaultAssets.length === 0 && (
+            {fanvueVaultMedia.length === 0 && (
               <div className="col-span-3 py-8 text-center text-muted-foreground">
                 <ImageIcon className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                <p>No assets in vault</p>
+                <p>No media for this model</p>
                 <Button
                   variant="outline"
                   className="mt-4"

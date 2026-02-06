@@ -1,20 +1,10 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { Textarea } from '@/components/ui/textarea'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import {
   Select,
   SelectContent,
@@ -22,7 +12,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import {
   Upload,
@@ -31,44 +20,49 @@ import {
   Music,
   DollarSign,
   Trash2,
-  Edit,
   Plus,
   Search,
   Filter,
   Grid3X3,
   List,
-  Lock,
-  TrendingUp,
-  Flame,
-  RefreshCcw,
+  Loader2,
+  ChevronLeft,
+  ChevronRight,
+  Play,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { createClient } from '@/lib/supabase/client'
 
-interface ContentAsset {
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+interface FanvueMedia {
+  uuid: string
+  mediaType: string
+  url: string
+  thumbnailUrl: string
+  name: string | null
+  caption: string | null
+  description: string | null
+  recommendedPrice: number
+  createdAt: string | null
+  width: number | null
+  height: number | null
+  lengthMs: number | null
+}
+
+interface UploadedAsset {
   id: string
   file_name: string
   file_type: 'image' | 'video' | 'audio'
   url: string
-  file_url?: string
   thumbnail_url: string | null
   title: string | null
-  description: string | null
   price: number
-  content_type: 'free' | 'ppv' | 'subscription' | 'tip'
+  content_type: string
   tags: string[]
   usage_count: number
   model_id: string | null
-  models?: { id: string; name: string } | null
-  fanvue_media_uuid?: string | null
   created_at: string
-  // Phase 50: Performance metrics
-  performance?: {
-    total_revenue: number
-    conversion_rate: number
-    times_sent: number
-    times_unlocked: number
-    performance_rating: string
-  }
 }
 
 interface Model {
@@ -77,85 +71,123 @@ interface Model {
 }
 
 interface VaultClientProps {
-  initialAssets: ContentAsset[]
+  initialAssets: UploadedAsset[]
   models: Model[]
   agencyId: string
 }
 
+// ─── Component ───────────────────────────────────────────────────────────────
+
 export function VaultClient({ initialAssets, models, agencyId }: VaultClientProps) {
   const supabase = createClient()
-  const [assets, setAssets] = useState<ContentAsset[]>(initialAssets)
+
+  // Model selection
+  const [selectedModelId, setSelectedModelId] = useState<string>(models[0]?.id || '')
+  const [activeTab, setActiveTab] = useState<'fanvue' | 'uploaded'>('fanvue')
+
+  // Fanvue media (live from API)
+  const [fanvueMedia, setFanvueMedia] = useState<FanvueMedia[]>([])
+  const [fanvueLoading, setFanvueLoading] = useState(false)
+  const [fanvuePage, setFanvuePage] = useState(1)
+  const [fanvueHasMore, setFanvueHasMore] = useState(false)
+  const [fanvueMediaType, setFanvueMediaType] = useState<string>('all')
+
+  // Uploaded assets (from database)
+  const [uploadedAssets, setUploadedAssets] = useState<UploadedAsset[]>(initialAssets)
   const [isUploading, setIsUploading] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
-  const [selectedAsset, setSelectedAsset] = useState<ContentAsset | null>(null)
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+
+  // View
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [searchQuery, setSearchQuery] = useState('')
-  const [filterType, setFilterType] = useState<string>('all')
-  const [filterModelId, setFilterModelId] = useState<string>('all')
-  const [sortBy, setSortBy] = useState<string>('recent')
-  const [isCalculatingROI, setIsCalculatingROI] = useState(false)
-  const [isSyncingFanvue, setIsSyncingFanvue] = useState(false)
 
-  const [editForm, setEditForm] = useState<{
-    title: string
-    description: string
-    price: number
-    content_type: 'free' | 'ppv' | 'subscription' | 'tip'
-    tags: string
-    model_id: string
-  }>({
-    title: '',
-    description: '',
-    price: 0,
-    content_type: 'free',
-    tags: '',
-    model_id: '',
-  })
+  // ─── Fetch Fanvue media on-demand ─────────────────────────────────────────
 
-  // File upload handler
+  const fetchFanvueMedia = useCallback(
+    async (page: number, append = false) => {
+      if (!selectedModelId) return
+
+      setFanvueLoading(true)
+      try {
+        const params = new URLSearchParams({
+          modelId: selectedModelId,
+          page: String(page),
+          size: '30',
+        })
+        if (fanvueMediaType !== 'all') {
+          params.set('mediaType', fanvueMediaType)
+        }
+
+        const res = await fetch(`/api/vault/fanvue-media?${params}`)
+        const data = await res.json()
+
+        if (!data.success) {
+          toast.error(data.error || 'Failed to load Fanvue media')
+          return
+        }
+
+        if (append) {
+          setFanvueMedia(prev => [...prev, ...data.media])
+        } else {
+          setFanvueMedia(data.media)
+        }
+        setFanvuePage(data.pagination.page)
+        setFanvueHasMore(data.pagination.hasMore)
+      } catch (error) {
+        console.error('[Vault] Fanvue fetch error:', error)
+        toast.error('Failed to load media from Fanvue')
+      } finally {
+        setFanvueLoading(false)
+      }
+    },
+    [selectedModelId, fanvueMediaType]
+  )
+
+  // Fetch when model or media type changes
+  useEffect(() => {
+    if (activeTab === 'fanvue' && selectedModelId) {
+      setFanvueMedia([])
+      setFanvuePage(1)
+      fetchFanvueMedia(1)
+    }
+  }, [selectedModelId, fanvueMediaType, activeTab, fetchFanvueMedia])
+
+  // ─── Upload handler ───────────────────────────────────────────────────────
+
   const handleFileUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return
 
     setIsUploading(true)
-    const uploadedAssets: ContentAsset[] = []
+    const uploaded: UploadedAsset[] = []
 
     try {
       for (const file of Array.from(files)) {
-        // Determine file type
         let fileType: 'image' | 'video' | 'audio' = 'image'
         if (file.type.startsWith('video/')) fileType = 'video'
         else if (file.type.startsWith('audio/')) fileType = 'audio'
 
-        // Generate unique filename
         const timestamp = Date.now()
         const ext = file.name.split('.').pop()
         const fileName = `${agencyId}/${timestamp}-${Math.random().toString(36).substring(7)}.${ext}`
 
-        // Upload to Supabase Storage
         const { error: uploadError } = await supabase.storage
           .from('agency-assets')
-          .upload(fileName, file, {
-            cacheControl: '3600',
-            upsert: false,
-          })
+          .upload(fileName, file, { cacheControl: '3600', upsert: false })
 
         if (uploadError) {
-          console.error('Upload error:', uploadError)
           toast.error(`Failed to upload ${file.name}`)
           continue
         }
 
-        // Get public URL
         const {
           data: { publicUrl },
         } = supabase.storage.from('agency-assets').getPublicUrl(fileName)
 
-        // Insert into content_assets table
         const { data: asset, error: insertError } = await supabase
           .from('content_assets')
           .insert({
             agency_id: agencyId,
+            model_id: selectedModelId || null,
             file_name: file.name,
             file_type: fileType,
             file_size: file.size,
@@ -166,279 +198,86 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
           .single()
 
         if (insertError) {
-          console.error('Insert error:', insertError)
           toast.error(`Failed to save ${file.name}`)
           continue
         }
 
-        uploadedAssets.push(asset)
+        uploaded.push(asset)
       }
 
-      if (uploadedAssets.length > 0) {
-        setAssets(prev => [...uploadedAssets, ...prev])
-        toast.success(`Uploaded ${uploadedAssets.length} file(s)`)
+      if (uploaded.length > 0) {
+        setUploadedAssets(prev => [...uploaded, ...prev])
+        toast.success(`Uploaded ${uploaded.length} file(s)`)
       }
-    } catch (error) {
-      console.error('Upload error:', error)
+    } catch {
       toast.error('Upload failed')
     } finally {
       setIsUploading(false)
     }
   }
 
-  // Drag and drop handlers
+  // Drag and drop
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     setIsDragging(true)
   }, [])
-
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     setIsDragging(false)
   }, [])
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault()
+      setIsDragging(false)
+      handleFileUpload(e.dataTransfer.files)
+    },
+    [handleFileUpload]
+  )
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    setIsDragging(false)
-    handleFileUpload(e.dataTransfer.files)
-  }, [])
-
-  // Edit asset
-  const openEditDialog = (asset: ContentAsset) => {
-    setSelectedAsset(asset)
-    setEditForm({
-      title: asset.title || '',
-      description: asset.description || '',
-      price: asset.price || 0,
-      content_type: (asset.content_type as 'free' | 'ppv' | 'subscription' | 'tip') || 'free',
-      tags: asset.tags?.join(', ') || '',
-      model_id: asset.model_id || '',
-    })
-    setIsEditDialogOpen(true)
-  }
-
-  const handleSaveEdit = async () => {
-    if (!selectedAsset) return
-
-    const { error } = await supabase
-      .from('content_assets')
-      .update({
-        title: editForm.title,
-        description: editForm.description,
-        price: editForm.price,
-        content_type: editForm.content_type,
-        tags: editForm.tags
-          .split(',')
-          .map(t => t.trim())
-          .filter(Boolean),
-        model_id: editForm.model_id || null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', selectedAsset.id)
-
-    if (error) {
-      toast.error('Failed to update asset')
-      return
-    }
-
-    setAssets(prev =>
-      prev.map(a =>
-        a.id === selectedAsset.id
-          ? {
-              ...a,
-              title: editForm.title,
-              description: editForm.description,
-              price: editForm.price,
-              content_type: editForm.content_type as any,
-              tags: editForm.tags
-                .split(',')
-                .map(t => t.trim())
-                .filter(Boolean),
-              model_id: editForm.model_id || null,
-            }
-          : a
-      )
-    )
-
-    toast.success('Asset updated')
-    setIsEditDialogOpen(false)
-  }
-
-  // Delete asset
-  const handleDelete = async (asset: ContentAsset) => {
-    if (!confirm('Are you sure you want to delete this asset?')) return
-
-    // Delete from storage
+  // Delete uploaded asset
+  const handleDeleteUploaded = async (asset: UploadedAsset) => {
+    if (!confirm('Delete this uploaded asset?')) return
     const fileName = asset.url.split('/').pop()
     if (fileName) {
       await supabase.storage.from('agency-assets').remove([`${agencyId}/${fileName}`])
     }
-
-    // Delete from database
     const { error } = await supabase.from('content_assets').delete().eq('id', asset.id)
-
     if (error) {
-      toast.error('Failed to delete asset')
+      toast.error('Failed to delete')
       return
     }
-
-    setAssets(prev => prev.filter(a => a.id !== asset.id))
-    toast.success('Asset deleted')
+    setUploadedAssets(prev => prev.filter(a => a.id !== asset.id))
+    toast.success('Deleted')
   }
 
-  // Phase 50: Calculate ROI for assets
-  const handleCalculateROI = async () => {
-    setIsCalculatingROI(true)
-    try {
-      const response = await fetch('/api/vault/calculate-roi', {
-        method: 'POST',
-      })
-      const result = await response.json()
+  // ─── Filtered uploaded assets ─────────────────────────────────────────────
 
-      if (result.success) {
-        toast.success(`Calculated ROI for ${result.assetsUpdated} assets`)
-        // Refresh performance data
-        await refreshPerformanceData()
-      } else {
-        toast.error(result.error || 'Failed to calculate ROI')
-      }
-    } catch (error) {
-      toast.error('Failed to calculate ROI')
-    } finally {
-      setIsCalculatingROI(false)
-    }
+  const filteredUploaded = uploadedAssets.filter(a => {
+    const matchesModel = !selectedModelId || !a.model_id || a.model_id === selectedModelId
+    const matchesSearch =
+      !searchQuery ||
+      a.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      a.file_name.toLowerCase().includes(searchQuery.toLowerCase())
+    return matchesModel && matchesSearch
+  })
+
+  // ─── Helpers ──────────────────────────────────────────────────────────────
+
+  const getMediaIcon = (type: string) => {
+    if (type === 'video') return <Video className="w-5 h-5" />
+    if (type === 'audio') return <Music className="w-5 h-5" />
+    return <ImageIcon className="w-5 h-5" />
   }
 
-  // Sync from Fanvue creator media library (agency endpoint)
-  const handleSyncFanvue = async () => {
-    setIsSyncingFanvue(true)
-    try {
-      const response = await fetch('/api/vault/sync-fanvue', {
-        method: 'POST',
-      })
-
-      // Handle non-JSON responses (e.g., Vercel timeout returns HTML)
-      const contentType = response.headers.get('content-type') || ''
-      if (!contentType.includes('application/json')) {
-        if (response.status === 504) {
-          toast.error('Sync timed out — try syncing one model at a time or try again later')
-        } else {
-          toast.error(`Sync failed (HTTP ${response.status}) — server returned a non-JSON response`)
-        }
-        console.error('[Vault Sync] Non-JSON response:', response.status, response.statusText)
-        return
-      }
-
-      const result = await response.json()
-
-      if (result.success) {
-        // Show per-model breakdown
-        const modelSummary = result.modelResults
-          ?.map(
-            (m: { modelName: string; synced: number; total: number }) =>
-              `${m.modelName}: ${m.synced}/${m.total}`
-          )
-          .join(', ')
-        toast.success(
-          `Synced ${result.assetsSynced} media items from Fanvue${modelSummary ? ` (${modelSummary})` : ''}`
-        )
-        // Reload to show new assets
-        window.location.reload()
-      } else {
-        // Show partial success info if any
-        if (result.assetsSynced > 0) {
-          toast.warning(
-            `Partial sync: ${result.assetsSynced} items synced, but ${result.errors?.length || 0} error(s) occurred`
-          )
-          window.location.reload()
-        } else {
-          const errorMsg = result.errors?.[0] || result.error || 'Failed to sync from Fanvue'
-          toast.error(errorMsg)
-        }
-        if (result.errors && result.errors.length > 0) {
-          console.error('[Vault Sync] Errors:', result.errors)
-        }
-        if (result.modelResults) {
-          console.log('[Vault Sync] Per-model results:', result.modelResults)
-        }
-      }
-    } catch (error) {
-      toast.error('Failed to sync from Fanvue — check console for details')
-      console.error('[Vault Sync] Fetch error:', error)
-    } finally {
-      setIsSyncingFanvue(false)
-    }
+  const formatDuration = (ms: number | null) => {
+    if (!ms) return null
+    const s = Math.floor(ms / 1000)
+    const m = Math.floor(s / 60)
+    const sec = s % 60
+    return `${m}:${sec.toString().padStart(2, '0')}`
   }
 
-  // Fetch performance data for all assets
-  const refreshPerformanceData = async () => {
-    try {
-      const response = await fetch(`/api/vault/performance?sortBy=${sortBy}`)
-      const result = await response.json()
-
-      if (result.success && result.data) {
-        // Merge performance data with assets
-        setAssets(prev =>
-          prev.map(asset => {
-            const perf = result.data.find((p: any) => p.assetId === asset.id)
-            if (perf) {
-              return {
-                ...asset,
-                performance: {
-                  total_revenue: perf.totalRevenue,
-                  conversion_rate: perf.conversionRate,
-                  times_sent: perf.timesSent,
-                  times_unlocked: perf.timesUnlocked,
-                  performance_rating: perf.performanceRating,
-                },
-              }
-            }
-            return asset
-          })
-        )
-      }
-    } catch (error) {
-      console.error('Failed to fetch performance data:', error)
-    }
-  }
-
-  // Filter and sort assets
-  const filteredAssets = assets
-    .filter(asset => {
-      const matchesSearch =
-        asset.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        asset.file_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        asset.tags?.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()))
-
-      const matchesFilter = filterType === 'all' || asset.file_type === filterType
-      const matchesModel =
-        filterModelId === 'all' ||
-        (filterModelId === 'unassigned' ? !asset.model_id : asset.model_id === filterModelId)
-
-      return matchesSearch && matchesFilter && matchesModel
-    })
-    .sort((a, b) => {
-      switch (sortBy) {
-        case 'revenue':
-          return (b.performance?.total_revenue || 0) - (a.performance?.total_revenue || 0)
-        case 'conversion':
-          return (b.performance?.conversion_rate || 0) - (a.performance?.conversion_rate || 0)
-        case 'recent':
-        default:
-          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      }
-    })
-
-  const getFileIcon = (type: string) => {
-    switch (type) {
-      case 'video':
-        return <Video className="w-5 h-5" />
-      case 'audio':
-        return <Music className="w-5 h-5" />
-      default:
-        return <ImageIcon className="w-5 h-5" />
-    }
-  }
+  // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-6">
@@ -446,477 +285,451 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Content Vault</h1>
-          <p className="text-muted-foreground">
-            Manage your media assets for campaigns and messages
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="text-primary border-primary/30">
-            {assets.length} Assets
-          </Badge>
+          <p className="text-muted-foreground">Browse and use your Fanvue media library directly</p>
         </div>
       </div>
 
-      {/* Model Filter Tabs */}
+      {/* Model Selector */}
       {models.length > 0 && (
         <div className="flex items-center gap-2 flex-wrap">
-          <Button
-            variant={filterModelId === 'all' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setFilterModelId('all')}
-          >
-            All Models
-            <Badge variant="secondary" className="ml-2 text-xs">
-              {assets.length}
-            </Badge>
-          </Button>
-          {models.map(m => {
-            const count = assets.filter(a => a.model_id === m.id).length
-            return (
-              <Button
-                key={m.id}
-                variant={filterModelId === m.id ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setFilterModelId(m.id)}
-              >
-                {m.name}
-                <Badge variant="secondary" className="ml-2 text-xs">
-                  {count}
-                </Badge>
-              </Button>
-            )
-          })}
-          <Button
-            variant={filterModelId === 'unassigned' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setFilterModelId('unassigned')}
-          >
-            Unassigned
-            <Badge variant="secondary" className="ml-2 text-xs">
-              {assets.filter(a => !a.model_id).length}
-            </Badge>
-          </Button>
-        </div>
-      )}
-
-      {/* Upload Zone */}
-      <Card
-        className={cn(
-          'border-2 border-dashed transition-colors',
-          isDragging ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
-        )}
-      >
-        <CardContent className="py-8">
-          <div
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            className="flex flex-col items-center justify-center text-center"
-          >
-            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-              <Upload className="w-8 h-8 text-primary" />
-            </div>
-            <h3 className="text-lg font-medium mb-2">
-              {isDragging ? 'Drop files here' : 'Upload Content'}
-            </h3>
-            <p className="text-muted-foreground text-sm mb-4">
-              Drag and drop images, videos, or audio files
-            </p>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                disabled={isUploading}
-                onClick={() => document.getElementById('file-upload')?.click()}
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                {isUploading ? 'Uploading...' : 'Choose Files'}
-              </Button>
-            </div>
-            <input
-              id="file-upload"
-              type="file"
-              multiple
-              accept="image/*,video/*,audio/*"
-              className="hidden"
-              onChange={e => handleFileUpload(e.target.files)}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Filters */}
-      <div className="flex items-center gap-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="Search assets..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-        <Select value={filterType} onValueChange={setFilterType}>
-          <SelectTrigger className="w-32">
-            <Filter className="w-4 h-4 mr-2" />
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All</SelectItem>
-            <SelectItem value="image">Images</SelectItem>
-            <SelectItem value="video">Videos</SelectItem>
-            <SelectItem value="audio">Audio</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={sortBy} onValueChange={setSortBy}>
-          <SelectTrigger className="w-40">
-            <TrendingUp className="w-4 h-4 mr-2" />
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="recent">Most Recent</SelectItem>
-            <SelectItem value="revenue">
-              <div className="flex items-center gap-2">
-                <DollarSign className="w-3 h-3" />
-                Revenue
-              </div>
-            </SelectItem>
-            <SelectItem value="conversion">
-              <div className="flex items-center gap-2">
-                <Flame className="w-3 h-3" />
-                Conversion
-              </div>
-            </SelectItem>
-          </SelectContent>
-        </Select>
-        <Button
-          variant="outline"
-          onClick={handleSyncFanvue}
-          disabled={isSyncingFanvue}
-          className="gap-2"
-        >
-          <RefreshCcw className={cn('w-4 h-4', isSyncingFanvue && 'animate-spin')} />
-          {isSyncingFanvue ? 'Syncing...' : 'Sync from Fanvue'}
-        </Button>
-        <Button
-          variant="outline"
-          onClick={handleCalculateROI}
-          disabled={isCalculatingROI}
-          className="gap-2"
-        >
-          <RefreshCcw className={cn('w-4 h-4', isCalculatingROI && 'animate-spin')} />
-          {isCalculatingROI ? 'Calculating...' : 'Calculate ROI'}
-        </Button>
-        <div className="flex border rounded-lg">
-          <Button
-            variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
-            size="icon"
-            onClick={() => setViewMode('grid')}
-          >
-            <Grid3X3 className="w-4 h-4" />
-          </Button>
-          <Button
-            variant={viewMode === 'list' ? 'secondary' : 'ghost'}
-            size="icon"
-            onClick={() => setViewMode('list')}
-          >
-            <List className="w-4 h-4" />
-          </Button>
-        </div>
-      </div>
-
-      {/* Assets Grid */}
-      {filteredAssets.length === 0 ? (
-        <Card>
-          <CardContent className="py-16 text-center">
-            <ImageIcon className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">No assets yet</h3>
-            <p className="text-muted-foreground">Upload your first content to get started</p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div
-          className={cn(
-            viewMode === 'grid'
-              ? 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4'
-              : 'space-y-2'
-          )}
-        >
-          {filteredAssets.map(asset => (
-            <Card
-              key={asset.id}
-              className="group overflow-hidden hover:border-primary/30 transition-colors cursor-pointer"
-              onClick={() => openEditDialog(asset)}
+          {models.map(m => (
+            <Button
+              key={m.id}
+              variant={selectedModelId === m.id ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setSelectedModelId(m.id)}
             >
-              {viewMode === 'grid' ? (
-                <>
-                  {/* Thumbnail */}
-                  <div className="aspect-square relative bg-muted">
-                    {asset.thumbnail_url || asset.url ? (
-                      <img
-                        src={asset.thumbnail_url || asset.url}
-                        alt={asset.title || asset.file_name}
-                        className="w-full h-full object-cover"
-                        onError={e => {
-                          ;(e.target as HTMLImageElement).style.display = 'none'
-                        }}
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        {getFileIcon(asset.file_type)}
-                      </div>
-                    )}
-
-                    {/* Overlays */}
-                    <div className="absolute top-2 left-2 flex flex-col gap-1">
-                      {asset.performance && asset.performance.total_revenue > 0 && (
-                        <Badge className="bg-emerald-500/90 hover:bg-emerald-500">
-                          <DollarSign className="w-3 h-3 mr-0.5" />$
-                          {asset.performance.total_revenue.toFixed(0)}
-                        </Badge>
-                      )}
-                      {asset.performance && asset.performance.conversion_rate > 0 && (
-                        <Badge
-                          className={cn(
-                            'text-white',
-                            asset.performance.conversion_rate >= 50
-                              ? 'bg-red-500/90 hover:bg-red-500'
-                              : asset.performance.conversion_rate >= 20
-                                ? 'bg-green-500/90 hover:bg-green-500'
-                                : asset.performance.conversion_rate >= 10
-                                  ? 'bg-yellow-500/90 hover:bg-yellow-500'
-                                  : 'bg-gray-500/90 hover:bg-gray-500'
-                          )}
-                        >
-                          {asset.performance.conversion_rate >= 50 && '🔥 '}
-                          {asset.performance.conversion_rate.toFixed(0)}%
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="absolute top-2 right-2 flex flex-col gap-1">
-                      {asset.price > 0 && (
-                        <Badge className="bg-green-500/90 hover:bg-green-500">
-                          <DollarSign className="w-3 h-3 mr-0.5" />
-                          {asset.price}
-                        </Badge>
-                      )}
-                      {asset.content_type === 'ppv' && (
-                        <Badge variant="secondary" className="bg-purple-500/90 text-white">
-                          <Lock className="w-3 h-3 mr-0.5" />
-                          PPV
-                        </Badge>
-                      )}
-                    </div>
-
-                    {/* Hover actions */}
-                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                      <Button
-                        size="icon"
-                        variant="secondary"
-                        onClick={e => {
-                          e.stopPropagation()
-                          openEditDialog(asset)
-                        }}
-                      >
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="destructive"
-                        onClick={e => {
-                          e.stopPropagation()
-                          handleDelete(asset)
-                        }}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
-                  <CardContent className="p-3">
-                    <p className="font-medium text-sm truncate">{asset.title || asset.file_name}</p>
-                    <div className="flex items-center justify-between mt-1">
-                      <p className="text-xs text-muted-foreground">
-                        {asset.performance ? (
-                          <>
-                            {asset.performance.times_sent}sent / {asset.performance.times_unlocked}
-                            sold
-                          </>
-                        ) : (
-                          <>Used {asset.usage_count}x</>
-                        )}
-                      </p>
-                      {asset.performance && asset.performance.performance_rating && (
-                        <span className="text-xs">{asset.performance.performance_rating}</span>
-                      )}
-                    </div>
-                  </CardContent>
-                </>
-              ) : (
-                <CardContent className="p-4 flex items-center gap-4">
-                  <div className="w-16 h-16 rounded-lg bg-muted flex items-center justify-center overflow-hidden">
-                    {asset.thumbnail_url || asset.url ? (
-                      <img
-                        src={asset.thumbnail_url || asset.url}
-                        alt=""
-                        className="w-full h-full object-cover"
-                        onError={e => {
-                          ;(e.target as HTMLImageElement).style.display = 'none'
-                        }}
-                      />
-                    ) : (
-                      getFileIcon(asset.file_type)
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">{asset.title || asset.file_name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {asset.file_type} •{' '}
-                      {asset.performance ? (
-                        <>
-                          ${asset.performance.total_revenue.toFixed(0)} revenue •{' '}
-                          {asset.performance.conversion_rate.toFixed(1)}% conversion
-                        </>
-                      ) : (
-                        <>Used {asset.usage_count}x</>
-                      )}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {asset.price > 0 && <Badge className="bg-green-500/90">${asset.price}</Badge>}
-                    {asset.content_type === 'ppv' && <Badge variant="secondary">PPV</Badge>}
-                  </div>
-                </CardContent>
-              )}
-            </Card>
+              {m.name}
+            </Button>
           ))}
         </div>
       )}
 
-      {/* Edit Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Edit Asset</DialogTitle>
-            <DialogDescription>Update the metadata and pricing for this content</DialogDescription>
-          </DialogHeader>
+      {/* Tab: Fanvue Media vs Uploaded */}
+      <div className="flex items-center gap-4 border-b">
+        <button
+          className={cn(
+            'pb-2 px-1 text-sm font-medium border-b-2 transition-colors',
+            activeTab === 'fanvue'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          )}
+          onClick={() => setActiveTab('fanvue')}
+        >
+          Fanvue Media
+        </button>
+        <button
+          className={cn(
+            'pb-2 px-1 text-sm font-medium border-b-2 transition-colors',
+            activeTab === 'uploaded'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          )}
+          onClick={() => setActiveTab('uploaded')}
+        >
+          Uploaded ({filteredUploaded.length})
+        </button>
+      </div>
 
-          <div className="space-y-4 py-4">
-            {/* Preview */}
-            {selectedAsset && (
-              <div className="aspect-video rounded-lg bg-muted overflow-hidden">
-                {selectedAsset.thumbnail_url || selectedAsset.url ? (
-                  <img
-                    src={selectedAsset.url || selectedAsset.thumbnail_url || ''}
-                    alt=""
-                    className="w-full h-full object-contain"
-                    onError={e => {
-                      ;(e.target as HTMLImageElement).style.display = 'none'
-                    }}
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    {getFileIcon(selectedAsset.file_type)}
-                    <span className="ml-2">{selectedAsset.file_name}</span>
-                  </div>
-                )}
-                {selectedAsset.fanvue_media_uuid && (
-                  <div className="absolute bottom-2 left-2">
-                    <Badge variant="secondary" className="text-xs">
-                      Fanvue
-                    </Badge>
-                  </div>
-                )}
-              </div>
+      {/* ─── FANVUE MEDIA TAB ─────────────────────────────────────────────── */}
+      {activeTab === 'fanvue' && (
+        <>
+          {/* Filters */}
+          <div className="flex items-center gap-4">
+            <Select value={fanvueMediaType} onValueChange={setFanvueMediaType}>
+              <SelectTrigger className="w-32">
+                <Filter className="w-4 h-4 mr-2" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="image">Images</SelectItem>
+                <SelectItem value="video">Videos</SelectItem>
+                <SelectItem value="audio">Audio</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="flex border rounded-lg">
+              <Button
+                variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
+                size="icon"
+                onClick={() => setViewMode('grid')}
+              >
+                <Grid3X3 className="w-4 h-4" />
+              </Button>
+              <Button
+                variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+                size="icon"
+                onClick={() => setViewMode('list')}
+              >
+                <List className="w-4 h-4" />
+              </Button>
+            </div>
+            {fanvueMedia.length > 0 && (
+              <Badge variant="outline" className="text-primary border-primary/30">
+                {fanvueMedia.length} items{fanvueHasMore ? '+' : ''}
+              </Badge>
             )}
+          </div>
 
-            <div className="space-y-2">
-              <Label>Title</Label>
-              <Input
-                value={editForm.title}
-                onChange={e => setEditForm({ ...editForm, title: e.target.value })}
-                placeholder="Asset title"
-              />
+          {/* Loading state */}
+          {fanvueLoading && fanvueMedia.length === 0 && (
+            <div className="flex items-center justify-center py-20">
+              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+              <span className="ml-3 text-muted-foreground">Loading media from Fanvue...</span>
             </div>
+          )}
 
-            <div className="space-y-2">
-              <Label>Description</Label>
-              <Textarea
-                value={editForm.description}
-                onChange={e => setEditForm({ ...editForm, description: e.target.value })}
-                placeholder="Optional description"
-                rows={2}
-              />
-            </div>
+          {/* No model selected */}
+          {!selectedModelId && (
+            <Card>
+              <CardContent className="py-16 text-center">
+                <ImageIcon className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                <h3 className="text-lg font-medium mb-2">Select a model</h3>
+                <p className="text-muted-foreground">
+                  Choose a model above to browse their Fanvue media
+                </p>
+              </CardContent>
+            </Card>
+          )}
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Price ($)</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={editForm.price}
-                  onChange={e =>
-                    setEditForm({ ...editForm, price: parseFloat(e.target.value) || 0 })
-                  }
+          {/* Empty state */}
+          {!fanvueLoading && selectedModelId && fanvueMedia.length === 0 && (
+            <Card>
+              <CardContent className="py-16 text-center">
+                <ImageIcon className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                <h3 className="text-lg font-medium mb-2">No media found</h3>
+                <p className="text-muted-foreground">
+                  This model has no media on Fanvue, or the connection may need refreshing
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Media Grid */}
+          {fanvueMedia.length > 0 && (
+            <>
+              <div
+                className={cn(
+                  viewMode === 'grid'
+                    ? 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4'
+                    : 'space-y-2'
+                )}
+              >
+                {fanvueMedia.map(item => (
+                  <Card
+                    key={item.uuid}
+                    className="group overflow-hidden hover:border-primary/30 transition-colors"
+                  >
+                    {viewMode === 'grid' ? (
+                      <>
+                        <div className="aspect-square relative bg-muted">
+                          {item.thumbnailUrl ? (
+                            <img
+                              src={item.thumbnailUrl}
+                              alt={item.name || item.caption || ''}
+                              className="w-full h-full object-cover"
+                              loading="lazy"
+                              onError={e => {
+                                ;(e.target as HTMLImageElement).style.display = 'none'
+                              }}
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              {getMediaIcon(item.mediaType || 'image')}
+                            </div>
+                          )}
+
+                          {/* Type badge */}
+                          <div className="absolute top-2 left-2 flex gap-1">
+                            {item.mediaType === 'video' && (
+                              <Badge className="bg-blue-500/90 text-white text-xs">
+                                <Play className="w-3 h-3 mr-0.5" />
+                                {formatDuration(item.lengthMs) || 'Video'}
+                              </Badge>
+                            )}
+                            {item.mediaType === 'audio' && (
+                              <Badge className="bg-purple-500/90 text-white text-xs">
+                                <Music className="w-3 h-3 mr-0.5" />
+                                Audio
+                              </Badge>
+                            )}
+                          </div>
+
+                          {/* Price */}
+                          {item.recommendedPrice > 0 && (
+                            <div className="absolute top-2 right-2">
+                              <Badge className="bg-green-500/90 text-white">
+                                <DollarSign className="w-3 h-3 mr-0.5" />
+                                {item.recommendedPrice}
+                              </Badge>
+                            </div>
+                          )}
+                        </div>
+                        <CardContent className="p-3">
+                          <p className="font-medium text-sm truncate">
+                            {item.name || item.caption || `${item.mediaType || 'Media'}`}
+                          </p>
+                          {item.createdAt && (
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {new Date(item.createdAt).toLocaleDateString()}
+                            </p>
+                          )}
+                        </CardContent>
+                      </>
+                    ) : (
+                      <CardContent className="p-4 flex items-center gap-4">
+                        <div className="w-16 h-16 rounded-lg bg-muted overflow-hidden shrink-0">
+                          {item.thumbnailUrl ? (
+                            <img
+                              src={item.thumbnailUrl}
+                              alt=""
+                              className="w-full h-full object-cover"
+                              loading="lazy"
+                              onError={e => {
+                                ;(e.target as HTMLImageElement).style.display = 'none'
+                              }}
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              {getMediaIcon(item.mediaType || 'image')}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate">
+                            {item.name || item.caption || item.mediaType}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {item.mediaType}
+                            {item.recommendedPrice > 0 && ` · $${item.recommendedPrice}`}
+                            {item.createdAt &&
+                              ` · ${new Date(item.createdAt).toLocaleDateString()}`}
+                          </p>
+                        </div>
+                      </CardContent>
+                    )}
+                  </Card>
+                ))}
+              </div>
+
+              {/* Pagination / Load More */}
+              <div className="flex justify-center gap-2 pt-4">
+                {fanvuePage > 1 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={fanvueLoading}
+                    onClick={() => fetchFanvueMedia(fanvuePage - 1)}
+                  >
+                    <ChevronLeft className="w-4 h-4 mr-1" />
+                    Previous
+                  </Button>
+                )}
+                <span className="flex items-center text-sm text-muted-foreground px-3">
+                  Page {fanvuePage}
+                </span>
+                {fanvueHasMore && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={fanvueLoading}
+                    onClick={() => fetchFanvueMedia(fanvuePage + 1)}
+                  >
+                    Next
+                    <ChevronRight className="w-4 h-4 ml-1" />
+                  </Button>
+                )}
+                {fanvueLoading && <Loader2 className="w-4 h-4 animate-spin ml-2" />}
+              </div>
+            </>
+          )}
+        </>
+      )}
+
+      {/* ─── UPLOADED TAB ─────────────────────────────────────────────────── */}
+      {activeTab === 'uploaded' && (
+        <>
+          {/* Upload Zone */}
+          <Card
+            className={cn(
+              'border-2 border-dashed transition-colors',
+              isDragging ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
+            )}
+          >
+            <CardContent className="py-8">
+              <div
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                className="flex flex-col items-center justify-center text-center"
+              >
+                <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+                  <Upload className="w-8 h-8 text-primary" />
+                </div>
+                <h3 className="text-lg font-medium mb-2">
+                  {isDragging ? 'Drop files here' : 'Upload Custom Content'}
+                </h3>
+                <p className="text-muted-foreground text-sm mb-4">
+                  Drag and drop images, videos, or audio files
+                </p>
+                <Button
+                  variant="outline"
+                  disabled={isUploading}
+                  onClick={() => document.getElementById('file-upload')?.click()}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  {isUploading ? 'Uploading...' : 'Choose Files'}
+                </Button>
+                <input
+                  id="file-upload"
+                  type="file"
+                  multiple
+                  accept="image/*,video/*,audio/*"
+                  className="hidden"
+                  onChange={e => handleFileUpload(e.target.files)}
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Content Type</Label>
-                <Select
-                  value={editForm.content_type}
-                  onValueChange={v => setEditForm({ ...editForm, content_type: v as any })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="free">Free</SelectItem>
-                    <SelectItem value="ppv">PPV</SelectItem>
-                    <SelectItem value="subscription">Subscription</SelectItem>
-                    <SelectItem value="tip">Tip Unlock</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+            </CardContent>
+          </Card>
 
-            <div className="space-y-2">
-              <Label>Model</Label>
-              <Select
-                value={editForm.model_id}
-                onValueChange={v => setEditForm({ ...editForm, model_id: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select model..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">No model</SelectItem>
-                  {models.map(m => (
-                    <SelectItem key={m.id} value={m.id}>
-                      {m.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Tags (comma-separated)</Label>
+          {/* Search */}
+          <div className="flex items-center gap-4">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
-                value={editForm.tags}
-                onChange={e => setEditForm({ ...editForm, tags: e.target.value })}
-                placeholder="sexy, gym, selfie"
+                placeholder="Search uploads..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="pl-9"
               />
+            </div>
+            <div className="flex border rounded-lg">
+              <Button
+                variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
+                size="icon"
+                onClick={() => setViewMode('grid')}
+              >
+                <Grid3X3 className="w-4 h-4" />
+              </Button>
+              <Button
+                variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+                size="icon"
+                onClick={() => setViewMode('list')}
+              >
+                <List className="w-4 h-4" />
+              </Button>
             </div>
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleSaveEdit}>Save Changes</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          {/* Uploaded Grid */}
+          {filteredUploaded.length === 0 ? (
+            <Card>
+              <CardContent className="py-16 text-center">
+                <ImageIcon className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                <h3 className="text-lg font-medium mb-2">No uploaded assets</h3>
+                <p className="text-muted-foreground">
+                  Upload custom content above, or browse Fanvue media in the other tab
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div
+              className={cn(
+                viewMode === 'grid'
+                  ? 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4'
+                  : 'space-y-2'
+              )}
+            >
+              {filteredUploaded.map(asset => (
+                <Card
+                  key={asset.id}
+                  className="group overflow-hidden hover:border-primary/30 transition-colors"
+                >
+                  {viewMode === 'grid' ? (
+                    <>
+                      <div className="aspect-square relative bg-muted">
+                        {asset.thumbnail_url || asset.url ? (
+                          <img
+                            src={asset.thumbnail_url || asset.url}
+                            alt={asset.title || asset.file_name}
+                            className="w-full h-full object-cover"
+                            loading="lazy"
+                            onError={e => {
+                              ;(e.target as HTMLImageElement).style.display = 'none'
+                            }}
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            {getMediaIcon(asset.file_type)}
+                          </div>
+                        )}
+                        {asset.price > 0 && (
+                          <div className="absolute top-2 right-2">
+                            <Badge className="bg-green-500/90 text-white">
+                              <DollarSign className="w-3 h-3 mr-0.5" />${asset.price}
+                            </Badge>
+                          </div>
+                        )}
+                        {/* Hover delete */}
+                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <Button
+                            size="icon"
+                            variant="destructive"
+                            onClick={e => {
+                              e.stopPropagation()
+                              handleDeleteUploaded(asset)
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                      <CardContent className="p-3">
+                        <p className="font-medium text-sm truncate">
+                          {asset.title || asset.file_name}
+                        </p>
+                        <p className="text-xs text-muted-foreground">Used {asset.usage_count}x</p>
+                      </CardContent>
+                    </>
+                  ) : (
+                    <CardContent className="p-4 flex items-center gap-4">
+                      <div className="w-16 h-16 rounded-lg bg-muted overflow-hidden shrink-0">
+                        {asset.thumbnail_url || asset.url ? (
+                          <img
+                            src={asset.thumbnail_url || asset.url}
+                            alt=""
+                            className="w-full h-full object-cover"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            {getMediaIcon(asset.file_type)}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate">{asset.title || asset.file_name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {asset.file_type} · Used {asset.usage_count}x
+                          {asset.price > 0 && ` · $${asset.price}`}
+                        </p>
+                      </div>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="text-destructive"
+                        onClick={() => handleDeleteUploaded(asset)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </CardContent>
+                  )}
+                </Card>
+              ))}
+            </div>
+          )}
+        </>
+      )}
     </div>
   )
 }
