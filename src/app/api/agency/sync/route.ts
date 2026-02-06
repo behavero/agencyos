@@ -22,6 +22,7 @@ import {
 import { createFanvueClient } from '@/lib/fanvue/client'
 import { syncAgencyTopSpenders } from '@/lib/services/top-spenders-syncer'
 import { syncAgencySubscriberHistory } from '@/lib/services/subscriber-history-syncer'
+import { syncAllTrackingLinks } from '@/lib/services/tracking-links-syncer'
 
 const API_URL = 'https://api.fanvue.com'
 
@@ -441,6 +442,38 @@ export async function POST(_request: NextRequest) {
       console.error('   ⚠️ Subscriber history sync failed:', error.message)
     }
 
+    // STEP 7: Sync Tracking Links
+    console.log('\n🔗 STEP 7: TRACKING LINKS SYNC')
+    let trackingLinksResult = { totalSynced: 0, modelsProcessed: 0, errors: [] as string[] }
+    try {
+      trackingLinksResult = await syncAllTrackingLinks(profile.agency_id)
+      console.log(
+        `   ✅ Synced ${trackingLinksResult.totalSynced} tracking links from ${trackingLinksResult.modelsProcessed} models`
+      )
+    } catch (error: any) {
+      console.error('   ⚠️ Tracking links sync failed:', error.message)
+    }
+
+    // STEP 8: Refresh model stats (subs, followers, etc.) using the freshly synced data
+    console.log('\n📊 STEP 8: REFRESH MODEL STATS')
+    try {
+      const statsResponse = await fetch(
+        new URL(
+          '/api/creators/stats/refresh-all',
+          process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+        ),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agencyId: profile.agency_id }),
+        }
+      )
+      const statsResult = await statsResponse.json()
+      console.log(`   ✅ Stats refreshed: ${statsResult.refreshed}/${statsResult.total} models`)
+    } catch (error: any) {
+      console.error('   ⚠️ Stats refresh failed:', error.message)
+    }
+
     // Update last sync timestamp
     await updateAgencyLastSync(profile.agency_id)
 
@@ -457,16 +490,21 @@ export async function POST(_request: NextRequest) {
     console.log(`   Total earnings synced: ${totalSynced}`)
     console.log(`   VIP fans tracked: ${topSpendersResult.totalSpenders}`)
     console.log(`   History days synced: ${subscriberHistoryResult.totalDays}`)
+    console.log(`   Tracking links synced: ${trackingLinksResult.totalSynced}`)
 
     return NextResponse.json({
       success: true,
-      message: `✅ Synced ${successCount} creators: ${totalSynced} earnings, ${topSpendersResult.totalSpenders} VIP fans`,
+      message: `✅ Synced ${successCount} creators: ${totalSynced} earnings, ${topSpendersResult.totalSpenders} VIP fans, ${trackingLinksResult.totalSynced} tracking links`,
       creatorsFound: creators.length,
       creatorsImported: importResult.imported,
       creatorsUpdated: importResult.updated,
       syncResults,
       topSpendersResult,
       subscriberHistoryResult,
+      trackingLinksResult: {
+        totalSynced: trackingLinksResult.totalSynced,
+        modelsProcessed: trackingLinksResult.modelsProcessed,
+      },
       summary: {
         totalCreators: creators.length,
         successfulSyncs: successCount,
@@ -474,6 +512,7 @@ export async function POST(_request: NextRequest) {
         totalVIPFans: topSpendersResult.totalSpenders,
         totalVIPRevenue: topSpendersResult.totalRevenue,
         totalHistoryDays: subscriberHistoryResult.totalDays,
+        totalTrackingLinks: trackingLinksResult.totalSynced,
         durationSeconds: parseFloat(duration),
       },
     })

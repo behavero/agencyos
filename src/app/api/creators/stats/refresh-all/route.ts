@@ -5,6 +5,39 @@ import { getModelAccessToken } from '@/lib/services/fanvue-auth'
 import { getAgencyFanvueToken } from '@/lib/services/agency-fanvue-auth'
 
 /**
+ * Derive subscriber/follower counts from our own data when Fanvue API calls fail.
+ * Uses subscriber_history (most accurate), then falls back to transaction-based counts.
+ */
+async function getDerivedCounts(
+  adminClient: ReturnType<typeof createAdminClient>,
+  modelId: string,
+  agencyId: string
+): Promise<{ subscribers: number; followers: number }> {
+  // Strategy 1: Latest subscriber_history entry (most accurate)
+  const { data: latestHistory } = await adminClient
+    .from('subscriber_history')
+    .select('subscribers_total')
+    .eq('model_id', modelId)
+    .order('date', { ascending: false })
+    .limit(1)
+    .single()
+
+  if (latestHistory?.subscribers_total && latestHistory.subscribers_total > 0) {
+    return { subscribers: latestHistory.subscribers_total, followers: 0 }
+  }
+
+  // Strategy 2: Count unique fans from subscription transactions
+  const { count: uniqueSubFans } = await adminClient
+    .from('fanvue_transactions')
+    .select('fan_id', { count: 'exact', head: true })
+    .eq('model_id', modelId)
+    .eq('transaction_type', 'subscription')
+    .not('fan_id', 'is', null)
+
+  return { subscribers: uniqueSubFans || 0, followers: 0 }
+}
+
+/**
  * Bulk refresh stats for all creators in an agency.
  * Fetches live data from Fanvue API in parallel for all creators.
  *
@@ -153,6 +186,38 @@ export async function POST(request: Request) {
               if (totalSubscribers > 0) stats.subscribers_count = totalSubscribers
             }
 
+            // Fallback: if smart lists didn't return subs, derive from our own data
+            if (!stats.subscribers_count) {
+              const derived = await getDerivedCounts(adminClient, model.id, agencyId)
+              if (derived.subscribers > 0) {
+                stats.subscribers_count = derived.subscribers
+                console.log(
+                  `[Bulk Stats] Using derived subscriber count for ${model.name}: ${derived.subscribers}`
+                )
+              }
+            }
+
+            // Fallback: try subscriber history endpoint for subscriber count
+            if (!stats.subscribers_count) {
+              try {
+                const subHistory = await fanvue.getCreatorSubscriberHistory(uuid, {
+                  startDate: new Date(Date.now() - 7 * 86400000).toISOString(),
+                  size: 1,
+                })
+                if (subHistory?.data?.length > 0) {
+                  const latest = subHistory.data[subHistory.data.length - 1]
+                  if (latest.total > 0) {
+                    stats.subscribers_count = latest.total
+                    console.log(
+                      `[Bulk Stats] Using subscriber history for ${model.name}: ${latest.total}`
+                    )
+                  }
+                }
+              } catch {
+                // Subscriber history not available
+              }
+            }
+
             // Only update revenue if we got earnings data (never overwrite with 0)
             if (totalRevenueCents > 0) {
               stats.revenue_total = totalRevenueCents / 100
@@ -245,6 +310,46 @@ export async function POST(request: Request) {
               if (user.avatarUrl) stats.avatar_url = user.avatarUrl
               if (user.bannerUrl) stats.banner_url = user.bannerUrl
               if (user.bio) stats.bio = user.bio
+            }
+
+            // Fallback: if getCurrentUser didn't return subscriber counts, try dedicated endpoints
+            if (!stats.subscribers_count) {
+              try {
+                const subCount = await fanvue.getSubscribersCount()
+                if (subCount?.total > 0) {
+                  stats.subscribers_count = subCount.total
+                  console.log(
+                    `[Bulk Stats] Using getSubscribersCount for ${model.name}: ${subCount.total}`
+                  )
+                }
+              } catch {
+                // getSubscribersCount not available
+              }
+            }
+
+            if (!stats.followers_count) {
+              try {
+                const followers = await fanvue.getFollowers(1, 1)
+                if (followers?.totalCount > 0) {
+                  stats.followers_count = followers.totalCount
+                  console.log(
+                    `[Bulk Stats] Using getFollowers for ${model.name}: ${followers.totalCount}`
+                  )
+                }
+              } catch {
+                // getFollowers not available
+              }
+            }
+
+            // Last resort: derive from our own data
+            if (!stats.subscribers_count || !stats.followers_count) {
+              const derived = await getDerivedCounts(adminClient, model.id, agencyId)
+              if (!stats.subscribers_count && derived.subscribers > 0) {
+                stats.subscribers_count = derived.subscribers
+                console.log(
+                  `[Bulk Stats] Using derived subscriber count for ${model.name}: ${derived.subscribers}`
+                )
+              }
             }
 
             // Only update revenue if we got earnings data (never overwrite with 0)

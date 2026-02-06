@@ -1,11 +1,12 @@
 /**
  * Tracking Links Syncer
- * 
+ *
  * Syncs tracking link data from Fanvue API to database.
  * Includes clicks, follows, subscribers, and revenue data.
  */
 
 import { createAdminClient } from '@/lib/supabase/server'
+import { getAgencyFanvueToken } from '@/lib/services/agency-fanvue-auth'
 
 const FANVUE_API_VERSION = '2025-06-26'
 
@@ -53,10 +54,10 @@ async function fetchTrackingLinks(
   }
 
   console.log(`[tracking-links] Fetching: ${url.toString()}`)
-  
+
   const response = await fetch(url.toString(), {
     headers: {
-      'Authorization': `Bearer ${accessToken}`,
+      Authorization: `Bearer ${accessToken}`,
       'X-Fanvue-API-Version': FANVUE_API_VERSION,
     },
   })
@@ -113,14 +114,13 @@ export async function syncTrackingLinksForModel(
       const subsCount = link.engagement?.acquiredSubscribers || 0
       const followsCount = link.engagement?.acquiredFollowers || 0
       const totalGross = (link.earnings?.totalGross || 0) / 100 // Convert cents to dollars
-      
+
       // Note: Fanvue API doesn't separate subs_revenue from user_spend
       // We only get totalGross which is ALL revenue from this tracking link
       // Store it as subs_revenue for now (it's actually total attributed revenue)
-      
-      const { error } = await supabase
-        .from('tracking_links')
-        .upsert({
+
+      const { error } = await supabase.from('tracking_links').upsert(
+        {
           fanvue_uuid: link.uuid,
           model_id: modelId,
           agency_id: agencyId,
@@ -134,9 +134,11 @@ export async function syncTrackingLinksForModel(
           user_spend: 0, // API doesn't provide this breakdown
           link_created_at: link.createdAt,
           last_synced_at: new Date().toISOString(),
-        }, {
+        },
+        {
           onConflict: 'fanvue_uuid,model_id',
-        })
+        }
+      )
 
       if (error) {
         result.errors.push(`Failed to upsert link ${link.name}: ${error.message}`)
@@ -160,7 +162,7 @@ export async function syncAllTrackingLinks(agencyId: string): Promise<{
   errors: string[]
 }> {
   const supabase = await createAdminClient()
-  
+
   // Get all models with Fanvue connection
   const { data: models, error: modelsError } = await supabase
     .from('models')
@@ -176,16 +178,21 @@ export async function syncAllTrackingLinks(agencyId: string): Promise<{
   let modelsProcessed = 0
   const errors: string[] = []
 
-  // Get agency admin token ONCE - more reliable for tracking links
-  const { data: agencyAdmin } = await supabase
-    .from('models')
-    .select('fanvue_access_token')
-    .eq('agency_id', agencyId)
-    .not('fanvue_access_token', 'is', null)
-    .limit(1)
-    .single()
-
-  const agencyToken = agencyAdmin?.fanvue_access_token
+  // Get agency OAuth token from agency_fanvue_connections (source of truth)
+  let agencyToken: string | null = null
+  try {
+    agencyToken = await getAgencyFanvueToken(agencyId)
+  } catch {
+    // Fall back to model-level token if agency connection unavailable
+    const { data: agencyAdmin } = await supabase
+      .from('models')
+      .select('fanvue_access_token')
+      .eq('agency_id', agencyId)
+      .not('fanvue_access_token', 'is', null)
+      .limit(1)
+      .single()
+    agencyToken = agencyAdmin?.fanvue_access_token || null
+  }
 
   if (!agencyToken) {
     throw new Error('No agency access token available')
@@ -204,14 +211,14 @@ export async function syncAllTrackingLinks(agencyId: string): Promise<{
         model.fanvue_user_uuid,
         token
       )
-      
+
       totalSynced += result.synced
       modelsProcessed++
-      
+
       if (result.errors.length > 0) {
         errors.push(...result.errors.map(e => `[${model.name}] ${e}`))
       }
-      
+
       console.log(`[tracking-links] Synced ${result.synced} links for ${model.name}`)
     } catch (error) {
       errors.push(`[${model.name}] ${error instanceof Error ? error.message : 'Unknown error'}`)
@@ -231,20 +238,22 @@ export async function getTopTrackingLinks(
     sortBy?: 'clicks' | 'subs_count' | 'total_revenue' | 'roi'
     limit?: number
   } = {}
-): Promise<{
-  id: string
-  name: string
-  platform: string | null
-  clicks: number
-  followsCount: number
-  subsCount: number
-  subsRevenue: number
-  userSpend: number
-  totalRevenue: number
-  conversionRate: number
-  roi: number
-  createdAt: string
-}[]> {
+): Promise<
+  {
+    id: string
+    name: string
+    platform: string | null
+    clicks: number
+    followsCount: number
+    subsCount: number
+    subsRevenue: number
+    userSpend: number
+    totalRevenue: number
+    conversionRate: number
+    roi: number
+    createdAt: string
+  }[]
+> {
   const supabase = await createAdminClient()
   const { sortBy = 'total_revenue', limit = 10, modelId } = options
 
@@ -304,10 +313,7 @@ export async function getClickToSubRate(
 }> {
   const supabase = await createAdminClient()
 
-  let query = supabase
-    .from('tracking_links')
-    .select('clicks, subs_count')
-    .eq('agency_id', agencyId)
+  let query = supabase.from('tracking_links').select('clicks, subs_count').eq('agency_id', agencyId)
 
   if (modelId) {
     query = query.eq('model_id', modelId)
