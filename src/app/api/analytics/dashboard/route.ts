@@ -23,6 +23,7 @@ import type { ChartDataPoint, KPIMetrics, CategoryBreakdown } from '@/lib/servic
 const emptyKPIMetrics: KPIMetrics = {
   totalRevenue: 0,
   netRevenue: 0,
+  totalExpenses: 0,
   activeSubscribers: 0,
   arpu: 0,
   messageConversionRate: 0,

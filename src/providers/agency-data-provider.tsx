@@ -33,6 +33,7 @@ export interface ModelWithStats extends Model {
 export interface AgencyStats {
   totalRevenue: number
   netRevenue: number
+  totalExpenses: number
   totalSubscribers: number
   totalFollowers: number
   activeModels: number
@@ -40,6 +41,13 @@ export interface AgencyStats {
   ltv: number
   transactionCount: number
   revenueGrowth: number
+}
+
+// Tracking link summary
+export interface TrackingLinkSummary {
+  totalClicks: number
+  totalSubs: number
+  clickToSubRate: number
 }
 
 // Transaction summary for charts
@@ -66,6 +74,7 @@ export interface AgencyDataState {
   chartData: ChartDataPoint[]
   categoryBreakdown: CategoryBreakdown[]
   kpiMetrics: KPIMetrics | null
+  trackingLinkStats: TrackingLinkSummary | null
 
   // Loading states
   isLoading: boolean
@@ -90,6 +99,7 @@ export interface AgencyDataState {
 const emptyStats: AgencyStats = {
   totalRevenue: 0,
   netRevenue: 0,
+  totalExpenses: 0,
   totalSubscribers: 0,
   totalFollowers: 0,
   activeModels: 0,
@@ -102,6 +112,7 @@ const emptyStats: AgencyStats = {
 const emptyKPIs: KPIMetrics = {
   totalRevenue: 0,
   netRevenue: 0,
+  totalExpenses: 0,
   activeSubscribers: 0,
   arpu: 0,
   messageConversionRate: 0,
@@ -157,6 +168,7 @@ export function AgencyProvider({
   const [chartData, setChartData] = useState<ChartDataPoint[]>([])
   const [categoryBreakdown, setCategoryBreakdown] = useState<CategoryBreakdown[]>([])
   const [kpiMetrics, setKpiMetrics] = useState<KPIMetrics | null>(null)
+  const [trackingLinkStats, setTrackingLinkStats] = useState<TrackingLinkSummary | null>(null)
 
   // Loading states
   const [isLoading, setIsLoading] = useState(true)
@@ -226,6 +238,7 @@ export function AgencyProvider({
         setAgencyStats({
           totalRevenue: data.kpiMetrics.totalRevenue || 0,
           netRevenue: data.kpiMetrics.netRevenue || 0,
+          totalExpenses: data.kpiMetrics.totalExpenses || 0,
           totalSubscribers: data.kpiMetrics.activeSubscribers || 0,
           totalFollowers: 0, // Will be calculated from models
           activeModels: models.length,
@@ -241,6 +254,17 @@ export function AgencyProvider({
 
       // Fetch model-level revenue breakdown
       await fetchModelStats()
+
+      // Fetch tracking link stats (non-blocking)
+      try {
+        const tlRes = await fetch('/api/analytics/tracking-links?limit=0')
+        const tlData = await tlRes.json()
+        if (tlData.success && tlData.data?.stats) {
+          setTrackingLinkStats(tlData.data.stats)
+        }
+      } catch (tlErr) {
+        console.error('[AgencyProvider] Tracking links fetch error:', tlErr)
+      }
 
       setError(null)
       setLastRefreshed(new Date())
@@ -395,6 +419,7 @@ export function AgencyProvider({
     chartData,
     categoryBreakdown,
     kpiMetrics,
+    trackingLinkStats,
 
     // Loading states
     isLoading,

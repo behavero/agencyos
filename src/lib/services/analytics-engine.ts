@@ -29,6 +29,7 @@ export interface ChartDataPoint {
 export interface KPIMetrics {
   totalRevenue: number
   netRevenue: number
+  totalExpenses: number // From expenses table (manual entries)
   activeSubscribers: number
   arpu: number // Average Revenue Per User
   messageConversionRate: number
@@ -268,6 +269,20 @@ export async function getKPIMetrics(
   }
 
   const { data: models } = await modelsQuery
+
+  // Query expenses for this agency (monthly recurring + one-time in period)
+  const { data: expensesData } = await supabase
+    .from('expenses')
+    .select('amount, frequency, is_recurring')
+    .eq('agency_id', agencyId)
+
+  // Calculate monthly expense total
+  const monthlyExpenses = (expensesData || []).reduce((sum, e) => {
+    const amount = Number(e.amount) || 0
+    if (e.frequency === 'yearly') return sum + amount / 12
+    if (e.frequency === 'weekly') return sum + amount * 4.33
+    return sum + amount // monthly or one-time
+  }, 0)
 
   // Get ACTUAL subscriber and follower counts from Fanvue Smart Lists (stored in models table)
   // This is the source of truth for audience metrics
@@ -591,13 +606,20 @@ export async function getKPIMetrics(
   // This uses actual Fanvue data, not transaction-based estimates
   const newFans = totalAudienceFromFanvue // Actual current audience from Fanvue
 
-  // 6. Unlock Rate: N/A - Fanvue API doesn't provide "PPV sent" data (only "PPV purchased")
-  // This would require tracking from chatting tool
-  const unlockRate = 0 // Placeholder until we implement chat tracking
+  // 6. Unlock Rate: approximate from message transactions with revenue vs total messages
+  // Messages with revenue / total messages sent gives us a rough unlock rate
+  const messageRevenueCount =
+    currentTransactions?.filter(tx => tx.transaction_type === 'message' && Number(tx.amount) > 0)
+      .length || 0
+  const totalMessagesInSample =
+    currentTransactions?.filter(tx => tx.transaction_type === 'message').length || 0
+  const unlockRate =
+    totalMessagesInSample > 0 ? (messageRevenueCount / totalMessagesInSample) * 100 : 0
 
   return {
     totalRevenue: Math.round(totalRevenue),
     netRevenue: Math.round(netRevenue),
+    totalExpenses: Math.round(monthlyExpenses),
     activeSubscribers: modelSubscribers, // Current active subscribers from Fanvue Smart Lists
     arpu: Math.round(arpu * 100) / 100, // Round to 2 decimal places
     messageConversionRate: Math.round(messageConversionRate * 10) / 10, // Messages per subscriber (%)
@@ -935,6 +957,7 @@ function getEmptyKPIMetrics(): KPIMetrics {
   return {
     totalRevenue: 0,
     netRevenue: 0,
+    totalExpenses: 0,
     activeSubscribers: 0,
     arpu: 0,
     messageConversionRate: 0,

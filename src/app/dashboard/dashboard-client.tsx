@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -122,6 +122,38 @@ const modelChartConfig = {
   },
 } satisfies ChartConfig
 
+/** Click-to-Sub Card - fetches from tracking links API */
+function ClickToSubCard({ agencyId }: { agencyId?: string }) {
+  const { data } = useQuery({
+    queryKey: ['click-to-sub', agencyId],
+    queryFn: async () => {
+      const res = await fetch('/api/analytics/tracking-links?limit=0')
+      const json = await res.json()
+      return json.data?.stats || { totalClicks: 0, totalSubs: 0, clickToSubRate: 0 }
+    },
+    enabled: !!agencyId,
+    staleTime: 60_000,
+  })
+
+  return (
+    <Card className="glass border-rose-500/20">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-sm font-medium">Click to Sub</CardTitle>
+        <TrendingUp className="h-4 w-4 text-rose-400" />
+      </CardHeader>
+      <CardContent>
+        <div className="text-2xl font-bold text-rose-400">
+          {(data?.clickToSubRate ?? 0).toFixed(1)}%
+        </div>
+        <p className="text-xs text-muted-foreground mt-1">
+          {(data?.totalClicks ?? 0).toLocaleString()} clicks /{' '}
+          {(data?.totalSubs ?? 0).toLocaleString()} subs
+        </p>
+      </CardContent>
+    </Card>
+  )
+}
+
 /**
  * Dashboard Client Component
  * Phase 64 - Unified Data Architecture
@@ -159,9 +191,6 @@ export default function DashboardClient() {
     timeSinceUpdate,
     refresh: refreshRevenue,
   } = useRevenueHeartbeat()
-
-  // Calculate total expenses from models (for backwards compatibility)
-  const totalExpenses = 0 // TODO: Get from context
 
   // Default empty arrays for removed server-side props (now fetched client-side)
   const revenueHistory: RevenueDataPoint[] = []
@@ -202,6 +231,9 @@ export default function DashboardClient() {
     categoryBreakdown: CategoryBreakdown[]
   } | null>(null)
   const [isLoadingOverview, setIsLoadingOverview] = useState(false)
+
+  // Get expenses from KPI metrics (queried from expenses table)
+  const totalExpenses = overviewData?.kpiMetrics?.totalExpenses ?? 0
 
   // Sync context data with local state when context updates
   useEffect(() => {
@@ -356,6 +388,7 @@ export default function DashboardClient() {
   const emptyKPIMetrics: KPIMetrics = {
     totalRevenue: 0,
     netRevenue: 0,
+    totalExpenses: 0,
     activeSubscribers: 0,
     arpu: 0,
     messageConversionRate: 0,
@@ -379,6 +412,23 @@ export default function DashboardClient() {
       categoryBreakdown: modelCategoryBreakdown,
     }
   }, [modelChartData, modelKPIMetrics, modelCategoryBreakdown])
+
+  // Auto-trigger a background sync on mount if any model has stale stats (>5 min old)
+  const initialSyncRan = useRef(false)
+  useEffect(() => {
+    if (initialSyncRan.current || !agency?.id || models.length === 0) return
+    const now = Date.now()
+    const STALE_THRESHOLD = 5 * 60 * 1000 // 5 minutes
+    const hasStale = models.some(m => {
+      const updatedAt = m.updated_at ? new Date(m.updated_at).getTime() : 0
+      return now - updatedAt > STALE_THRESHOLD
+    })
+    if (hasStale) {
+      initialSyncRan.current = true
+      console.log('[Dashboard] Triggering background sync for stale data...')
+      fetch('/api/cron/revenue-heartbeat').catch(() => {})
+    }
+  }, [agency?.id, models])
 
   // Handle OAuth success/error notifications
   useEffect(() => {
@@ -474,10 +524,13 @@ export default function DashboardClient() {
     // Use dynamic overview data (filtered by date)
     if (overviewData?.chartData && overviewData.chartData.length > 0) {
       console.log('[monthlyData] Using filtered overview data from API')
+      // Distribute monthly expenses evenly across chart data points
+      const pointCount = overviewData.chartData.length
+      const expensePerPoint = pointCount > 0 ? totalExpenses / pointCount : 0
       return overviewData.chartData.map(point => ({
-        month: point.date, // Will be "Jan", "Feb" etc. (already formatted by analytics-engine)
+        month: point.date,
         revenue: point.total || 0,
-        expenses: 0, // TODO: Add expense tracking
+        expenses: Math.round(expensePerPoint),
         subscribers: 0,
         followers: 0,
       }))
@@ -1258,16 +1311,7 @@ export default function DashboardClient() {
               </CardContent>
             </Card>
 
-            <Card className="glass border-rose-500/20">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Click to Sub</CardTitle>
-                <TrendingUp className="h-4 w-4 text-rose-400" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-rose-400">0.0%</div>
-                <p className="text-xs text-muted-foreground mt-1">Tracking links conversion</p>
-              </CardContent>
-            </Card>
+            <ClickToSubCard agencyId={agency?.id} />
           </div>
 
           {/* Conversion Stats Row - REMOVED redundant cards */}

@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { useEffect, useState } from 'react'
 import { getNavigationForRole, UserRole } from '@/lib/auth/permissions'
+import { useAgencyDataOptional } from '@/providers/agency-data-provider'
 import {
   LayoutDashboard,
   MessageSquare,
@@ -150,6 +151,7 @@ export function Sidebar() {
   const pathname = usePathname()
   const [userRole, setUserRole] = useState<UserRole | null>(null)
   const [loading, setLoading] = useState(true)
+  const agencyData = useAgencyDataOptional()
 
   useEffect(() => {
     // Fetch user role
@@ -247,15 +249,37 @@ export function Sidebar() {
         )}
       </nav>
 
-      {/* Footer */}
-      <div className="p-4 border-t border-sidebar-border">
+      {/* Footer with Live Stats */}
+      <div className="p-4 border-t border-sidebar-border space-y-2">
+        {agencyData && agencyData.agencyStats.totalRevenue > 0 && (
+          <div className="grid grid-cols-2 gap-2 px-1 mb-2">
+            <div className="text-center">
+              <div className="text-xs font-bold text-primary">
+                ${(agencyData.agencyStats.totalRevenue / 1000).toFixed(1)}k
+              </div>
+              <div className="text-[10px] text-muted-foreground">Revenue</div>
+            </div>
+            <div className="text-center">
+              <div className="text-xs font-bold text-teal-400">
+                {agencyData.agencyStats.totalSubscribers.toLocaleString()}
+              </div>
+              <div className="text-[10px] text-muted-foreground">Subs</div>
+            </div>
+          </div>
+        )}
         <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-sidebar-accent/50">
           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-green-400 flex items-center justify-center">
-            <span className="text-primary-foreground text-sm font-medium">F</span>
+            <span className="text-primary-foreground text-sm font-medium">
+              {agencyData?.agency?.name?.charAt(0) || 'O'}
+            </span>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-sidebar-foreground truncate">FFA Partners</p>
-            <p className="text-xs text-muted-foreground">Pro Plan</p>
+            <p className="text-sm font-medium text-sidebar-foreground truncate">
+              {agencyData?.agency?.name || 'OnyxOS'}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {agencyData?.models?.length || 0} creators
+            </p>
           </div>
         </div>
       </div>

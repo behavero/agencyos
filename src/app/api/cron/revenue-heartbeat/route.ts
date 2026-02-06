@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { syncModelTransactions } from '@/lib/services/transaction-syncer'
+import { syncAllTrackingLinks } from '@/lib/services/tracking-links-syncer'
+import { aggregateFanInsights } from '@/lib/services/fan-insights-aggregator'
 
 /**
  * GET /api/cron/revenue-heartbeat
@@ -142,6 +144,43 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Also sync tracking links for all agencies (piggyback on heartbeat for freshness)
+    let trackingLinksSynced = 0
+    try {
+      const { data: agencies } = await adminClient.from('agencies').select('id')
+      for (const agency of agencies || []) {
+        try {
+          const tlResult = await syncAllTrackingLinks(agency.id)
+          trackingLinksSynced += tlResult.totalSynced
+        } catch (tlError) {
+          console.error(
+            `[Revenue Heartbeat] Tracking links sync failed for agency ${agency.id}:`,
+            tlError
+          )
+        }
+      }
+      console.log(`[Revenue Heartbeat] Synced ${trackingLinksSynced} tracking links`)
+    } catch (tlError) {
+      console.error('[Revenue Heartbeat] Tracking links sync error:', tlError)
+    }
+
+    // Aggregate fan_insights from transaction data
+    let fanInsightsProcessed = 0
+    try {
+      const { data: agencies } = await adminClient.from('agencies').select('id')
+      for (const agency of agencies || []) {
+        try {
+          const fiResult = await aggregateFanInsights(agency.id)
+          fanInsightsProcessed += fiResult.fansProcessed
+        } catch (fiError) {
+          console.error(`[Revenue Heartbeat] Fan insights error for agency ${agency.id}:`, fiError)
+        }
+      }
+      console.log(`[Revenue Heartbeat] Aggregated ${fanInsightsProcessed} fan insights`)
+    } catch (fiError) {
+      console.error('[Revenue Heartbeat] Fan insights aggregation error:', fiError)
+    }
+
     const successful = results.filter(r => r.success).length
     const failed = results.filter(r => !r.success).length
     const totalTransactionsSynced = results.reduce((sum, r) => sum + r.transactionsSynced, 0)
@@ -152,6 +191,8 @@ export async function GET(request: NextRequest) {
       successful,
       failed,
       totalTransactionsSynced,
+      trackingLinksSynced,
+      fanInsightsProcessed,
       results,
       timestamp: new Date().toISOString(),
     })
