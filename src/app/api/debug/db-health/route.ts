@@ -35,14 +35,12 @@ export async function GET() {
       .select('*', { count: 'exact', head: true })
 
     // 4. Check agencies
-    const { data: agencies, error: agError } = await supabase
-      .from('agencies')
-      .select('id, name, slug')
+    const { data: agencies, error: agError } = await supabase.from('agencies').select('id, name')
 
     // 5. Check profiles
     const { data: profiles, error: profError } = await supabase
       .from('profiles')
-      .select('id, email, display_name, role, agency_id')
+      .select('id, display_name, role, agency_id')
 
     return NextResponse.json({
       timestamp: new Date().toISOString(),
@@ -91,7 +89,6 @@ export async function GET() {
         error: profError?.message,
         data: profiles?.map(p => ({
           id: p.id.substring(0, 8) + '...',
-          email: p.email,
           name: p.display_name,
           role: p.role,
           agency_id: p.agency_id,
