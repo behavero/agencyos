@@ -92,6 +92,7 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [searchQuery, setSearchQuery] = useState('')
   const [filterType, setFilterType] = useState<string>('all')
+  const [filterModelId, setFilterModelId] = useState<string>('all')
   const [sortBy, setSortBy] = useState<string>('recent')
   const [isCalculatingROI, setIsCalculatingROI] = useState(false)
   const [isSyncingFanvue, setIsSyncingFanvue] = useState(false)
@@ -315,6 +316,19 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
       const response = await fetch('/api/vault/sync-fanvue', {
         method: 'POST',
       })
+
+      // Handle non-JSON responses (e.g., Vercel timeout returns HTML)
+      const contentType = response.headers.get('content-type') || ''
+      if (!contentType.includes('application/json')) {
+        if (response.status === 504) {
+          toast.error('Sync timed out — try syncing one model at a time or try again later')
+        } else {
+          toast.error(`Sync failed (HTTP ${response.status}) — server returned a non-JSON response`)
+        }
+        console.error('[Vault Sync] Non-JSON response:', response.status, response.statusText)
+        return
+      }
+
       const result = await response.json()
 
       if (result.success) {
@@ -397,8 +411,11 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
         asset.tags?.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()))
 
       const matchesFilter = filterType === 'all' || asset.file_type === filterType
+      const matchesModel =
+        filterModelId === 'all' ||
+        (filterModelId === 'unassigned' ? !asset.model_id : asset.model_id === filterModelId)
 
-      return matchesSearch && matchesFilter
+      return matchesSearch && matchesFilter && matchesModel
     })
     .sort((a, b) => {
       switch (sortBy) {
@@ -439,6 +456,48 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
           </Badge>
         </div>
       </div>
+
+      {/* Model Filter Tabs */}
+      {models.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant={filterModelId === 'all' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setFilterModelId('all')}
+          >
+            All Models
+            <Badge variant="secondary" className="ml-2 text-xs">
+              {assets.length}
+            </Badge>
+          </Button>
+          {models.map(m => {
+            const count = assets.filter(a => a.model_id === m.id).length
+            return (
+              <Button
+                key={m.id}
+                variant={filterModelId === m.id ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setFilterModelId(m.id)}
+              >
+                {m.name}
+                <Badge variant="secondary" className="ml-2 text-xs">
+                  {count}
+                </Badge>
+              </Button>
+            )
+          })}
+          <Button
+            variant={filterModelId === 'unassigned' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setFilterModelId('unassigned')}
+          >
+            Unassigned
+            <Badge variant="secondary" className="ml-2 text-xs">
+              {assets.filter(a => !a.model_id).length}
+            </Badge>
+          </Button>
+        </div>
+      )}
 
       {/* Upload Zone */}
       <Card

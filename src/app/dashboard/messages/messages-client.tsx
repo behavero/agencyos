@@ -57,6 +57,7 @@ interface VaultAsset {
   file_type: string
   price: number
   content_type: string
+  model_id: string | null
 }
 
 interface MessagesClientProps {
@@ -572,14 +573,21 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
                     }}
                     isLoading={sendingMessage}
                     placeholder="Type a message..."
-                    vaultAssets={vaultAssets.map(asset => ({
-                      id: asset.id,
-                      title: asset.title,
-                      file_name: asset.file_name,
-                      file_type: asset.file_type as 'image' | 'video',
-                      file_url: asset.url,
-                      thumbnail_url: asset.url,
-                    }))}
+                    vaultAssets={vaultAssets
+                      .filter(
+                        asset =>
+                          !selectedModel?.id ||
+                          !asset.model_id ||
+                          asset.model_id === selectedModel.id
+                      )
+                      .map(asset => ({
+                        id: asset.id,
+                        title: asset.title,
+                        file_name: asset.file_name,
+                        file_type: asset.file_type as 'image' | 'video',
+                        file_url: asset.url,
+                        thumbnail_url: asset.url,
+                      }))}
                     macros={[
                       { id: '1', name: 'Good Morning', text: 'Good morning baby! 💕' },
                       { id: '2', name: 'Good Night', text: 'Good night, sweet dreams! 😘' },

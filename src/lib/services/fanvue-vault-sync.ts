@@ -27,7 +27,7 @@ export interface VaultSyncResult {
   }>
 }
 
-const MAX_PAGES = 50 // Safety limit: 50 pages × 50 items = 2500 media max per creator
+const MAX_PAGES = 20 // Safety limit: 20 pages × 50 items = 1000 media per creator (keeps within Vercel 120s timeout)
 const PAGE_SIZE = 50 // Max allowed by Fanvue API
 
 /**
