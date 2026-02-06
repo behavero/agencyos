@@ -130,11 +130,13 @@ const modelChartConfig = {
 } satisfies ChartConfig
 
 /** Click-to-Sub Card - fetches from tracking links API */
-function ClickToSubCard({ agencyId }: { agencyId?: string }) {
+function ClickToSubCard({ agencyId, modelId }: { agencyId?: string; modelId?: string }) {
   const { data } = useQuery({
-    queryKey: ['click-to-sub', agencyId],
+    queryKey: ['click-to-sub', agencyId, modelId],
     queryFn: async () => {
-      const res = await fetch('/api/analytics/tracking-links?limit=0')
+      const params = new URLSearchParams({ limit: '0' })
+      if (modelId && modelId !== 'all') params.set('modelId', modelId)
+      const res = await fetch(`/api/analytics/tracking-links?${params}`)
       const json = await res.json()
       return json.data?.stats || { totalClicks: 0, totalSubs: 0, clickToSubRate: 0 }
     },
@@ -509,18 +511,15 @@ export default function DashboardClient() {
     ? liveTotalRevenue
     : (overviewData?.kpiMetrics?.totalRevenue ?? 0)
   // Net revenue must come from the same source as gross revenue to avoid mismatched calculations.
-  // When in "All Time" view, gross comes from model stats (live total), so we estimate net
-  // at 80% (Fanvue's standard 20% fee) rather than using transaction-based net which may
-  // only represent a partial sync. When using date-filtered view, both come from transactions.
   const analyticsGrossRevenue = overviewData?.kpiMetrics?.totalRevenue ?? 0
   const analyticsNetRevenue = overviewData?.kpiMetrics?.netRevenue ?? 0
   const totalNetRevenue =
     isAllTimeView && liveTotalRevenue > 0 && analyticsGrossRevenue < liveTotalRevenue * 0.5
-      ? Math.round(liveTotalRevenue * 0.8) // Transactions only partially synced; estimate from model stats
+      ? Math.round(liveTotalRevenue * 0.8)
       : analyticsNetRevenue > 0
         ? analyticsNetRevenue
-        : Math.round(totalGrossRevenue * 0.8) // No transactions at all; estimate 80%
-  const platformFee = totalGrossRevenue - totalNetRevenue
+        : Math.round(totalGrossRevenue * 0.8)
+  const _platformFee = totalGrossRevenue - totalNetRevenue
   const afterPlatformFee = totalNetRevenue
   const taxRate = agency?.tax_rate ?? 0.2
   const profitBeforeTax = afterPlatformFee - totalExpenses
@@ -532,11 +531,42 @@ export default function DashboardClient() {
   const currentStreak = profile?.current_streak || 0
   const xpCount = profile?.xp_count || 0
   const nextLevelXp = currentLevel * 1000
+
+  // === OVERVIEW KPIs (Agency-wide — summed from models table) ===
   const totalFollowers = models.reduce((sum, m) => sum + Number(m.followers_count || 0), 0)
   const totalSubscribers = models.reduce((sum, m) => sum + Number(m.subscribers_count || 0), 0)
   const totalUnreadMessages = models.reduce((sum, m) => sum + Number(m.unread_messages || 0), 0)
   const totalLikes = models.reduce((sum, m) => sum + Number(m.likes_count || 0), 0)
   const totalPosts = models.reduce((sum, m) => sum + Number(m.posts_count || 0), 0)
+
+  // === FANVUE TAB KPIs (Model-specific when a model is selected) ===
+  // These provide model-isolated financials for the Fanvue & Finance tab
+  const fanvueSelectedModels =
+    selectedModelId === 'all' ? models : models.filter(m => m.id === selectedModelId)
+  const fanvueGrossRevenue =
+    selectedModelId === 'all'
+      ? totalGrossRevenue
+      : isAllTimeView
+        ? fanvueSelectedModels.reduce((sum, m) => sum + Number(m.revenue_total || 0), 0)
+        : (filteredFanvueData.kpiMetrics.totalRevenue ?? 0)
+  const fanvueNetRevenue =
+    filteredFanvueData.kpiMetrics.netRevenue > 0
+      ? filteredFanvueData.kpiMetrics.netRevenue
+      : Math.round(fanvueGrossRevenue * 0.8)
+  const fanvuePlatformFee = fanvueGrossRevenue - fanvueNetRevenue
+  const fanvueProfitBeforeTax = fanvueNetRevenue - totalExpenses
+  const fanvueTaxes = Math.max(0, fanvueProfitBeforeTax * taxRate)
+  const fanvueNetProfit = Math.max(0, fanvueProfitBeforeTax - fanvueTaxes)
+  const fanvueProfitMargin =
+    fanvueGrossRevenue > 0 ? ((fanvueNetProfit / fanvueGrossRevenue) * 100).toFixed(1) : '0'
+  const fanvueSubscribers = fanvueSelectedModels.reduce(
+    (sum, m) => sum + Number(m.subscribers_count || 0),
+    0
+  )
+  const fanvueFollowers = fanvueSelectedModels.reduce(
+    (sum, m) => sum + Number(m.followers_count || 0),
+    0
+  )
 
   // ===== DYNAMIC DATA FROM API (filtered by date range) =====
   // Format revenue + expense data for "Revenue vs Expenses" chart
@@ -1388,7 +1418,7 @@ export default function DashboardClient() {
                 </CardContent>
               </Card>
 
-              <ClickToSubCard agencyId={agency?.id} />
+              <ClickToSubCard agencyId={agency?.id} modelId={selectedModelId} />
             </div>
 
             {/* Conversion Stats Row - REMOVED redundant cards */}
@@ -1436,18 +1466,18 @@ export default function DashboardClient() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-6">
-                  {/* Revenue Metrics */}
+                  {/* Revenue Metrics — uses model-isolated data when a model is selected */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
                       <p className="text-sm text-muted-foreground">Gross Revenue</p>
                       <p className="text-2xl font-bold text-primary">
-                        {formatCurrency(totalGrossRevenue)}
+                        {formatCurrency(fanvueGrossRevenue)}
                       </p>
                     </div>
                     <div className="p-4 rounded-lg bg-muted/50">
                       <p className="text-sm text-muted-foreground">Platform Fee (20%)</p>
                       <p className="text-2xl font-bold text-red-400">
-                        -{formatCurrency(platformFee)}
+                        -{formatCurrency(fanvuePlatformFee)}
                       </p>
                     </div>
                     <div className="p-4 rounded-lg bg-muted/50">
@@ -1459,7 +1489,7 @@ export default function DashboardClient() {
                     <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/20">
                       <p className="text-sm text-muted-foreground">Net Profit</p>
                       <p className="text-2xl font-bold text-green-400">
-                        {formatCurrency(netProfit)}
+                        {formatCurrency(fanvueNetProfit)}
                       </p>
                     </div>
                   </div>
@@ -1468,12 +1498,12 @@ export default function DashboardClient() {
                   <div className="p-4 rounded-lg bg-gradient-to-r from-primary/10 to-green-500/10 border border-primary/20">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium">Profit Margin</span>
-                      <span className="text-3xl font-bold text-primary">{profitMargin}%</span>
+                      <span className="text-3xl font-bold text-primary">{fanvueProfitMargin}%</span>
                     </div>
                     <div className="h-3 bg-muted rounded-full overflow-hidden mt-2">
                       <div
                         className="h-full bg-gradient-to-r from-primary to-green-400 rounded-full transition-all"
-                        style={{ width: `${Math.min(Number(profitMargin), 100)}%` }}
+                        style={{ width: `${Math.min(Number(fanvueProfitMargin), 100)}%` }}
                       />
                     </div>
                   </div>
@@ -1488,7 +1518,9 @@ export default function DashboardClient() {
                           rate
                         </p>
                       </div>
-                      <p className="text-xl font-bold text-yellow-400">{formatCurrency(taxes)}</p>
+                      <p className="text-xl font-bold text-yellow-400">
+                        {formatCurrency(fanvueTaxes)}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -1564,7 +1596,7 @@ export default function DashboardClient() {
               </Card>
             )}
 
-            {/* Model Performance Comparison */}
+            {/* Model Performance Comparison — filters to selected model */}
             <Card className="glass">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -1572,16 +1604,18 @@ export default function DashboardClient() {
                   Model Performance
                 </CardTitle>
                 <CardDescription>
-                  Compare revenue and subscribers across your creators
+                  {selectedModelId === 'all'
+                    ? 'Compare revenue and subscribers across your creators'
+                    : `Performance for ${selectedModel?.name || 'selected model'}`}
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {models.map((model: any) => {
+                  {fanvueSelectedModels.map((model: any) => {
                     const modelRevenue = Number(model.revenue_total || 0)
                     const modelSubs = Number(model.subscribers_count || 0)
                     const revenuePercent =
-                      totalGrossRevenue > 0 ? (modelRevenue / totalGrossRevenue) * 100 : 0
+                      fanvueGrossRevenue > 0 ? (modelRevenue / fanvueGrossRevenue) * 100 : 0
 
                     return (
                       <div
@@ -1644,8 +1678,28 @@ export default function DashboardClient() {
         {/* Social Media Tab */}
         <TabsContent value="social" className="space-y-6 mt-0">
           <CardErrorBoundary fallbackTitle="Social media data failed to load">
+            {/* Model Filter for Social tab (reuses same selectedModelId state) */}
+            <div className="flex items-center gap-4 mb-2">
+              <label className="text-sm font-medium">View Stats For:</label>
+              <Select value={selectedModelId} onValueChange={setSelectedModelId}>
+                <SelectTrigger className="w-[240px]">
+                  <SelectValue placeholder="All Models" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">
+                    <span className="font-medium">All Models</span>
+                  </SelectItem>
+                  {models.map(model => (
+                    <SelectItem key={model.id} value={model.id}>
+                      {model.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <AggregatedSocialGrid
               models={models.map(m => ({ id: m.id, name: m.name || 'Unknown' }))}
+              selectedModelId={selectedModelId}
             />
 
             {/* Traffic Sources Chart */}

@@ -56,7 +56,7 @@ const PLATFORMS = [
     name: 'TikTok',
     icon: () => (
       <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor">
-        <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.1z"/>
+        <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.1z" />
       </svg>
     ),
     color: 'from-cyan-400 to-pink-500',
@@ -69,7 +69,7 @@ const PLATFORMS = [
     name: 'X (Twitter)',
     icon: () => (
       <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor">
-        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
       </svg>
     ),
     color: 'from-zinc-400 to-zinc-600',
@@ -130,7 +130,7 @@ export function SocialGrid({ modelId, modelName }: SocialGridProps) {
   // Fetch stats and connections
   const fetchStats = async () => {
     setIsLoading(true)
-    
+
     const today = new Date().toISOString().split('T')[0]
     const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
 
@@ -181,7 +181,7 @@ export function SocialGrid({ modelId, modelName }: SocialGridProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ connectionId }),
       })
-      
+
       if (response.ok) {
         toast.success('YouTube stats refreshed! 📺')
         await fetchStats()
@@ -198,7 +198,7 @@ export function SocialGrid({ modelId, modelName }: SocialGridProps) {
 
   // Check if platform supports OAuth
   const isOAuthPlatform = (platformId: string) => {
-    return OAUTH_PLATFORMS.includes(platformId as typeof OAUTH_PLATFORMS[number])
+    return OAUTH_PLATFORMS.includes(platformId as (typeof OAUTH_PLATFORMS)[number])
   }
 
   // Get OAuth login URL for a platform
@@ -221,7 +221,7 @@ export function SocialGrid({ modelId, modelName }: SocialGridProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ connectionId }),
       })
-      
+
       if (response.ok) {
         toast.success('Instagram insights refreshed! 📸')
         await fetchStats()
@@ -265,9 +265,8 @@ export function SocialGrid({ modelId, modelName }: SocialGridProps) {
   const handleSaveStats = async () => {
     const today = new Date().toISOString().split('T')[0]
 
-    const { error } = await supabase
-      .from('social_stats')
-      .upsert({
+    const { error } = await supabase.from('social_stats').upsert(
+      {
         model_id: modelId,
         platform: selectedPlatform,
         date: today,
@@ -275,9 +274,11 @@ export function SocialGrid({ modelId, modelName }: SocialGridProps) {
         views: parseInt(formData.views) || 0,
         likes: parseInt(formData.likes) || 0,
         updated_at: new Date().toISOString(),
-      }, {
-        onConflict: 'model_id,platform,date'
-      })
+      },
+      {
+        onConflict: 'model_id,platform,date',
+      }
+    )
 
     if (error) {
       toast.error('Failed to save stats')
@@ -306,7 +307,7 @@ export function SocialGrid({ modelId, modelName }: SocialGridProps) {
   return (
     <>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {PLATFORMS.map((platform) => {
+        {PLATFORMS.map(platform => {
           const Icon = platform.icon
           const stat = stats[platform.id]
           const prevStat = previousStats[platform.id]
@@ -316,24 +317,32 @@ export function SocialGrid({ modelId, modelName }: SocialGridProps) {
           const oauthUrl = getOAuthUrl(platform.id)
 
           return (
-            <Card 
+            <Card
               key={platform.id}
               className={`bg-zinc-900 border-zinc-800 hover:border-zinc-600 transition-all cursor-pointer group`}
               onClick={() => !isOAuth && handleOpenDialog(platform.id)}
             >
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
-                  <div className={`w-10 h-10 rounded-lg ${platform.bgColor} ${platform.borderColor} border flex items-center justify-center ${platform.textColor}`}>
+                  <div
+                    className={`w-10 h-10 rounded-lg ${platform.bgColor} ${platform.borderColor} border flex items-center justify-center ${platform.textColor}`}
+                  >
                     <Icon />
                   </div>
                   {/* Show connection status for OAuth platforms */}
                   {isOAuth && connection ? (
-                    <Badge variant="outline" className="text-xs text-green-400 border-green-500/30 gap-1">
+                    <Badge
+                      variant="outline"
+                      className="text-xs text-green-400 border-green-500/30 gap-1"
+                    >
                       <CheckCircle className="w-3 h-3" />
                       Connected
                     </Badge>
                   ) : isOAuth ? (
-                    <Badge variant="outline" className="text-xs text-zinc-400 border-zinc-600 gap-1">
+                    <Badge
+                      variant="outline"
+                      className="text-xs text-zinc-400 border-zinc-600 gap-1"
+                    >
                       <Link2 className="w-3 h-3" />
                       Not linked
                     </Badge>
@@ -342,7 +351,7 @@ export function SocialGrid({ modelId, modelName }: SocialGridProps) {
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
-                      onClick={(e) => {
+                      onClick={e => {
                         e.stopPropagation()
                         handleOpenDialog(platform.id)
                       }}
@@ -378,11 +387,11 @@ export function SocialGrid({ modelId, modelName }: SocialGridProps) {
                         </span>
                       </div>
                       {followersTrend.value !== 0 && (
-                        <Badge 
-                          variant="outline" 
+                        <Badge
+                          variant="outline"
                           className={`mt-1 text-xs ${
-                            followersTrend.isPositive 
-                              ? 'text-green-400 border-green-500/30' 
+                            followersTrend.isPositive
+                              ? 'text-green-400 border-green-500/30'
                               : 'text-red-400 border-red-500/30'
                           }`}
                         >
@@ -391,7 +400,8 @@ export function SocialGrid({ modelId, modelName }: SocialGridProps) {
                           ) : (
                             <TrendingDown className="w-3 h-3 mr-1" />
                           )}
-                          {followersTrend.isPositive ? '+' : ''}{formatNumber(followersTrend.value)}
+                          {followersTrend.isPositive ? '+' : ''}
+                          {formatNumber(followersTrend.value)}
                         </Badge>
                       )}
                     </div>
@@ -408,12 +418,14 @@ export function SocialGrid({ modelId, modelName }: SocialGridProps) {
                       size="sm"
                       className="w-full text-xs gap-1"
                       disabled={isRefreshing === platform.id}
-                      onClick={(e) => {
+                      onClick={e => {
                         e.stopPropagation()
                         handleRefreshOAuth(platform.id, connection.id)
                       }}
                     >
-                      <RefreshCw className={`w-3 h-3 ${isRefreshing === platform.id ? 'animate-spin' : ''}`} />
+                      <RefreshCw
+                        className={`w-3 h-3 ${isRefreshing === platform.id ? 'animate-spin' : ''}`}
+                      />
                       {isRefreshing === platform.id ? 'Refreshing...' : 'Refresh Stats'}
                     </Button>
                   </div>
@@ -426,12 +438,14 @@ export function SocialGrid({ modelId, modelName }: SocialGridProps) {
                       size="sm"
                       className="text-xs gap-1"
                       disabled={isRefreshing === platform.id}
-                      onClick={(e) => {
+                      onClick={e => {
                         e.stopPropagation()
                         handleRefreshOAuth(platform.id, connection.id)
                       }}
                     >
-                      <RefreshCw className={`w-3 h-3 ${isRefreshing === platform.id ? 'animate-spin' : ''}`} />
+                      <RefreshCw
+                        className={`w-3 h-3 ${isRefreshing === platform.id ? 'animate-spin' : ''}`}
+                      />
                       Fetch Stats
                     </Button>
                   </div>
@@ -463,11 +477,11 @@ export function SocialGrid({ modelId, modelName }: SocialGridProps) {
                         </span>
                       </div>
                       {followersTrend.value !== 0 && (
-                        <Badge 
-                          variant="outline" 
+                        <Badge
+                          variant="outline"
                           className={`mt-1 text-xs ${
-                            followersTrend.isPositive 
-                              ? 'text-green-400 border-green-500/30' 
+                            followersTrend.isPositive
+                              ? 'text-green-400 border-green-500/30'
                               : 'text-red-400 border-red-500/30'
                           }`}
                         >
@@ -476,7 +490,8 @@ export function SocialGrid({ modelId, modelName }: SocialGridProps) {
                           ) : (
                             <TrendingDown className="w-3 h-3 mr-1" />
                           )}
-                          {followersTrend.isPositive ? '+' : ''}{formatNumber(followersTrend.value)}
+                          {followersTrend.isPositive ? '+' : ''}
+                          {formatNumber(followersTrend.value)}
                         </Badge>
                       )}
                     </div>
@@ -491,11 +506,11 @@ export function SocialGrid({ modelId, modelName }: SocialGridProps) {
                   // No stats - show add button for manual platforms
                   <div className="text-center py-4">
                     <p className="text-sm text-zinc-500 mb-2">No data yet</p>
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       size="sm"
                       className="text-xs"
-                      onClick={(e) => {
+                      onClick={e => {
                         e.stopPropagation()
                         handleOpenDialog(platform.id)
                       }}
@@ -516,7 +531,9 @@ export function SocialGrid({ modelId, modelName }: SocialGridProps) {
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
               {selectedPlatformConfig && (
-                <div className={`w-8 h-8 rounded-lg ${selectedPlatformConfig.bgColor} ${selectedPlatformConfig.borderColor} border flex items-center justify-center ${selectedPlatformConfig.textColor}`}>
+                <div
+                  className={`w-8 h-8 rounded-lg ${selectedPlatformConfig.bgColor} ${selectedPlatformConfig.borderColor} border flex items-center justify-center ${selectedPlatformConfig.textColor}`}
+                >
                   <selectedPlatformConfig.icon />
                 </div>
               )}
@@ -534,7 +551,7 @@ export function SocialGrid({ modelId, modelName }: SocialGridProps) {
                 type="number"
                 placeholder="e.g., 10000"
                 value={formData.followers}
-                onChange={(e) => setFormData({ ...formData, followers: e.target.value })}
+                onChange={e => setFormData({ ...formData, followers: e.target.value })}
                 className="bg-zinc-800 border-zinc-700"
               />
             </div>
@@ -545,7 +562,7 @@ export function SocialGrid({ modelId, modelName }: SocialGridProps) {
                 type="number"
                 placeholder="e.g., 5000"
                 value={formData.views}
-                onChange={(e) => setFormData({ ...formData, views: e.target.value })}
+                onChange={e => setFormData({ ...formData, views: e.target.value })}
                 className="bg-zinc-800 border-zinc-700"
               />
             </div>
@@ -556,7 +573,7 @@ export function SocialGrid({ modelId, modelName }: SocialGridProps) {
                 type="number"
                 placeholder="e.g., 500"
                 value={formData.likes}
-                onChange={(e) => setFormData({ ...formData, likes: e.target.value })}
+                onChange={e => setFormData({ ...formData, likes: e.target.value })}
                 className="bg-zinc-800 border-zinc-700"
               />
             </div>
@@ -577,14 +594,17 @@ export function SocialGrid({ modelId, modelName }: SocialGridProps) {
   )
 }
 
-// Aggregated view for multiple models
+// Aggregated view for multiple models (or a single selected model)
 interface AggregatedSocialGridProps {
   models: Array<{ id: string; name: string }>
+  selectedModelId?: string // If provided and not 'all', filters to that model
 }
 
-export function AggregatedSocialGrid({ models }: AggregatedSocialGridProps) {
+export function AggregatedSocialGrid({ models, selectedModelId }: AggregatedSocialGridProps) {
   const supabase = createClient()
-  const [aggregatedStats, setAggregatedStats] = useState<Record<string, { followers: number; views: number }>>({})
+  const [aggregatedStats, setAggregatedStats] = useState<
+    Record<string, { followers: number; views: number }>
+  >({})
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
@@ -595,7 +615,12 @@ export function AggregatedSocialGrid({ models }: AggregatedSocialGridProps) {
       }
 
       const today = new Date().toISOString().split('T')[0]
-      const modelIds = models.map(m => m.id)
+      // Filter to selected model if one is picked, otherwise use all models
+      const filteredModels =
+        selectedModelId && selectedModelId !== 'all'
+          ? models.filter(m => m.id === selectedModelId)
+          : models
+      const modelIds = filteredModels.map(m => m.id)
 
       const { data } = await supabase
         .from('social_stats')
@@ -621,7 +646,7 @@ export function AggregatedSocialGrid({ models }: AggregatedSocialGridProps) {
     }
 
     fetchAggregatedStats()
-  }, [models])
+  }, [models, selectedModelId])
 
   const formatNumber = (num: number) => {
     if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`
@@ -660,7 +685,7 @@ export function AggregatedSocialGrid({ models }: AggregatedSocialGridProps) {
 
             {/* Platform breakdown */}
             <div className="grid grid-cols-4 gap-3">
-              {PLATFORMS.map((platform) => {
+              {PLATFORMS.map(platform => {
                 const Icon = platform.icon
                 const stat = aggregatedStats[platform.id] || { followers: 0, views: 0 }
 
