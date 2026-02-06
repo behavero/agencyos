@@ -57,6 +57,7 @@ export async function GET(request: NextRequest) {
       .eq('agency_id', agencyId)
 
     // If database is empty, trigger a live sync from Fanvue API first
+    let syncDiagnostic: string | null = null
     if (!existingCount || existingCount === 0) {
       console.log('[tracking-links API] Database empty — triggering live sync from Fanvue API...')
       try {
@@ -65,11 +66,16 @@ export async function GET(request: NextRequest) {
           `[tracking-links API] Live sync complete: ${syncResult.totalSynced} links from ${syncResult.modelsProcessed} models`,
           syncResult.errors.length > 0 ? `Errors: ${syncResult.errors.join(', ')}` : ''
         )
+        if (syncResult.totalSynced === 0 && syncResult.errors.length === 0) {
+          syncDiagnostic =
+            'No tracking links found on Fanvue for any creator. Create tracking links on the Fanvue platform first.'
+        } else if (syncResult.errors.length > 0) {
+          syncDiagnostic = `Sync completed with errors: ${syncResult.errors.join('; ')}`
+        }
       } catch (syncError) {
-        console.error(
-          '[tracking-links API] Live sync failed:',
-          syncError instanceof Error ? syncError.message : syncError
-        )
+        const errMsg = syncError instanceof Error ? syncError.message : String(syncError)
+        console.error('[tracking-links API] Live sync failed:', errMsg)
+        syncDiagnostic = `Failed to fetch from Fanvue API: ${errMsg}`
       }
     }
 
@@ -161,6 +167,7 @@ export async function GET(request: NextRequest) {
           totalSubs,
           clickToSubRate: Math.round(clickToSubRate * 100) / 100,
         },
+        ...(syncDiagnostic ? { diagnostic: syncDiagnostic } : {}),
       },
     })
   } catch (error) {

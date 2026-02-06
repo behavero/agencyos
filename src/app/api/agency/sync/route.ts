@@ -496,9 +496,11 @@ export async function POST(_request: NextRequest) {
       console.error('   ⚠️ Tracking links sync failed:', error.message)
     }
 
-    // STEP 8: Refresh model stats (subs, followers) using actual subscribers/followers endpoints
-    // These endpoints return the real paginated list of current subscribers and followers
-    console.log('\n📊 STEP 8: REFRESH MODEL STATS (Subscribers + Followers endpoints)')
+    // STEP 8: Refresh model stats (subs, followers, media, tracking links)
+    // These endpoints return the real paginated list of current data
+    console.log(
+      '\n📊 STEP 8: REFRESH MODEL STATS (Subscribers + Followers + Media + Tracking Links)'
+    )
     let statsRefreshed = 0
     try {
       const fanvue = createFanvueClient(agencyToken)
@@ -507,39 +509,79 @@ export async function POST(_request: NextRequest) {
         if (!modelId) continue
 
         try {
-          // Count actual subscribers by paginating /creators/{uuid}/subscribers
           let totalSubscribers = 0
           let totalFollowers = 0
+          let totalMedia = 0
+          let trackingLinksCount = -1
 
-          const [subsResult, followersResult] = await Promise.allSettled([
-            (async () => {
-              let count = 0
-              let page = 1
-              let hasMore = true
-              while (hasMore && page <= 100) {
-                const resp = await fanvue.getCreatorSubscribers(creator.uuid, { page, size: 50 })
-                count += resp.data.length
-                hasMore = resp.pagination.hasMore
-                page++
-              }
-              return count
-            })(),
-            (async () => {
-              let count = 0
-              let page = 1
-              let hasMore = true
-              while (hasMore && page <= 100) {
-                const resp = await fanvue.getCreatorFollowers(creator.uuid, { page, size: 50 })
-                count += resp.data.length
-                hasMore = resp.pagination.hasMore
-                page++
-              }
-              return count
-            })(),
-          ])
+          const [subsResult, followersResult, mediaResult, trackingLinksResult] =
+            await Promise.allSettled([
+              // Count actual subscribers
+              (async () => {
+                let count = 0
+                let page = 1
+                let hasMore = true
+                while (hasMore && page <= 100) {
+                  const resp = await fanvue.getCreatorSubscribers(creator.uuid, {
+                    page,
+                    size: 50,
+                  })
+                  count += resp.data.length
+                  hasMore = resp.pagination.hasMore
+                  page++
+                }
+                return count
+              })(),
+              // Count actual followers
+              (async () => {
+                let count = 0
+                let page = 1
+                let hasMore = true
+                while (hasMore && page <= 100) {
+                  const resp = await fanvue.getCreatorFollowers(creator.uuid, {
+                    page,
+                    size: 50,
+                  })
+                  count += resp.data.length
+                  hasMore = resp.pagination.hasMore
+                  page++
+                }
+                return count
+              })(),
+              // Count media items (proxy for posts — no agency posts endpoint)
+              (async () => {
+                let count = 0
+                let page = 1
+                let hasMore = true
+                while (hasMore && page <= 20) {
+                  const resp = await fanvue.getCreatorMedia(creator.uuid, { page, size: 50 })
+                  count += resp.data.length
+                  hasMore = resp.pagination.hasMore
+                  page++
+                }
+                return count
+              })(),
+              // Count tracking links
+              (async () => {
+                let count = 0
+                let cursor: string | undefined
+                do {
+                  const resp = await fanvue.getCreatorTrackingLinks(creator.uuid, {
+                    limit: 50,
+                    cursor,
+                  })
+                  count += resp.data.length
+                  cursor = resp.nextCursor || undefined
+                } while (cursor)
+                return count
+              })(),
+            ])
 
           if (subsResult.status === 'fulfilled') totalSubscribers = subsResult.value
           if (followersResult.status === 'fulfilled') totalFollowers = followersResult.value
+          if (mediaResult.status === 'fulfilled') totalMedia = mediaResult.value
+          if (trackingLinksResult.status === 'fulfilled')
+            trackingLinksCount = trackingLinksResult.value
 
           const stats: Record<string, unknown> = {
             stats_updated_at: new Date().toISOString(),
@@ -548,10 +590,13 @@ export async function POST(_request: NextRequest) {
             followers_count: totalFollowers,
           }
 
+          if (totalMedia > 0) stats.posts_count = totalMedia
+          if (trackingLinksCount >= 0) stats.tracking_links_count = trackingLinksCount
+
           await adminClient2.from('models').update(stats).eq('id', modelId)
           statsRefreshed++
           console.log(
-            `   ✅ ${creator.displayName}: subs=${totalSubscribers}, followers=${totalFollowers}`
+            `   ✅ ${creator.displayName}: subs=${totalSubscribers}, followers=${totalFollowers}, media=${totalMedia}, links=${trackingLinksCount}`
           )
         } catch (e: unknown) {
           console.error(

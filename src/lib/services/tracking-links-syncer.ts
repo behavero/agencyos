@@ -61,6 +61,17 @@ export async function syncTrackingLinksForModel(
           console.log(`[tracking-links] No tracking links for creator ${creatorUuid} (404)`)
           break
         }
+        // 403 = missing scope — token doesn't have read:tracking_links permission
+        if (err.statusCode === 403) {
+          console.error(
+            `[tracking-links] 403 Forbidden for creator ${creatorUuid}. ` +
+              `Token likely missing 'read:tracking_links' scope. Re-authorize with correct scopes.`
+          )
+          result.errors.push(
+            `403 Forbidden: Token missing 'read:tracking_links' scope for ${creatorUuid}`
+          )
+          break
+        }
         throw e
       }
     } while (cursor)

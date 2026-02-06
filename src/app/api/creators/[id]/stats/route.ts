@@ -137,7 +137,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     // Initialize counters (will be populated based on token type)
     let totalFollowers = 0
     let totalSubscribers = 0
+    let totalPosts = 0
+    let totalLikes = 0
     let totalMessages = 0
+    let agencyTrackingLinksCount = -1 // -1 = not fetched
 
     if (usePersonalEndpoints) {
       // OPTION A: Using creator's own token - get everything from personal endpoints
@@ -178,43 +181,74 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       // OPTION B: Using agency admin token - fetch via agency endpoints
       console.log('[Stats API] Fetching stats via agency endpoints...')
 
-      // Use the actual /creators/{uuid}/subscribers and /creators/{uuid}/followers endpoints
-      // These return the REAL paginated list of current subscribers/followers (per Fanvue API docs)
-      // Smart lists were giving inflated counts by summing categories
-      const [subsResult, followersResult] = await Promise.allSettled([
-        // Count actual subscribers by paginating through the list
-        (async () => {
-          let count = 0
-          let page = 1
-          let hasMore = true
-          while (hasMore && page <= 100) {
-            const resp = await fanvue.getCreatorSubscribers(model.fanvue_user_uuid, {
-              page,
-              size: 50,
-            })
-            count += resp.data.length
-            hasMore = resp.pagination.hasMore
-            page++
-          }
-          return count
-        })(),
-        // Count actual followers by paginating
-        (async () => {
-          let count = 0
-          let page = 1
-          let hasMore = true
-          while (hasMore && page <= 100) {
-            const resp = await fanvue.getCreatorFollowers(model.fanvue_user_uuid, {
-              page,
-              size: 50,
-            })
-            count += resp.data.length
-            hasMore = resp.pagination.hasMore
-            page++
-          }
-          return count
-        })(),
-      ])
+      // Use the actual /creators/{uuid}/subscribers, /creators/{uuid}/followers,
+      // /creators/{uuid}/media, and /creators/{uuid}/tracking-links endpoints
+      const [subsResult, followersResult, mediaResult, trackingLinksResult] =
+        await Promise.allSettled([
+          // Count actual subscribers by paginating through the list
+          (async () => {
+            let count = 0
+            let page = 1
+            let hasMore = true
+            while (hasMore && page <= 100) {
+              const resp = await fanvue.getCreatorSubscribers(model.fanvue_user_uuid, {
+                page,
+                size: 50,
+              })
+              count += resp.data.length
+              hasMore = resp.pagination.hasMore
+              page++
+            }
+            return count
+          })(),
+          // Count actual followers by paginating
+          (async () => {
+            let count = 0
+            let page = 1
+            let hasMore = true
+            while (hasMore && page <= 100) {
+              const resp = await fanvue.getCreatorFollowers(model.fanvue_user_uuid, {
+                page,
+                size: 50,
+              })
+              count += resp.data.length
+              hasMore = resp.pagination.hasMore
+              page++
+            }
+            return count
+          })(),
+          // Count media items (proxy for posts_count — agency API has no posts endpoint)
+          (async () => {
+            let count = 0
+            let page = 1
+            let hasMore = true
+            while (hasMore && page <= 20) {
+              // Max 20 pages = 1000 items
+              const resp = await fanvue.getCreatorMedia(model.fanvue_user_uuid, {
+                page,
+                size: 50,
+              })
+              count += resp.data.length
+              hasMore = resp.pagination.hasMore
+              page++
+            }
+            return count
+          })(),
+          // Count tracking links
+          (async () => {
+            let count = 0
+            let cursor: string | undefined
+            do {
+              const resp = await fanvue.getCreatorTrackingLinks(model.fanvue_user_uuid, {
+                limit: 50,
+                cursor,
+              })
+              count += resp.data.length
+              cursor = resp.nextCursor || undefined
+            } while (cursor)
+            return count
+          })(),
+        ])
 
       if (subsResult.status === 'fulfilled') {
         totalSubscribers = subsResult.value
@@ -228,9 +262,28 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         console.error('[Stats API] Followers count error:', followersResult.reason)
       }
 
+      // Media count as proxy for posts (agency API has no direct posts endpoint)
+      if (mediaResult.status === 'fulfilled') {
+        totalPosts = mediaResult.value
+        console.log(`[Stats API] Media count (posts proxy): ${totalPosts}`)
+      } else {
+        console.error('[Stats API] Media count error:', mediaResult.reason)
+      }
+
+      // Tracking links count
+      if (trackingLinksResult.status === 'fulfilled') {
+        agencyTrackingLinksCount = trackingLinksResult.value
+        console.log(`[Stats API] Tracking links count: ${agencyTrackingLinksCount}`)
+      } else {
+        console.error('[Stats API] Tracking links error:', trackingLinksResult.reason)
+      }
+
       console.log('[Stats API] Direct API counts:', {
         subscribers: totalSubscribers,
         followers: totalFollowers,
+        mediaPosts: totalPosts,
+        trackingLinks:
+          trackingLinksResult.status === 'fulfilled' ? trackingLinksResult.value : 'error',
       })
 
       // Get chat count with a single page request (just to get the total)
@@ -323,9 +376,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
 
     // Extract values from different sources based on token type
-    // Note: For agency endpoints, totalFollowers/totalSubscribers/totalMessages are already calculated above
-    let totalPosts = 0
-    let totalLikes = 0
+    // Note: For agency endpoints, totalFollowers/totalSubscribers/totalPosts are already set above
 
     if (usePersonalEndpoints) {
       // Using personal endpoints - extract from userInfo
@@ -418,12 +469,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       if (userInfo?.contentCounts?.videoCount) stats.video_count = userInfo.contentCounts.videoCount
       if (userInfo?.contentCounts?.audioCount) stats.audio_count = userInfo.contentCounts.audioCount
     } else {
-      // Agency endpoints: subscribers/followers come from actual paginated API
+      // Agency endpoints: subscribers/followers/posts come from actual paginated API
       // Always write even if 0 — this is the REAL count from Fanvue (prevents stale inflated values)
       stats.followers_count = totalFollowers
       stats.subscribers_count = totalSubscribers
+      if (totalPosts > 0) stats.posts_count = totalPosts
       if (totalMessages > 0) stats.unread_messages = totalMessages
-      // posts_count, likes_count NOT available via agency API — omit to preserve existing values
+      // likes_count NOT available via agency API — omit to preserve existing values
+      // tracking_links_count from direct API
+      if (agencyTrackingLinksCount >= 0) {
+        stats.tracking_links_count = agencyTrackingLinksCount
+      }
     }
 
     // Fallback: if we still don't have subscriber counts, try personal endpoint

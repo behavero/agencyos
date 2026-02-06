@@ -124,41 +124,68 @@ export async function POST(request: Request) {
           const isConnectedUser = uuid === connectedFanvueUserId
 
           if (useAgencyEndpoint) {
-            // Agency token path: use actual subscribers/followers endpoints for accurate counts
-            // Smart lists were summing categories and giving inflated numbers
-            const [subsResult, followersResult, earningsResult] = await Promise.allSettled([
-              // Count actual subscribers by paginating /creators/{uuid}/subscribers
-              (async () => {
-                let count = 0
-                let page = 1
-                let hasMore = true
-                while (hasMore && page <= 100) {
-                  const resp = await fanvue.getCreatorSubscribers(uuid, { page, size: 50 })
-                  count += resp.data.length
-                  hasMore = resp.pagination.hasMore
-                  page++
-                }
-                return count
-              })(),
-              // Count actual followers by paginating /creators/{uuid}/followers
-              (async () => {
-                let count = 0
-                let page = 1
-                let hasMore = true
-                while (hasMore && page <= 100) {
-                  const resp = await fanvue.getCreatorFollowers(uuid, { page, size: 50 })
-                  count += resp.data.length
-                  hasMore = resp.pagination.hasMore
-                  page++
-                }
-                return count
-              })(),
-              fanvue.getCreatorEarnings(uuid, {
-                startDate: '2020-01-01T00:00:00Z',
-                endDate: new Date().toISOString(),
-                size: 50,
-              }),
-            ])
+            // Agency token path: use actual subscribers/followers/media/tracking-links endpoints
+            const [subsResult, followersResult, earningsResult, mediaResult, trackingLinksResult] =
+              await Promise.allSettled([
+                // Count actual subscribers by paginating /creators/{uuid}/subscribers
+                (async () => {
+                  let count = 0
+                  let page = 1
+                  let hasMore = true
+                  while (hasMore && page <= 100) {
+                    const resp = await fanvue.getCreatorSubscribers(uuid, { page, size: 50 })
+                    count += resp.data.length
+                    hasMore = resp.pagination.hasMore
+                    page++
+                  }
+                  return count
+                })(),
+                // Count actual followers by paginating /creators/{uuid}/followers
+                (async () => {
+                  let count = 0
+                  let page = 1
+                  let hasMore = true
+                  while (hasMore && page <= 100) {
+                    const resp = await fanvue.getCreatorFollowers(uuid, { page, size: 50 })
+                    count += resp.data.length
+                    hasMore = resp.pagination.hasMore
+                    page++
+                  }
+                  return count
+                })(),
+                fanvue.getCreatorEarnings(uuid, {
+                  startDate: '2020-01-01T00:00:00Z',
+                  endDate: new Date().toISOString(),
+                  size: 50,
+                }),
+                // Count media items (proxy for posts_count — agency API has no posts endpoint)
+                (async () => {
+                  let count = 0
+                  let page = 1
+                  let hasMore = true
+                  while (hasMore && page <= 20) {
+                    const resp = await fanvue.getCreatorMedia(uuid, { page, size: 50 })
+                    count += resp.data.length
+                    hasMore = resp.pagination.hasMore
+                    page++
+                  }
+                  return count
+                })(),
+                // Count tracking links
+                (async () => {
+                  let count = 0
+                  let cursor: string | undefined
+                  do {
+                    const resp = await fanvue.getCreatorTrackingLinks(uuid, {
+                      limit: 50,
+                      cursor,
+                    })
+                    count += resp.data.length
+                    cursor = resp.nextCursor || undefined
+                  } while (cursor)
+                  return count
+                })(),
+              ])
 
             let totalFollowers = 0
             let totalSubscribers = 0
@@ -170,8 +197,27 @@ export async function POST(request: Request) {
               totalFollowers = followersResult.value
             }
 
+            // Media count as proxy for posts (agency API has no direct posts endpoint)
+            let totalPosts = 0
+            if (mediaResult.status === 'fulfilled') {
+              totalPosts = mediaResult.value
+            } else {
+              console.error(`[Bulk Stats] Media count error for ${model.name}:`, mediaResult.reason)
+            }
+
+            // Tracking links count
+            let trackingLinksCount = -1
+            if (trackingLinksResult.status === 'fulfilled') {
+              trackingLinksCount = trackingLinksResult.value
+            } else {
+              console.error(
+                `[Bulk Stats] Tracking links error for ${model.name}:`,
+                trackingLinksResult.reason
+              )
+            }
+
             console.log(
-              `[Bulk Stats] Direct counts for ${model.name}: subs=${totalSubscribers}, followers=${totalFollowers}`
+              `[Bulk Stats] Direct counts for ${model.name}: subs=${totalSubscribers}, followers=${totalFollowers}, media=${totalPosts}, links=${trackingLinksCount}`
             )
 
             // Calculate total revenue from earnings (first page only for speed)
@@ -248,6 +294,16 @@ export async function POST(request: Request) {
             // Only update revenue if we got earnings data (never overwrite with 0)
             if (totalRevenueCents > 0) {
               stats.revenue_total = totalRevenueCents / 100
+            }
+
+            // Posts count from media endpoint (agency API has no posts endpoint)
+            if (totalPosts > 0) {
+              stats.posts_count = totalPosts
+            }
+
+            // Tracking links count
+            if (trackingLinksCount >= 0) {
+              stats.tracking_links_count = trackingLinksCount
             }
 
             await adminClient.from('models').update(stats).eq('id', model.id)

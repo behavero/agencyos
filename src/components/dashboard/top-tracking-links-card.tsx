@@ -74,6 +74,7 @@ export function TopTrackingLinksCard({ models = [], initialModelId }: TopTrackin
   const [stats, setStats] = useState<TrackingLinksStats | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [diagnostic, setDiagnostic] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchData = async () => {
@@ -95,6 +96,7 @@ export function TopTrackingLinksCard({ models = [], initialModelId }: TopTrackin
         if (data.success) {
           setLinks(data.data.topLinks)
           setStats(data.data.stats)
+          setDiagnostic(data.data.diagnostic || null)
         } else {
           setError(data.error || 'Failed to fetch data')
         }
@@ -195,8 +197,9 @@ export function TopTrackingLinksCard({ models = [], initialModelId }: TopTrackin
           <div className="flex flex-col items-center justify-center h-[200px] text-muted-foreground">
             <Link2 className="h-10 w-10 mb-2 opacity-50" />
             <p>No tracking links found</p>
-            <p className="text-sm">
-              Create tracking links in Fanvue to track traffic sources, then sync your agency
+            <p className="text-sm text-center max-w-[300px]">
+              {diagnostic ||
+                'Create tracking links in Fanvue to track traffic sources, then sync your agency'}
             </p>
           </div>
         ) : (
