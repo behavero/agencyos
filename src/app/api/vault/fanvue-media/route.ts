@@ -4,10 +4,11 @@
  * Content is displayed directly from Fanvue CDN URLs.
  *
  * Query params:
- *   modelId  - required, the internal model UUID
- *   page     - optional, defaults to 1
- *   size     - optional, defaults to 30 (max 50)
- *   mediaType - optional, filter by image/video/audio
+ *   modelId    - required, the internal model UUID
+ *   page       - optional, defaults to 1
+ *   size       - optional, defaults to 50 (max 50)
+ *   mediaType  - optional, filter by image/video/audio
+ *   folderName - optional, filter by Fanvue vault folder name
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -47,13 +48,14 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const modelId = searchParams.get('modelId')
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10))
-    const size = Math.min(50, Math.max(1, parseInt(searchParams.get('size') || '30', 10)))
+    const size = Math.min(50, Math.max(1, parseInt(searchParams.get('size') || '50', 10)))
     const mediaType = searchParams.get('mediaType') as
       | 'image'
       | 'video'
       | 'audio'
       | 'document'
       | null
+    const folderName = searchParams.get('folderName') || undefined
 
     if (!modelId) {
       return NextResponse.json({ error: 'modelId is required' }, { status: 400 })
@@ -84,6 +86,7 @@ export async function GET(request: NextRequest) {
       page,
       size,
       ...(mediaType ? { mediaType } : {}),
+      ...(folderName ? { folderName } : {}),
       variants: 'main,thumbnail',
     })
 

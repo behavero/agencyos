@@ -127,40 +127,52 @@ export default function MessagesClient({ models, vaultAssets = [] }: MessagesCli
       return
     }
     let cancelled = false
-    const fetchMedia = async () => {
-      try {
-        const res = await fetch(`/api/vault/fanvue-media?modelId=${selectedModel.id}&size=50`)
-        const data = await res.json()
-        if (!cancelled && data.success && data.media) {
-          setFanvueVaultMedia(
-            data.media
-              .filter(
-                (m: { mediaType: string }) => m.mediaType === 'image' || m.mediaType === 'video'
-              )
-              .map(
-                (m: {
-                  uuid: string
-                  name: string | null
-                  caption: string | null
-                  mediaType: string
-                  url: string
-                  thumbnailUrl: string
-                }) => ({
-                  id: m.uuid, // Fanvue media UUID — used directly in send message API
-                  title: m.name || m.caption,
-                  file_name: m.name || m.caption || `${m.mediaType}-${m.uuid.slice(0, 8)}`,
-                  file_type: m.mediaType as 'image' | 'video',
-                  file_url: m.url,
-                  thumbnail_url: m.thumbnailUrl || m.url,
-                })
-              )
+    const fetchAllMedia = async () => {
+      type MediaItem = {
+        uuid: string
+        name: string | null
+        caption: string | null
+        mediaType: string
+        url: string
+        thumbnailUrl: string
+      }
+      const allMedia: typeof fanvueVaultMedia = []
+      let hasMore = true
+      let page = 1
+      const maxPages = 5 // Up to 250 items for the chat picker
+
+      while (hasMore && page <= maxPages && !cancelled) {
+        try {
+          const res = await fetch(
+            `/api/vault/fanvue-media?modelId=${selectedModel.id}&size=50&page=${page}`
           )
+          const data = await res.json()
+          if (!data.success) break
+
+          const mapped = (data.media || [])
+            .filter((m: MediaItem) => m.mediaType === 'image' || m.mediaType === 'video')
+            .map((m: MediaItem) => ({
+              id: m.uuid, // Fanvue media UUID — used directly in send message API
+              title: m.name || m.caption,
+              file_name: m.name || m.caption || `${m.mediaType}-${m.uuid.slice(0, 8)}`,
+              file_type: m.mediaType as 'image' | 'video',
+              file_url: m.url,
+              thumbnail_url: m.thumbnailUrl || m.url,
+            }))
+
+          allMedia.push(...mapped)
+          hasMore = data.pagination?.hasMore ?? false
+          page++
+        } catch {
+          break
         }
-      } catch (e) {
-        console.error('[Messages] Failed to load Fanvue vault media:', e)
+      }
+
+      if (!cancelled) {
+        setFanvueVaultMedia(allMedia)
       }
     }
-    fetchMedia()
+    fetchAllMedia()
     return () => {
       cancelled = true
     }
