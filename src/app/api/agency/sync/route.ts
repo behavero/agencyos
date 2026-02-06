@@ -19,6 +19,7 @@ import {
   fetchCreatorEarnings,
   updateAgencyLastSync,
 } from '@/lib/services/agency-fanvue-auth'
+import { createFanvueClient } from '@/lib/fanvue/client'
 import { syncAgencyTopSpenders } from '@/lib/services/top-spenders-syncer'
 import { syncAgencySubscriberHistory } from '@/lib/services/subscriber-history-syncer'
 
@@ -119,21 +120,30 @@ async function importCreators(
 }
 
 /**
- * Sync earnings for all creators using agency endpoint
+ * Sync earnings for all creators.
+ *
+ * For each creator:
+ * 1. Try the agency endpoint (GET /creators/{uuid}/insights/earnings)
+ * 2. If that fails AND the creator's UUID matches the connected account,
+ *    fall back to the personal endpoint (GET /insights/earnings)
+ * 3. Store all earnings in fanvue_transactions
  */
 async function syncAllCreatorsEarnings(
   agencyId: string,
   creators: FanvueCreator[],
-  creatorsMap: Map<string, string>
+  creatorsMap: Map<string, string>,
+  connectedFanvueUserId: string,
+  agencyToken: string
 ): Promise<SyncResult[]> {
   const adminClient = createAdminClient()
   const results: SyncResult[] = []
 
   console.log(`\n💰 Syncing earnings for ${creators.length} creators...`)
+  console.log(`   Connected Fanvue user: ${connectedFanvueUserId}`)
 
-  // Calculate date range (last 30 days)
+  // Fetch ALL history for comprehensive sync (not just 30 days)
   const endDate = new Date().toISOString().split('T')[0]
-  const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+  const startDate = '2020-01-01'
 
   for (const creator of creators) {
     const modelId = creatorsMap.get(creator.uuid)
@@ -143,26 +153,103 @@ async function syncAllCreatorsEarnings(
     }
 
     try {
-      console.log(`   📊 Syncing ${creator.displayName}...`)
+      console.log(`   📊 Syncing ${creator.displayName} (${creator.uuid})...`)
 
-      // Fetch earnings using agency endpoint
-      const earnings = await fetchCreatorEarnings(agencyId, creator.uuid, startDate, endDate)
+      // Determine which endpoint to use
+      const isConnectedUser = creator.uuid === connectedFanvueUserId
+      let allEarnings: Array<{
+        date: string
+        gross: number
+        net: number
+        currency: string | null
+        source: string
+      }> = []
+
+      // Strategy 1: Try the agency endpoint first
+      if (!isConnectedUser) {
+        try {
+          const earnings = await fetchCreatorEarnings(agencyId, creator.uuid, startDate, endDate)
+          allEarnings = earnings
+          console.log(
+            `   ✅ Agency endpoint: ${earnings.length} earnings for ${creator.displayName}`
+          )
+        } catch (agencyError: any) {
+          console.log(
+            `   ⚠️ Agency endpoint failed for ${creator.displayName}: ${agencyError.message}`
+          )
+          // Fall through to personal endpoint if this is the connected user
+        }
+      }
+
+      // Strategy 2: Use personal endpoint for the connected user OR as fallback
+      if (allEarnings.length === 0 && (isConnectedUser || true)) {
+        try {
+          console.log(`   🔄 Trying personal endpoint for ${creator.displayName}...`)
+          const fanvue = createFanvueClient(agencyToken)
+          let cursor: string | undefined
+          let pages = 0
+
+          do {
+            const response = await fanvue.getEarnings({
+              startDate: `${startDate}T00:00:00Z`,
+              endDate: new Date().toISOString(),
+              size: 50,
+              cursor,
+            })
+
+            if (response?.data?.length) {
+              // For the personal endpoint, ALL earnings belong to the connected user.
+              // Only add them if this IS the connected user's model.
+              if (isConnectedUser) {
+                allEarnings.push(...response.data)
+              } else {
+                // For non-connected users, personal endpoint returns the CONNECTED user's data,
+                // not this creator's. Skip.
+                console.log(
+                  `   ℹ️ Personal endpoint returns connected user's data, not ${creator.displayName}'s`
+                )
+                break
+              }
+              cursor = response.nextCursor || undefined
+              pages++
+            } else {
+              break
+            }
+          } while (cursor && pages < 200)
+
+          if (allEarnings.length > 0) {
+            console.log(
+              `   ✅ Personal endpoint: ${allEarnings.length} earnings for ${creator.displayName}`
+            )
+          }
+        } catch (personalError: any) {
+          console.log(
+            `   ⚠️ Personal endpoint also failed for ${creator.displayName}: ${personalError.message}`
+          )
+        }
+      }
 
       // Store earnings in fanvue_transactions table
       let transactionsSynced = 0
 
-      for (const earning of earnings) {
+      for (const earning of allEarnings) {
         // Fanvue API returns amounts in cents — convert to dollars
-        const amountDollars = (earning.net || earning.gross || 0) / 100
+        const grossDollars = (earning.gross || 0) / 100
+        const netDollars = (earning.net || 0) / 100
+        const platformFee = grossDollars - netDollars
 
         const { error: insertError } = await adminClient.from('fanvue_transactions').upsert(
           {
+            agency_id: agencyId,
             model_id: modelId,
             fanvue_user_uuid: creator.uuid,
             transaction_date: earning.date,
-            amount: amountDollars,
+            amount: grossDollars,
+            net_amount: netDollars,
+            platform_fee: platformFee > 0 ? platformFee : 0,
             currency: earning.currency || 'USD',
             description: `${earning.source || 'earnings'} via agency sync`,
+            transaction_type: categorizeSource(earning.source),
             source: 'agency_api',
             created_at: new Date().toISOString(),
           },
@@ -176,14 +263,24 @@ async function syncAllCreatorsEarnings(
         }
       }
 
-      // Update model's last sync timestamp
-      await adminClient
-        .from('models')
-        .update({
-          last_transaction_sync: new Date().toISOString(),
-          revenue_30d: earnings.reduce((sum, e) => sum + (e.net || e.gross || 0) / 100, 0),
+      // Update model's last sync timestamp and revenue
+      const totalRevenue = allEarnings.reduce((sum, e) => (sum + (e.gross || 0)) / 100, 0)
+      const updateFields: Record<string, any> = {
+        last_transaction_sync: new Date().toISOString(),
+      }
+      // Only update revenue_30d if we have data (never overwrite with 0)
+      if (totalRevenue > 0) {
+        const last30dEarnings = allEarnings.filter(e => {
+          const d = new Date(e.date)
+          return d >= new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
         })
-        .eq('id', modelId)
+        updateFields.revenue_30d = last30dEarnings.reduce(
+          (sum, e) => sum + (e.net || e.gross || 0) / 100,
+          0
+        )
+      }
+
+      await adminClient.from('models').update(updateFields).eq('id', modelId)
 
       results.push({
         creatorName: creator.displayName,
@@ -207,6 +304,20 @@ async function syncAllCreatorsEarnings(
   }
 
   return results
+}
+
+/**
+ * Categorize Fanvue earning source into transaction type
+ */
+function categorizeSource(source: string): string {
+  const s = (source || '').toLowerCase()
+  if (s.includes('subscription') || s.includes('renewal')) return 'subscription'
+  if (s.includes('tip')) return 'tip'
+  if (s.includes('ppv')) return 'ppv'
+  if (s.includes('message')) return 'message'
+  if (s.includes('post') || s.includes('unlock')) return 'post'
+  if (s.includes('stream') || s.includes('live')) return 'stream'
+  return 'other'
 }
 
 /**
@@ -245,20 +356,55 @@ export async function POST(_request: NextRequest) {
 
     console.log(`\n🏢 🔄 AGENCY SAAS LOOP START for agency ${profile.agency_id}`)
 
-    // STEP 1: Get agency token (validates connection exists)
+    // STEP 1: Get agency token + connection info (validates connection exists)
     console.log('\n📡 STEP 1: VALIDATE AGENCY CONNECTION')
     const agencyToken = await getAgencyFanvueToken(profile.agency_id)
     console.log('✅ Agency token validated')
 
-    // STEP 2: Auto-discover creators
+    // Get the connected Fanvue user ID (for personal endpoint fallback)
+    const adminClient2 = createAdminClient()
+    const { data: connectionInfo } = await adminClient2
+      .from('agency_fanvue_connections')
+      .select('fanvue_user_id')
+      .eq('agency_id', profile.agency_id)
+      .eq('status', 'active')
+      .single()
+    const connectedFanvueUserId = connectionInfo?.fanvue_user_id || ''
+
+    // STEP 2: Auto-discover creators (or use existing DB models as fallback)
     console.log('\n📡 STEP 2: AUTO-DISCOVERY')
-    const creators = await fetchAgencyCreators(profile.agency_id)
+    let creators = await fetchAgencyCreators(profile.agency_id)
+
+    // FALLBACK: If API discovery returns empty, use existing models from the DB
+    if (creators.length === 0) {
+      console.log('⚠️ API returned 0 creators, falling back to existing DB models...')
+      const { data: existingModels } = await adminClient2
+        .from('models')
+        .select('id, name, fanvue_username, fanvue_user_uuid, avatar_url')
+        .eq('agency_id', profile.agency_id)
+        .eq('status', 'active')
+        .not('fanvue_user_uuid', 'is', null)
+
+      if (existingModels && existingModels.length > 0) {
+        creators = existingModels.map(m => ({
+          uuid: m.fanvue_user_uuid!,
+          handle: m.fanvue_username || m.name || '',
+          displayName: m.name || 'Unknown',
+          nickname: null,
+          avatarUrl: m.avatar_url,
+          registeredAt: '',
+          role: 'creator',
+        }))
+        console.log(`✅ Using ${creators.length} existing models from DB`)
+      }
+    }
 
     if (creators.length === 0) {
       await updateAgencyLastSync(profile.agency_id, 'No creators found')
       return NextResponse.json({
         success: false,
-        message: 'No creators found in agency account',
+        error: 'No creators found in agency account or database',
+        message: 'No creators found. Connect your Fanvue agency admin account.',
         creatorsFound: 0,
         creatorsImported: 0,
         creatorsUpdated: 0,
@@ -270,12 +416,14 @@ export async function POST(_request: NextRequest) {
     console.log('\n📥 STEP 3: AUTO-IMPORT')
     const importResult = await importCreators(creators, profile.agency_id)
 
-    // STEP 4: Sync earnings using agency endpoint
-    console.log('\n💰 STEP 4: EARNINGS SYNC (via /agencies/creators/{uuid}/earnings)')
+    // STEP 4: Sync earnings (agency endpoint + personal endpoint fallback)
+    console.log('\n💰 STEP 4: EARNINGS SYNC')
     const syncResults = await syncAllCreatorsEarnings(
       profile.agency_id,
       creators,
-      importResult.creatorsMap
+      importResult.creatorsMap,
+      connectedFanvueUserId,
+      agencyToken
     )
 
     // STEP 5: Sync Top Spenders (using agency token)

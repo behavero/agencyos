@@ -128,6 +128,21 @@ export async function syncModelTransactions(modelId: string): Promise<SyncResult
     // Initialize Fanvue client with the valid/refreshed token
     const fanvueClient = createFanvueClient(accessToken)
 
+    // Check if this model IS the connected Fanvue user (personal endpoint needed)
+    let isConnectedUser = false
+    if (useAgencyEndpoint && model.agency_id) {
+      try {
+        const { data: conn } = await supabase
+          .from('agency_fanvue_connections')
+          .select('fanvue_user_id')
+          .eq('agency_id', model.agency_id)
+          .single()
+        isConnectedUser = conn?.fanvue_user_id === model.fanvue_user_uuid
+      } catch {
+        // Ignore -- just use agency endpoint
+      }
+    }
+
     // PHASE 55: Use last_transaction_sync for cursor-based incremental sync
     // This dramatically reduces API calls and sync time
     const startDate = model.last_transaction_sync
@@ -138,6 +153,9 @@ export async function syncModelTransactions(modelId: string): Promise<SyncResult
     const timeSinceLastSync = Date.now() - startDate.getTime()
     const hoursSinceLastSync = Math.round(timeSinceLastSync / (1000 * 60 * 60))
     console.log(`⏱️  Last synced ${hoursSinceLastSync} hours ago`)
+    if (isConnectedUser) {
+      console.log(`👤 Model is the connected Fanvue user — will use personal endpoint`)
+    }
 
     // Fetch earnings from Fanvue (with pagination)
     type EarningRecord = {
@@ -154,22 +172,38 @@ export async function syncModelTransactions(modelId: string): Promise<SyncResult
     let pageCount = 0
     const maxPages = 100 // Safety limit (50 per page = 5000 transactions max)
 
+    // Determine which endpoint to use:
+    // - Personal endpoint: for the connected user OR when model has its own token
+    // - Agency endpoint: for other creators when using agency token
+    const usePersonalEndpoint = !useAgencyEndpoint || isConnectedUser
+
     while (hasMore && pageCount < maxPages) {
       try {
-        // Use agency endpoint if model doesn't have its own token
         let response: { data: any[]; nextCursor?: string | null; hasMore?: boolean }
-        if (useAgencyEndpoint) {
-          response = await fanvueClient.getCreatorEarnings(model.fanvue_user_uuid, {
-            startDate: startDate.toISOString(),
-            size: 50,
-            cursor: cursor || undefined,
-          })
-        } else {
+
+        if (usePersonalEndpoint) {
+          // Personal endpoint: GET /insights/earnings
           response = await fanvueClient.getEarnings({
             startDate: startDate.toISOString(),
             size: 50,
             cursor: cursor || undefined,
           })
+        } else {
+          // Agency endpoint: GET /creators/{uuid}/insights/earnings
+          try {
+            response = await fanvueClient.getCreatorEarnings(model.fanvue_user_uuid, {
+              startDate: startDate.toISOString(),
+              size: 50,
+              cursor: cursor || undefined,
+            })
+          } catch (agencyErr) {
+            // Fallback: if agency endpoint fails, DON'T retry with personal endpoint
+            // because personal endpoint returns the CONNECTED user's data, not this creator's
+            if (agencyErr instanceof FanvueAPIError) {
+              console.error(`Agency endpoint failed for ${model.id}: ${agencyErr.message}`)
+            }
+            break
+          }
         }
 
         allEarnings = [...allEarnings, ...(response.data || [])]

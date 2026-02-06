@@ -34,11 +34,20 @@ export async function POST(request: Request) {
 
     console.log(`[Bulk Stats] Refreshing ${models.length} creators for agency ${agencyId}`)
 
-    // Get the agency token once (shared for all creators)
+    // Get the agency token + connected user ID (shared for all creators)
     let agencyToken: string | null = null
+    let connectedFanvueUserId = ''
     try {
       agencyToken = await getAgencyFanvueToken(agencyId)
       console.log('[Bulk Stats] Got agency connection token')
+
+      // Get the connected Fanvue user ID for personal endpoint detection
+      const { data: conn } = await adminClient
+        .from('agency_fanvue_connections')
+        .select('fanvue_user_id')
+        .eq('agency_id', agencyId)
+        .single()
+      connectedFanvueUserId = conn?.fanvue_user_id || ''
     } catch {
       console.log('[Bulk Stats] No agency connection token available')
     }
@@ -69,8 +78,11 @@ export async function POST(request: Request) {
           const fanvue = createFanvueClient(accessToken)
           const uuid = model.fanvue_user_uuid!
 
-          if (useAgencyEndpoint) {
-            // Agency token path: use agency endpoints
+          // Check if this model IS the connected Fanvue user
+          const isConnectedUser = uuid === connectedFanvueUserId
+
+          if (useAgencyEndpoint && !isConnectedUser) {
+            // Agency token path: use agency endpoints (for non-connected creators)
             const [smartListsResult, earningsResult] = await Promise.allSettled([
               fanvue.getCreatorSmartLists(uuid),
               fanvue.getCreatorEarnings(uuid, {
@@ -157,7 +169,12 @@ export async function POST(request: Request) {
               tokenType: 'agency',
             }
           } else {
-            // Personal token path
+            // Personal endpoint path:
+            // - Models with their own token
+            // - OR the connected Fanvue user (use personal endpoints with agency token)
+            const tokenType = isConnectedUser ? 'agency-personal' : 'personal'
+            console.log(`[Bulk Stats] Using personal endpoint for ${model.name} (${tokenType})`)
+
             const [userInfo, earningsResult] = await Promise.allSettled([
               fanvue.getCurrentUser(),
               fanvue.getEarnings({
@@ -235,7 +252,7 @@ export async function POST(request: Request) {
               success: true,
               stats,
               earningsCount,
-              tokenType: 'personal',
+              tokenType,
             }
           }
         } catch (err) {
