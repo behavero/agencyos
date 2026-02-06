@@ -28,6 +28,7 @@ const API_URL = 'https://api.fanvue.com'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+export const maxDuration = 300 // 5 minutes — agency sync is heavy
 
 interface FanvueCreator {
   uuid: string
@@ -454,24 +455,50 @@ export async function POST(_request: NextRequest) {
       console.error('   ⚠️ Tracking links sync failed:', error.message)
     }
 
-    // STEP 8: Refresh model stats (subs, followers, etc.) using the freshly synced data
-    console.log('\n📊 STEP 8: REFRESH MODEL STATS')
+    // STEP 8: Refresh model stats (subs, followers, etc.) using smart lists
+    // Done INLINE to avoid a second HTTP round-trip that causes timeouts
+    console.log('\n📊 STEP 8: REFRESH MODEL STATS (Smart Lists)')
+    let statsRefreshed = 0
     try {
-      const statsResponse = await fetch(
-        new URL(
-          '/api/creators/stats/refresh-all',
-          process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-        ),
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ agencyId: profile.agency_id }),
+      const fanvue = createFanvueClient(agencyToken)
+      for (const creator of creators) {
+        const modelId = importResult.creatorsMap.get(creator.uuid)
+        if (!modelId) continue
+
+        try {
+          const lists = await fanvue.getCreatorSmartLists(creator.uuid)
+          if (!lists || lists.length === 0) continue
+
+          const followers = lists.find(l => l.uuid === 'followers')
+          const autoRenewing = lists.find(l => l.uuid === 'auto_renewing')
+          const nonRenewing = lists.find(l => l.uuid === 'non_renewing')
+          const freeTrialSubs = lists.find(l => l.uuid === 'free_trial_subscribers')
+          const activeSubscribers =
+            (autoRenewing?.count || 0) + (nonRenewing?.count || 0) + (freeTrialSubs?.count || 0)
+          const totalFollowers = followers?.count || 0
+
+          const stats: Record<string, unknown> = {
+            stats_updated_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }
+          if (activeSubscribers > 0) stats.subscribers_count = activeSubscribers
+          if (totalFollowers > 0) stats.followers_count = totalFollowers
+
+          await adminClient2.from('models').update(stats).eq('id', modelId)
+          statsRefreshed++
+          console.log(
+            `   ✅ ${creator.displayName}: subs=${activeSubscribers}, followers=${totalFollowers}`
+          )
+        } catch (e: unknown) {
+          console.error(
+            `   ⚠️ Stats failed for ${creator.displayName}:`,
+            e instanceof Error ? e.message : e
+          )
         }
-      )
-      const statsResult = await statsResponse.json()
-      console.log(`   ✅ Stats refreshed: ${statsResult.refreshed}/${statsResult.total} models`)
-    } catch (error: any) {
-      console.error('   ⚠️ Stats refresh failed:', error.message)
+      }
+      console.log(`   ✅ Stats refreshed: ${statsRefreshed}/${creators.length} models`)
+    } catch (error: unknown) {
+      console.error('   ⚠️ Stats refresh failed:', error instanceof Error ? error.message : error)
     }
 
     // Update last sync timestamp

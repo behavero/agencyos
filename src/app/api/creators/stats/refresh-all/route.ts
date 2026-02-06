@@ -4,6 +4,8 @@ import { createFanvueClient } from '@/lib/fanvue/client'
 import { getModelAccessToken } from '@/lib/services/fanvue-auth'
 import { getAgencyFanvueToken } from '@/lib/services/agency-fanvue-auth'
 
+export const maxDuration = 120 // 2 minutes
+
 /**
  * Derive subscriber/follower counts from our own data when Fanvue API calls fail.
  * Uses subscriber_history (most accurate), then falls back to transaction-based counts.
@@ -121,8 +123,9 @@ export async function POST(request: Request) {
           // Check if this model IS the connected Fanvue user
           const isConnectedUser = uuid === connectedFanvueUserId
 
-          if (useAgencyEndpoint && !isConnectedUser) {
-            // Agency token path: use agency endpoints (for non-connected creators)
+          if (useAgencyEndpoint) {
+            // Agency token path: use agency endpoints for ALL creators
+            // (including the connected user — smart lists give accurate active subs)
             const [smartListsResult, earningsResult] = await Promise.allSettled([
               fanvue.getCreatorSmartLists(uuid),
               fanvue.getCreatorEarnings(uuid, {
@@ -261,10 +264,8 @@ export async function POST(request: Request) {
               tokenType: 'agency',
             }
           } else {
-            // Personal endpoint path:
-            // - Models with their own token
-            // - OR the connected Fanvue user (use personal endpoints with agency token)
-            const tokenType = isConnectedUser ? 'agency-personal' : 'personal'
+            // Personal endpoint path: only for models with their own token and NO agency token
+            const tokenType = 'personal'
             console.log(`[Bulk Stats] Using personal endpoint for ${model.name} (${tokenType})`)
 
             const [userInfo, earningsResult] = await Promise.allSettled([
