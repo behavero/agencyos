@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -79,6 +79,11 @@ function formatRelativeTime(dateStr: string | null | undefined): string {
  *
  * Now uses useAgencyData() context for all data.
  */
+// How often to auto-refresh stats (60 seconds)
+const STATS_REFRESH_INTERVAL = 60 * 1000
+// Consider stats stale after 2 minutes
+const STATS_STALE_THRESHOLD = 2 * 60 * 1000
+
 export default function CreatorManagementClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -89,6 +94,9 @@ export default function CreatorManagementClient() {
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [refreshingIds, setRefreshingIds] = useState<Set<string>>(new Set())
+  const [isBulkRefreshing, setIsBulkRefreshing] = useState(false)
+  const autoRefreshRan = useRef(false)
+  const intervalRef = useRef<NodeJS.Timeout | null>(null)
 
   // Handle OAuth success/error from URL params
   useEffect(() => {
@@ -210,12 +218,89 @@ export default function CreatorManagementClient() {
     }
   }
 
-  // Refresh all creators
+  // Bulk refresh all creators via a single API call (parallel on server)
+  const handleBulkRefresh = useCallback(
+    async (silent = false) => {
+      if (!agencyId || isBulkRefreshing) return
+      if (models.length === 0) return
+
+      setIsBulkRefreshing(true)
+      if (!silent) {
+        toast.info('Refreshing all creator stats from Fanvue...')
+      }
+
+      try {
+        const response = await fetch('/api/creators/stats/refresh-all', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agencyId }),
+        })
+
+        const data = await response.json()
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to refresh stats')
+        }
+
+        if (!silent) {
+          toast.success(`Stats updated: ${data.refreshed}/${data.total} creators refreshed`)
+        }
+        console.log('[Creator Management] Bulk refresh complete:', data)
+
+        // Refresh the page data to show new stats
+        router.refresh()
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'Failed to refresh stats'
+        console.error('[Creator Management] Bulk refresh error:', message)
+        if (!silent) {
+          toast.error(message)
+        }
+      } finally {
+        setIsBulkRefreshing(false)
+      }
+    },
+    [agencyId, isBulkRefreshing, models, router]
+  )
+
+  // Refresh all creators (uses bulk endpoint)
   const handleRefreshAll = async () => {
-    for (const model of filteredModels) {
-      await handleRefreshStats(model.id, model.name || undefined)
-    }
+    await handleBulkRefresh(false)
   }
+
+  // Auto-refresh on mount if stats are stale or missing
+  useEffect(() => {
+    if (autoRefreshRan.current || !agencyId || models.length === 0) return
+
+    if (models.length === 0) return
+
+    // Check if any creator has stale or missing stats
+    const now = Date.now()
+    const hasStaleStats = models.some(m => {
+      if (!m.stats_updated_at) return true
+      const updatedAt = new Date(m.stats_updated_at).getTime()
+      return now - updatedAt > STATS_STALE_THRESHOLD
+    })
+
+    if (hasStaleStats) {
+      autoRefreshRan.current = true
+      console.log('[Creator Management] Auto-refreshing stale stats on mount...')
+      handleBulkRefresh(true)
+    }
+  }, [agencyId, models, handleBulkRefresh])
+
+  // Periodic auto-refresh every 60 seconds
+  useEffect(() => {
+    if (!agencyId || models.length === 0) return
+
+    intervalRef.current = setInterval(() => {
+      console.log('[Creator Management] Periodic stats refresh...')
+      handleBulkRefresh(true)
+    }, STATS_REFRESH_INTERVAL)
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current)
+    }
+  }, [agencyId, models, handleBulkRefresh])
 
   const filteredModels = models.filter(model => {
     const matchesSearch = model.name?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -238,10 +323,12 @@ export default function CreatorManagementClient() {
               onClick={handleRefreshAll}
               variant="outline"
               className="gap-2"
-              disabled={refreshingIds.size > 0}
+              disabled={isBulkRefreshing || refreshingIds.size > 0}
             >
-              <RefreshCw className={`w-4 h-4 ${refreshingIds.size > 0 ? 'animate-spin' : ''}`} />
-              Refresh All
+              <RefreshCw
+                className={`w-4 h-4 ${isBulkRefreshing || refreshingIds.size > 0 ? 'animate-spin' : ''}`}
+              />
+              {isBulkRefreshing ? 'Refreshing...' : 'Refresh All'}
             </Button>
           )}
           <ConnectAgencyFanvueButton />
