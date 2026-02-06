@@ -542,117 +542,215 @@ export default function AgencySettingsClient({ agency }: AgencySettingsClientPro
 
         {/* ====== Integrations Tab ====== */}
         <TabsContent value="integrations" className="space-y-6">
-          {/* Fanvue Connection */}
+          {/* Active Connections */}
           <Card className="glass">
             <CardHeader>
-              <div className="flex items-center gap-2">
-                <Link2 className="w-5 h-5 text-muted-foreground" />
-                <CardTitle>Fanvue Connection</CardTitle>
+              <CardTitle>Active Connections</CardTitle>
+              <CardDescription>Platforms currently connected to your agency</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {/* Fanvue Status */}
+              <div className="flex items-center justify-between p-4 rounded-lg border border-border">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-violet-500/10 flex items-center justify-center text-lg">
+                    &#x1F48E;
+                  </div>
+                  <div>
+                    <p className="font-medium">Fanvue</p>
+                    <p className="text-xs text-muted-foreground">
+                      {loadingFanvue
+                        ? 'Checking...'
+                        : fanvueStatus?.connected
+                          ? `${fanvueStatus.creatorsCount || 0} creators synced`
+                          : 'Not connected'}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {loadingFanvue ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                  ) : fanvueStatus?.connected ? (
+                    <Badge variant="outline" className="border-green-500/50 text-green-400">
+                      <CheckCircle2 className="w-3 h-3 mr-1" /> Active
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="border-zinc-500/50 text-zinc-400">
+                      <XCircle className="w-3 h-3 mr-1" /> Inactive
+                    </Badge>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => router.push('/dashboard/creator-management')}
+                  >
+                    Manage
+                  </Button>
+                </div>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Platform Integrations */}
+          <Card className="glass">
+            <CardHeader>
+              <CardTitle>Platform Integrations</CardTitle>
               <CardDescription>
-                Connect your Fanvue agency account to sync creator data
+                Connect additional creator platforms to manage everything in one place
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {loadingFanvue ? (
-                <div className="flex items-center justify-center py-6">
-                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-                </div>
-              ) : fanvueStatus?.connected ? (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-3 p-4 rounded-lg border border-green-500/30 bg-green-500/5">
-                    <CheckCircle2 className="w-5 h-5 text-green-400" />
-                    <div className="flex-1">
-                      <p className="font-medium text-green-400">Connected</p>
-                      <p className="text-sm text-muted-foreground">
-                        {fanvueStatus.fanvueUsername
-                          ? `Logged in as @${fanvueStatus.fanvueUsername}`
-                          : 'Fanvue account linked'}
-                      </p>
-                    </div>
-                    <Badge
-                      variant="outline"
-                      className={
-                        fanvueStatus.status === 'active'
-                          ? 'border-green-500/50 text-green-400'
-                          : 'border-yellow-500/50 text-yellow-400'
-                      }
-                    >
-                      {fanvueStatus.status || 'active'}
-                    </Badge>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="p-3 rounded-lg bg-muted/30">
-                      <p className="text-xs text-muted-foreground">Creators Synced</p>
-                      <p className="text-lg font-bold">{fanvueStatus.creatorsCount || 0}</p>
-                    </div>
-                    <div className="p-3 rounded-lg bg-muted/30">
-                      <p className="text-xs text-muted-foreground">Token Expires</p>
-                      <p className="text-sm font-medium">
-                        {fanvueStatus.expiresAt
-                          ? new Date(fanvueStatus.expiresAt).toLocaleDateString()
-                          : 'Auto-refreshed'}
-                      </p>
-                    </div>
-                  </div>
-
-                  <Button
-                    variant="outline"
-                    onClick={() => router.push('/dashboard/creator-management')}
-                    className="gap-2"
-                  >
-                    <RefreshCw className="w-4 h-4" />
-                    Manage Creators
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-3 p-4 rounded-lg border border-border bg-muted/20">
-                    <XCircle className="w-5 h-5 text-muted-foreground" />
-                    <div>
-                      <p className="font-medium">Not Connected</p>
-                      <p className="text-sm text-muted-foreground">
-                        Connect your Fanvue account to start syncing creator data
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    onClick={() => router.push('/dashboard/creator-management')}
-                    className="gap-2"
-                  >
-                    <Link2 className="w-4 h-4" />
-                    Connect Fanvue
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Future Integrations */}
-          <Card className="glass">
-            <CardHeader>
-              <CardTitle>Other Integrations</CardTitle>
-              <CardDescription>Coming soon</CardDescription>
-            </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {['Instagram / Meta', 'Telegram Bot', 'Stripe Payments', 'Google Analytics'].map(
-                  name => (
-                    <div
-                      key={name}
-                      className="flex items-center justify-between p-3 rounded-lg border border-border bg-muted/10"
-                    >
-                      <span className="text-sm">{name}</span>
-                      <Badge variant="secondary" className="text-xs">
-                        Coming Soon
-                      </Badge>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {[
+                  {
+                    name: 'OnlyFans',
+                    emoji: '🔵',
+                    desc: 'Sync OF creator stats, earnings, and subscriber data',
+                    priority: true,
+                  },
+                  {
+                    name: 'Fansly',
+                    emoji: '💙',
+                    desc: 'Multi-platform creator management with Fansly data',
+                    priority: true,
+                  },
+                  {
+                    name: 'Instagram / Meta',
+                    emoji: '📸',
+                    desc: 'Track creator IG growth, reach, and engagement metrics',
+                    priority: true,
+                  },
+                  {
+                    name: 'TikTok',
+                    emoji: '🎵',
+                    desc: 'Monitor TikTok views, followers, and viral content',
+                    priority: false,
+                  },
+                  {
+                    name: 'X (Twitter)',
+                    emoji: '𝕏',
+                    desc: 'Track impressions, engagement, and promotional posts',
+                    priority: false,
+                  },
+                  {
+                    name: 'Reddit',
+                    emoji: '🟠',
+                    desc: 'Track subreddit promotion performance and karma',
+                    priority: false,
+                  },
+                ].map(platform => (
+                  <div
+                    key={platform.name}
+                    className="flex items-center gap-3 p-4 rounded-lg border border-border bg-muted/10 hover:bg-muted/20 transition-colors"
+                  >
+                    <div className="w-10 h-10 rounded-lg bg-muted/50 flex items-center justify-center text-lg shrink-0">
+                      {platform.emoji}
                     </div>
-                  )
-                )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-sm">{platform.name}</p>
+                        {platform.priority && (
+                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                            Planned
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground truncate">{platform.desc}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
             </CardContent>
           </Card>
+
+          {/* Business Tools */}
+          <Card className="glass">
+            <CardHeader>
+              <CardTitle>Business Tools</CardTitle>
+              <CardDescription>
+                Automate your agency operations with these integrations
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {[
+                  {
+                    name: 'Telegram Bot',
+                    emoji: '✈️',
+                    desc: 'Real-time alerts for new subs, messages, and milestones',
+                    category: 'Notifications',
+                  },
+                  {
+                    name: 'Discord Webhooks',
+                    emoji: '🎮',
+                    desc: 'Push sync alerts and revenue updates to your team server',
+                    category: 'Notifications',
+                  },
+                  {
+                    name: 'Stripe',
+                    emoji: '💳',
+                    desc: 'Automate agency fee collection and creator payouts',
+                    category: 'Payments',
+                  },
+                  {
+                    name: 'Wise / PayPal',
+                    emoji: '💸',
+                    desc: 'International payouts to creators in their local currency',
+                    category: 'Payments',
+                  },
+                  {
+                    name: 'QuickBooks / Xero',
+                    emoji: '📊',
+                    desc: 'Auto-sync revenue, expenses, and payroll to your books',
+                    category: 'Accounting',
+                  },
+                  {
+                    name: 'Google Analytics',
+                    emoji: '📈',
+                    desc: 'Track bio page traffic, conversions, and traffic sources',
+                    category: 'Analytics',
+                  },
+                  {
+                    name: 'Zapier / Make',
+                    emoji: '⚡',
+                    desc: 'Build custom automations (new sub → Telegram, revenue → Sheets)',
+                    category: 'Automation',
+                  },
+                  {
+                    name: 'Google Sheets',
+                    emoji: '📋',
+                    desc: 'Auto-export daily revenue reports and creator performance',
+                    category: 'Reporting',
+                  },
+                ].map(tool => (
+                  <div
+                    key={tool.name}
+                    className="flex items-center gap-3 p-4 rounded-lg border border-border bg-muted/10 hover:bg-muted/20 transition-colors"
+                  >
+                    <div className="w-10 h-10 rounded-lg bg-muted/50 flex items-center justify-center text-lg shrink-0">
+                      {tool.emoji}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-sm">{tool.name}</p>
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] px-1.5 py-0 border-zinc-600 text-zinc-400"
+                        >
+                          {tool.category}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground truncate">{tool.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <p className="text-xs text-center text-muted-foreground">
+            Integrations are on the roadmap. Vote for the ones you want most — reach out to the
+            team.
+          </p>
         </TabsContent>
 
         {/* ====== Security Tab ====== */}
