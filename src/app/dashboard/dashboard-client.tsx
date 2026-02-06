@@ -413,7 +413,7 @@ export default function DashboardClient() {
     }
   }, [modelChartData, modelKPIMetrics, modelCategoryBreakdown])
 
-  // Auto-trigger a background sync on mount if any model has stale stats (>5 min old)
+  // Auto-trigger a background transaction sync on mount if any model has stale stats (>5 min old)
   const initialSyncRan = useRef(false)
   useEffect(() => {
     if (initialSyncRan.current || !agency?.id || models.length === 0) return
@@ -426,7 +426,12 @@ export default function DashboardClient() {
     if (hasStale) {
       initialSyncRan.current = true
       console.log('[Dashboard] Triggering background sync for stale data...')
-      fetch('/api/cron/revenue-heartbeat').catch(() => {})
+      // Use the user-authenticated analytics sync (not the cron endpoint which needs CRON_SECRET)
+      fetch('/api/analytics/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ forceAll: false }),
+      }).catch(() => {})
     }
   }, [agency?.id, models])
 

@@ -5,6 +5,7 @@
 
 import { createAdminClient } from '@/lib/supabase/server'
 import { createFanvueClient } from '@/lib/fanvue/client'
+import { getAgencyFanvueToken } from '@/lib/services/agency-fanvue-auth'
 
 export interface VaultSyncResult {
   success: boolean
@@ -34,16 +35,26 @@ export async function syncFanvueVault(modelId: string): Promise<VaultSyncResult>
       }
     }
 
-    if (!model.fanvue_access_token) {
+    // Try model's own token first, then fall back to agency token
+    let accessToken = model.fanvue_access_token
+    if (!accessToken && model.agency_id) {
+      try {
+        accessToken = await getAgencyFanvueToken(model.agency_id)
+      } catch {
+        // No agency token either
+      }
+    }
+
+    if (!accessToken) {
       return {
         success: false,
         assetsSynced: 0,
-        errors: ['No Fanvue access token for this model'],
+        errors: ['No Fanvue access token available (checked model and agency)'],
       }
     }
 
     // Initialize Fanvue client
-    const fanvueClient = createFanvueClient(model.fanvue_access_token)
+    const fanvueClient = createFanvueClient(accessToken)
 
     // Fetch media from Fanvue Vault
     const vaultFolders = await fanvueClient.getVaultFolders()

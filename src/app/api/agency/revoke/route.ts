@@ -34,7 +34,7 @@ export async function POST(_request: NextRequest) {
       return NextResponse.json({ error: 'No agency found' }, { status: 400 })
     }
 
-    if (!['admin', 'owner'].includes(profile.role || '')) {
+    if (!['admin', 'owner', 'grandmaster'].includes(profile.role || '')) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
     }
 
