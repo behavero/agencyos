@@ -94,8 +94,8 @@ export async function syncTrackingLinksForModel(
           follows_count: 0, // Not available from Fanvue tracking links API
           subs_count: 0, // Not available from Fanvue tracking links API
           subs_revenue: 0, // Not available from Fanvue tracking links API
-          total_revenue: 0, // Not available from Fanvue tracking links API
           user_spend: 0, // Not available from Fanvue tracking links API
+          // NOTE: total_revenue is a GENERATED column (subs_revenue + user_spend) — do NOT include it
           link_created_at: link.createdAt,
           last_synced_at: new Date().toISOString(),
         },
