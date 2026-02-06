@@ -6,13 +6,19 @@
  * Prevents "token expired" errors
  */
 
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { proactiveTokenRefresh } from '@/lib/services/token-refresh-service'
 
 export const maxDuration = 300 // 5 minutes
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // Verify cron secret
+  const { searchParams } = new URL(request.url)
+  const secret = searchParams.get('secret')
+  if (secret !== process.env.CRON_SECRET) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
   console.log('[cron/refresh-tokens] Starting proactive token refresh...')
 
   try {

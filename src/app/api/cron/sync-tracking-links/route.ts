@@ -1,23 +1,27 @@
 /**
  * Cron Job: Sync Tracking Links
- * 
+ *
  * Fetches tracking link data from Fanvue API for all connected creators
  * and updates the tracking_links table with click/conversion metrics.
- * 
+ *
  * Schedule: Every 30 minutes (configured in vercel.json)
  */
 
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { syncAllTrackingLinks } from '@/lib/services/tracking-links-syncer'
 
 export const maxDuration = 300 // 5 minutes max execution time
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
-  // Note: Vercel cron jobs have built-in security via CRON_SECRET
-  // For manual testing, this endpoint is temporarily open
-  
+export async function GET(request: NextRequest) {
+  // Verify cron secret
+  const { searchParams } = new URL(request.url)
+  const secret = searchParams.get('secret')
+  if (secret !== process.env.CRON_SECRET) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   const startTime = Date.now()
   console.log('[cron/sync-tracking-links] Starting tracking links sync...')
 
@@ -43,19 +47,25 @@ export async function GET() {
         const result = await syncAllTrackingLinks(agency.id)
         totalSynced += result.totalSynced
         totalModels += result.modelsProcessed
-        
+
         if (result.errors.length > 0) {
           allErrors.push(...result.errors.map(e => `[${agency.name}] ${e}`))
         }
-        
-        console.log(`[cron/sync-tracking-links] Agency ${agency.name}: ${result.totalSynced} links from ${result.modelsProcessed} models`)
+
+        console.log(
+          `[cron/sync-tracking-links] Agency ${agency.name}: ${result.totalSynced} links from ${result.modelsProcessed} models`
+        )
       } catch (error) {
-        allErrors.push(`[${agency.name}] ${error instanceof Error ? error.message : 'Unknown error'}`)
+        allErrors.push(
+          `[${agency.name}] ${error instanceof Error ? error.message : 'Unknown error'}`
+        )
       }
     }
 
     const duration = Date.now() - startTime
-    console.log(`[cron/sync-tracking-links] Completed in ${duration}ms: ${totalSynced} links from ${totalModels} models`)
+    console.log(
+      `[cron/sync-tracking-links] Completed in ${duration}ms: ${totalSynced} links from ${totalModels} models`
+    )
 
     return NextResponse.json({
       success: true,
@@ -67,9 +77,12 @@ export async function GET() {
     })
   } catch (error) {
     console.error('[cron/sync-tracking-links] Error:', error)
-    return NextResponse.json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    }, { status: 500 })
+    return NextResponse.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 500 }
+    )
   }
 }

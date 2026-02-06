@@ -35,21 +35,35 @@ export async function syncFanvueVault(modelId: string): Promise<VaultSyncResult>
       }
     }
 
-    // Try model's own token first, then fall back to agency token
-    let accessToken = model.fanvue_access_token
-    if (!accessToken && model.agency_id) {
+    // Use agency token as primary source (OAuth token has correct scopes)
+    // Fall back to model's own token only if no agency connection
+    let accessToken: string | null = null
+    let tokenSource = 'none'
+
+    if (model.agency_id) {
       try {
         accessToken = await getAgencyFanvueToken(model.agency_id)
-      } catch {
-        // No agency token either
+        tokenSource = 'agency'
+      } catch (e) {
+        console.warn(
+          `[Vault Sync] Agency token failed for ${model.name}:`,
+          e instanceof Error ? e.message : e
+        )
       }
+    }
+
+    if (!accessToken && model.fanvue_access_token) {
+      accessToken = model.fanvue_access_token
+      tokenSource = 'model'
     }
 
     if (!accessToken) {
       return {
         success: false,
         assetsSynced: 0,
-        errors: ['No Fanvue access token available (checked model and agency)'],
+        errors: [
+          'No Fanvue access token available. Agency admin may need to reconnect their Fanvue account via OAuth.',
+        ],
       }
     }
 
@@ -57,7 +71,25 @@ export async function syncFanvueVault(modelId: string): Promise<VaultSyncResult>
     const fanvueClient = createFanvueClient(accessToken)
 
     // Fetch media from Fanvue Vault
-    const vaultFolders = await fanvueClient.getVaultFolders()
+    let vaultFolders
+    try {
+      vaultFolders = await fanvueClient.getVaultFolders()
+    } catch (vaultError: any) {
+      const status = vaultError?.status || vaultError?.statusCode || 'unknown'
+      const msg = vaultError?.message || String(vaultError)
+      let hint = ''
+      if (status === 401) {
+        hint = ' Token may be expired — try reconnecting the agency Fanvue account.'
+      } else if (status === 403) {
+        hint =
+          ' The OAuth token may be missing the read:media scope. Re-authorize with the correct permissions.'
+      }
+      return {
+        success: false,
+        assetsSynced: 0,
+        errors: [`Vault API error (${status}, token: ${tokenSource}): ${msg}.${hint}`],
+      }
+    }
 
     let totalSynced = 0
     const errors: string[] = []

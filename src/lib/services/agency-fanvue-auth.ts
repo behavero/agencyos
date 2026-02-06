@@ -8,6 +8,7 @@
 
 import { createAdminClient } from '@/lib/supabase/server'
 import { refreshAccessToken, getClientId, getClientSecret } from '@/lib/fanvue/oauth'
+import { getCached, setCached } from '@/lib/fanvue/response-cache'
 
 const API_URL = 'https://api.fanvue.com'
 
@@ -65,6 +66,11 @@ interface FanvueEarningsResponse {
  * Auto-recovers expired connections by attempting a refresh before giving up.
  */
 export async function getAgencyFanvueToken(agencyId: string): Promise<string> {
+  // Check in-memory cache first (avoids DB read on concurrent requests)
+  const cacheKey = `agency-token:${agencyId}`
+  const cached = getCached<string>(cacheKey)
+  if (cached) return cached
+
   const adminClient = createAdminClient()
 
   // Step 1: Try to find an active connection
@@ -84,10 +90,31 @@ export async function getAgencyFanvueToken(agencyId: string): Promise<string> {
 
     if (expiresAt > fiveMinutesFromNow) {
       console.log(`✅ Agency ${agencyId} token is valid (expires ${expiresAt.toISOString()})`)
+      // Cache for 60s to avoid repeated DB reads on concurrent dashboard requests
+      setCached(cacheKey, activeConnection.fanvue_access_token, 60_000)
       return activeConnection.fanvue_access_token
     }
 
     // Token is expiring in less than 5 minutes -- refresh it
+    // LOCK: Prevent concurrent refreshes by checking/setting refreshing_since
+    const { data: lockCheck } = await adminClient
+      .from('agency_fanvue_connections')
+      .select('refreshing_since')
+      .eq('agency_id', agencyId)
+      .single()
+
+    const refreshingSince = lockCheck?.refreshing_since
+      ? new Date(lockCheck.refreshing_since)
+      : null
+    const lockStale = refreshingSince ? Date.now() - refreshingSince.getTime() > 30000 : true // No lock = stale
+
+    if (refreshingSince && !lockStale) {
+      // Another process is refreshing. Wait briefly then re-read the token
+      console.log(`⏳ Agency ${agencyId} token refresh in progress, waiting...`)
+      await new Promise(r => setTimeout(r, 3000))
+      return await fetchUpdatedToken(adminClient, agencyId)
+    }
+
     console.log(`🔄 Agency ${agencyId} token expiring in <5min, refreshing...`)
     try {
       await refreshAgencyToken(agencyId)
@@ -190,6 +217,12 @@ export async function refreshAgencyToken(agencyId: string): Promise<void> {
 
   console.log(`🔄 Refreshing Fanvue token for agency ${agencyId}...`)
 
+  // Acquire refresh lock
+  await adminClient
+    .from('agency_fanvue_connections')
+    .update({ refreshing_since: new Date().toISOString() })
+    .eq('agency_id', agencyId)
+
   const MAX_RETRIES = 3
   const BACKOFF_MS = [0, 2000, 5000] // immediate, 2s, 5s
   let lastError: Error | null = null
@@ -218,6 +251,7 @@ export async function refreshAgencyToken(agencyId: string): Promise<void> {
             Date.now() + (tokenData.expires_in || 3600) * 1000
           ).toISOString(),
           status: 'active',
+          refreshing_since: null, // Release lock
           updated_at: new Date().toISOString(),
         })
         .eq('agency_id', agencyId)
@@ -252,6 +286,7 @@ export async function refreshAgencyToken(agencyId: string): Promise<void> {
     .from('agency_fanvue_connections')
     .update({
       status: 'expired',
+      refreshing_since: null, // Release lock
       updated_at: new Date().toISOString(),
     })
     .eq('agency_id', agencyId)

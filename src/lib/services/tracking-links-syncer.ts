@@ -131,6 +131,7 @@ export async function syncTrackingLinksForModel(
           follows_count: followsCount,
           subs_count: subsCount,
           subs_revenue: totalGross, // Total attributed revenue (was in cents)
+          total_revenue: totalGross, // Same as subs_revenue -- Fanvue doesn't split further
           user_spend: 0, // API doesn't provide this breakdown
           link_created_at: link.createdAt,
           last_synced_at: new Date().toISOString(),
@@ -261,7 +262,7 @@ export async function getTopTrackingLinks(
     .from('tracking_links')
     .select('*')
     .eq('agency_id', agencyId)
-    .gt('clicks', 0) // Only links with clicks
+    .or('clicks.gt.0,total_revenue.gt.0') // Show links with either clicks or revenue
     .order(sortBy === 'roi' ? 'total_revenue' : sortBy, { ascending: false })
     .limit(limit)
 

@@ -7,6 +7,7 @@
  * pagination and automatic token refresh for resilient, scalable syncing.
  */
 
+import { createHash } from 'crypto'
 import { createAdminClient } from '@/lib/supabase/server'
 import { createFanvueClient, FanvueAPIError } from '@/lib/fanvue/client'
 import { getModelAccessToken } from '@/lib/services/fanvue-auth'
@@ -157,6 +158,8 @@ export async function syncModelTransactions(modelId: string): Promise<SyncResult
       console.log(`👤 Model is the connected Fanvue user — will use personal endpoint`)
     }
 
+    const syncStartTime = Date.now()
+
     // Fetch earnings from Fanvue (with pagination)
     type EarningRecord = {
       date: string
@@ -254,7 +257,12 @@ export async function syncModelTransactions(modelId: string): Promise<SyncResult
       return {
         agency_id: model.agency_id,
         model_id: model.id,
-        fanvue_transaction_id: `${earning.date}_${earning.source}_${earning.gross}_${earning.user?.uuid || 'unknown'}_${Math.random().toString(36).substring(2, 11)}`, // Generate unique ID with random suffix to prevent collisions
+        fanvue_transaction_id: createHash('sha256')
+          .update(
+            `${earning.date}_${earning.source}_${earning.gross}_${earning.net}_${earning.user?.uuid || 'unknown'}_${model.id}`
+          )
+          .digest('hex')
+          .substring(0, 24), // Deterministic hash for idempotent upserts
         transaction_type: category, // Must match CHECK constraint: subscription, tip, ppv, message, post, stream, other
         amount: earning.gross / 100, // Convert cents to dollars (gross amount)
         // net_amount is auto-calculated by DB: (amount - platform_fee)
@@ -289,7 +297,7 @@ export async function syncModelTransactions(modelId: string): Promise<SyncResult
       p_sync_type: 'transactions',
     })
 
-    const syncDuration = Date.now() - Date.now()
+    const syncDuration = Date.now() - syncStartTime
     console.log(`✅ Sync complete: ${transactions.length} transactions in ${syncDuration}ms`)
 
     // Update model stats after successful sync

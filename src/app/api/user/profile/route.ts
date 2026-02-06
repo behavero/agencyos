@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
 /**
@@ -8,7 +8,9 @@ import { createClient } from '@/lib/supabase/server'
 export async function GET() {
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -16,7 +18,8 @@ export async function GET() {
 
     const { data: profile, error } = await supabase
       .from('profiles')
-      .select(`
+      .select(
+        `
         id,
         username,
         role,
@@ -26,7 +29,8 @@ export async function GET() {
         current_streak,
         league_rank,
         created_at
-      `)
+      `
+      )
       .eq('id', user.id)
       .single()
 
@@ -37,7 +41,7 @@ export async function GET() {
 
     // Get assigned models if not owner/admin
     let assignedModels: { id: string; name: string }[] = []
-    
+
     if (profile.role && !['owner', 'admin', 'grandmaster', 'paladin'].includes(profile.role)) {
       const { data: assignments } = await supabase
         .from('model_assignments')
@@ -59,5 +63,41 @@ export async function GET() {
   } catch (error) {
     console.error('[User Profile API] Error:', error)
     return NextResponse.json({ error: 'Failed to fetch profile' }, { status: 500 })
+  }
+}
+
+/**
+ * PATCH /api/user/profile
+ * Update current user's profile
+ */
+export async function PATCH(request: NextRequest) {
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const body = await request.json()
+    const { username, timezone } = body
+
+    const updateData: Record<string, string> = {}
+    if (username !== undefined) updateData.username = username
+    if (timezone !== undefined) updateData.timezone = timezone
+
+    const { error } = await supabase.from('profiles').update(updateData).eq('id', user.id)
+
+    if (error) {
+      console.error('[User Profile API] Update error:', error)
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('[User Profile API] PATCH error:', error)
+    return NextResponse.json({ error: 'Failed to update profile' }, { status: 500 })
   }
 }

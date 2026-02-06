@@ -3,6 +3,9 @@ import { createAdminClient } from '@/lib/supabase/server'
 import { syncModelTransactions } from '@/lib/services/transaction-syncer'
 import { syncAllTrackingLinks } from '@/lib/services/tracking-links-syncer'
 import { aggregateFanInsights } from '@/lib/services/fan-insights-aggregator'
+import { syncAgencySubscriberHistory } from '@/lib/services/subscriber-history-syncer'
+import { syncAgencyTopSpenders } from '@/lib/services/top-spenders-syncer'
+import { getAgencyFanvueToken } from '@/lib/services/agency-fanvue-auth'
 
 /**
  * GET /api/cron/revenue-heartbeat
@@ -173,6 +176,34 @@ export async function GET(request: NextRequest) {
       console.error('[Revenue Heartbeat] Tracking links sync error:', tlError)
     }
 
+    // Refresh model stats (subs, followers, posts, likes) for all agencies
+    // This ensures stats update even when nobody has the dashboard open
+    let statsRefreshed = 0
+    try {
+      const { data: agencies } = await adminClient.from('agencies').select('id')
+      for (const agency of agencies || []) {
+        try {
+          const baseUrl = process.env.VERCEL_URL
+            ? `https://${process.env.VERCEL_URL}`
+            : process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+          const res = await fetch(`${baseUrl}/api/creators/stats/refresh-all`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ agencyId: agency.id }),
+          })
+          if (res.ok) {
+            const data = await res.json()
+            statsRefreshed += data.refreshed || 0
+          }
+        } catch (e) {
+          console.error(`[Revenue Heartbeat] Stats refresh failed for agency ${agency.id}:`, e)
+        }
+      }
+      console.log(`[Revenue Heartbeat] Refreshed stats for ${statsRefreshed} models`)
+    } catch (e) {
+      console.error('[Revenue Heartbeat] Stats refresh error:', e)
+    }
+
     // Aggregate fan_insights from transaction data
     let fanInsightsProcessed = 0
     try {
@@ -190,6 +221,34 @@ export async function GET(request: NextRequest) {
       console.error('[Revenue Heartbeat] Fan insights aggregation error:', fiError)
     }
 
+    // Sync subscriber history and top spenders (daily-ish, piggybacked on heartbeat)
+    let subscriberHistoryDays = 0
+    let topSpendersCount = 0
+    try {
+      const { data: agencies } = await adminClient.from('agencies').select('id')
+      for (const agency of agencies || []) {
+        try {
+          const agencyToken = await getAgencyFanvueToken(agency.id)
+          // Subscriber history: only sync last 7 days (full history done on first sync)
+          const shResult = await syncAgencySubscriberHistory(agency.id, agencyToken, 7)
+          subscriberHistoryDays += shResult.totalDays
+          // Top spenders
+          const tsResult = await syncAgencyTopSpenders(agency.id, agencyToken)
+          topSpendersCount += tsResult.totalSpenders
+        } catch (e) {
+          console.error(
+            `[Revenue Heartbeat] Subscriber/spenders sync failed for agency ${agency.id}:`,
+            e instanceof Error ? e.message : e
+          )
+        }
+      }
+      console.log(
+        `[Revenue Heartbeat] Synced ${subscriberHistoryDays} subscriber history days, ${topSpendersCount} top spenders`
+      )
+    } catch (e) {
+      console.error('[Revenue Heartbeat] Subscriber/spenders sync error:', e)
+    }
+
     const successful = results.filter(r => r.success).length
     const failed = results.filter(r => !r.success).length
     const totalTransactionsSynced = results.reduce((sum, r) => sum + r.transactionsSynced, 0)
@@ -201,7 +260,10 @@ export async function GET(request: NextRequest) {
       failed,
       totalTransactionsSynced,
       trackingLinksSynced,
+      statsRefreshed,
       fanInsightsProcessed,
+      subscriberHistoryDays,
+      topSpendersCount,
       results,
       timestamp: new Date().toISOString(),
     })

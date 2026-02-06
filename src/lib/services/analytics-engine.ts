@@ -99,87 +99,134 @@ export async function getChartData(
     total: Number(row.total) || 0,
   }))
 
-  // Generate subscriber growth from TRANSACTION data (cumulative unique subscribers over time)
-  // This is more reliable than subscriber_history which may have incomplete data
-  let subTransactionsQuery = supabase
-    .from('fanvue_transactions')
-    .select('transaction_date, fan_id')
+  // Generate subscriber/follower growth data
+  // STRATEGY: Use subscriber_history table first (accurate daily snapshots).
+  // Fall back to transaction-based cumulative counts if subscriber_history is empty.
+
+  // 1. Try subscriber_history table (source of truth when available)
+  let historyQuery = supabase
+    .from('subscriber_history')
+    .select('date, subscribers_count, followers_count')
     .eq('agency_id', agencyId)
-    .eq('transaction_type', 'subscription')
-    .gt('amount', 0) // Only PAID subscriptions
-    .gte('transaction_date', startDate.toISOString())
-    .lte('transaction_date', endDate.toISOString())
-    .order('transaction_date', { ascending: true })
+    .gte('date', startDate.toISOString().split('T')[0])
+    .lte('date', endDate.toISOString().split('T')[0])
+    .order('date', { ascending: true })
 
   if (options.modelId) {
-    subTransactionsQuery = subTransactionsQuery.eq('model_id', options.modelId)
+    historyQuery = historyQuery.eq('model_id', options.modelId)
   }
 
-  const { data: subTransactions } = await subTransactionsQuery
+  const { data: subscriberHistory } = await historyQuery
 
-  // Get current follower count from models table
-  let modelsForFollowersQuery = supabase
-    .from('models')
-    .select('followers_count')
-    .eq('agency_id', agencyId)
-
-  if (options.modelId) {
-    modelsForFollowersQuery = modelsForFollowersQuery.eq('id', options.modelId)
+  // Build a map from subscriber_history if data exists
+  const historyByDate = new Map<string, { subscribers: number; followers: number }>()
+  if (subscriberHistory && subscriberHistory.length > 0) {
+    // If filtering by model, use directly. If all models, aggregate by date.
+    const aggregated = new Map<string, { subscribers: number; followers: number }>()
+    for (const row of subscriberHistory) {
+      const dateKey = new Date(row.date).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      })
+      const existing = aggregated.get(dateKey) || { subscribers: 0, followers: 0 }
+      existing.subscribers += row.subscribers_count || 0
+      existing.followers += row.followers_count || 0
+      aggregated.set(dateKey, existing)
+    }
+    aggregated.forEach((v, k) => historyByDate.set(k, v))
   }
 
-  const { data: modelsForFollowers } = await modelsForFollowersQuery
-  const totalCurrentFollowers =
-    modelsForFollowers?.reduce((sum, m) => sum + (m.followers_count || 0), 0) || 0
+  const useHistory = historyByDate.size > 0
 
-  // Sort transactions by date to calculate cumulative counts correctly
-  const sortedTransactions = (subTransactions || []).sort(
-    (a: any, b: any) =>
-      new Date(a.transaction_date).getTime() - new Date(b.transaction_date).getTime()
-  )
-
-  // Calculate cumulative unique subscribers by date (sorted!)
-  const seenFans = new Set<string>()
+  // 2. Fallback: transaction-based cumulative counts (when no subscriber_history)
   const subscriberByDate = new Map<string, number>()
+  let totalCurrentFollowers = 0
 
-  sortedTransactions.forEach((tx: any) => {
-    seenFans.add(tx.fan_id)
-    const dateKey = new Date(tx.transaction_date).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
+  if (!useHistory) {
+    let subTransactionsQuery = supabase
+      .from('fanvue_transactions')
+      .select('transaction_date, fan_id')
+      .eq('agency_id', agencyId)
+      .eq('transaction_type', 'subscription')
+      .gt('amount', 0)
+      .gte('transaction_date', startDate.toISOString())
+      .lte('transaction_date', endDate.toISOString())
+      .order('transaction_date', { ascending: true })
+
+    if (options.modelId) {
+      subTransactionsQuery = subTransactionsQuery.eq('model_id', options.modelId)
+    }
+
+    const { data: subTransactions } = await subTransactionsQuery
+
+    let modelsForFollowersQuery = supabase
+      .from('models')
+      .select('followers_count')
+      .eq('agency_id', agencyId)
+
+    if (options.modelId) {
+      modelsForFollowersQuery = modelsForFollowersQuery.eq('id', options.modelId)
+    }
+
+    const { data: modelsForFollowers } = await modelsForFollowersQuery
+    totalCurrentFollowers =
+      modelsForFollowers?.reduce((sum, m) => sum + (m.followers_count || 0), 0) || 0
+
+    const sortedTransactions = (subTransactions || []).sort(
+      (a: any, b: any) =>
+        new Date(a.transaction_date).getTime() - new Date(b.transaction_date).getTime()
+    )
+
+    const seenFans = new Set<string>()
+    sortedTransactions.forEach((tx: any) => {
+      seenFans.add(tx.fan_id)
+      const dateKey = new Date(tx.transaction_date).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      })
+      subscriberByDate.set(dateKey, seenFans.size)
     })
-    subscriberByDate.set(dateKey, seenFans.size) // Update cumulative count for this date
-  })
+  }
 
-  // Get the final subscriber count
-  const finalSubscriberCount = seenFans.size
-
-  // Sort dataPoints chronologically first
+  // Sort dataPoints chronologically
   const sortedDataPoints = [...dataPoints].sort((a, b) => {
     const dateA = new Date(a.date)
     const dateB = new Date(b.date)
     return dateA.getTime() - dateB.getTime()
   })
 
-  // Merge subscriber data into chart data points
-  // Subscribers: Use cumulative count, carry forward if no transactions that day
-  // Followers: Linear growth from 0 to current (approximation)
+  // Merge subscriber/follower data into chart points
   const totalDays = sortedDataPoints.length
   let lastSubscriberCount = 0
+  let lastFollowerCount = 0
 
   const mergedDataPoints = sortedDataPoints.map((point, index) => {
-    // Get subscriber count for this date, or carry forward the last known count
-    const subCount = subscriberByDate.get(point.date)
-    if (subCount !== undefined) {
-      lastSubscriberCount = subCount
-    }
-
-    return {
-      ...point,
-      // Cumulative subscribers (carries forward)
-      subscribers: lastSubscriberCount,
-      // Linear growth for followers: 0 → current over time
-      followers: totalDays > 0 ? Math.round((totalCurrentFollowers * (index + 1)) / totalDays) : 0,
+    if (useHistory) {
+      // Use subscriber_history (accurate daily snapshots)
+      const historyPoint = historyByDate.get(point.date)
+      if (historyPoint) {
+        lastSubscriberCount = historyPoint.subscribers
+        lastFollowerCount = historyPoint.followers
+      }
+      return {
+        ...point,
+        subscribers: lastSubscriberCount,
+        followers: lastFollowerCount,
+      }
+    } else {
+      // Fallback: transaction-based cumulative counts
+      const subCount = subscriberByDate.get(point.date)
+      if (subCount !== undefined) {
+        lastSubscriberCount = subCount
+      }
+      return {
+        ...point,
+        subscribers: lastSubscriberCount,
+        followers:
+          totalDays > 0 ? Math.round((totalCurrentFollowers * (index + 1)) / totalDays) : 0,
+      }
     }
   })
 
@@ -525,7 +572,14 @@ export async function getKPIMetrics(
 
   // Calculate ARPU (Average Revenue Per User) = Total Revenue / Total Audience (Subscribers + Followers)
   // Using totalAudienceFromFanvue from Smart Lists (source of truth)
-  const arpu = totalAudienceFromFanvue > 0 ? totalRevenue / totalAudienceFromFanvue : 0
+  // Fallback to paidSubscribersFromTransactions if model stats are unavailable
+  const arpuDenominator =
+    totalAudienceFromFanvue > 0
+      ? totalAudienceFromFanvue
+      : paidSubscribersFromTransactions > 0
+        ? paidSubscribersFromTransactions
+        : 0
+  const arpu = arpuDenominator > 0 ? totalRevenue / arpuDenominator : 0
 
   // Calculate conversion rates
   // Get accurate message/PPV/post TRANSACTION counts using COUNT queries
@@ -607,18 +661,18 @@ export async function getKPIMetrics(
 
   const uniquePostFans = new Set(uniquePostBuyers?.map(t => t.fan_id).filter(Boolean)).size
 
-  // Message Purchase Rate: % of PAID subscribers who bought at least 1 message
-  // Uses paidSubscribersFromTransactions (people who actually paid for subscription)
-  const messageConversionRate =
-    paidSubscribersFromTransactions > 0
-      ? (uniqueMessageFans / paidSubscribersFromTransactions) * 100
-      : 0
+  // Message Purchase Rate: % of current active subscribers who bought at least 1 message
+  // Uses modelSubscribers (current active subs from Fanvue Smart Lists) as the primary denominator
+  // Falls back to paidSubscribersFromTransactions only when model stats are unavailable
+  const subscriberDenominator =
+    modelSubscribers > 0 ? modelSubscribers : paidSubscribersFromTransactions
 
-  // Post Purchase Rate: % of PAID subscribers who bought at least 1 post/PPV
+  const messageConversionRate =
+    subscriberDenominator > 0 ? (uniqueMessageFans / subscriberDenominator) * 100 : 0
+
+  // Post Purchase Rate: % of current active subscribers who bought at least 1 post/PPV
   const ppvConversionRate =
-    paidSubscribersFromTransactions > 0
-      ? (uniquePostFans / paidSubscribersFromTransactions) * 100
-      : 0
+    subscriberDenominator > 0 ? (uniquePostFans / subscriberDenominator) * 100 : 0
 
   // Calculate revenue growth
   const revenueGrowth =
@@ -632,20 +686,30 @@ export async function getKPIMetrics(
     paidSubscribersFromTransactions > 0 ? totalRevenue / paidSubscribersFromTransactions : 0
 
   // 2. Golden Ratio = (Message + PPV + Tip Revenue) / Subscription Revenue
-  const subscriptionRevenue =
-    currentTransactions
-      ?.filter(tx => tx.transaction_type === 'subscription' || tx.transaction_type === 'renewal')
-      .reduce((sum, tx) => sum + Number(tx.amount), 0) || 0
-  const interactionRevenue =
-    currentTransactions
-      ?.filter(
-        tx =>
-          tx.transaction_type === 'message' ||
-          tx.transaction_type === 'ppv' ||
-          tx.transaction_type === 'post' ||
-          tx.transaction_type === 'tip'
-      )
-      .reduce((sum, tx) => sum + Number(tx.amount), 0) || 0
+  // Use SQL SUM queries instead of client-side filtering to avoid 10k row limit
+  const buildSumQuery = (types: string[]) => {
+    let q = supabase
+      .from('fanvue_transactions')
+      .select('amount')
+      .eq('agency_id', agencyId)
+      .in('transaction_type', types)
+      .gte('transaction_date', startDate.toISOString())
+      .lte('transaction_date', endDate.toISOString())
+    if (options.modelId) q = q.eq('model_id', options.modelId)
+    return q
+  }
+
+  // Fetch subscription revenue and interaction revenue in parallel
+  const [subRevResult, intRevResult] = await Promise.all([
+    buildSumQuery(['subscription', 'renewal']).then(({ data }) =>
+      (data || []).reduce((sum, tx) => sum + Number(tx.amount), 0)
+    ),
+    buildSumQuery(['message', 'ppv', 'post', 'tip']).then(({ data }) =>
+      (data || []).reduce((sum, tx) => sum + Number(tx.amount), 0)
+    ),
+  ])
+  const subscriptionRevenue = subRevResult
+  const interactionRevenue = intRevResult
   const goldenRatio = subscriptionRevenue > 0 ? interactionRevenue / subscriptionRevenue : 0
 
   // 3. Total Messages Purchased (accurate count)
@@ -654,9 +718,47 @@ export async function getKPIMetrics(
   // 4. Total PPV/Posts Purchased (accurate count)
   const totalPPVSent = ppvCount + postCount
 
-  // 5. New Fans = Total current audience from Fanvue Smart Lists (subscribers + followers)
-  // This uses actual Fanvue data, not transaction-based estimates
-  const newFans = totalAudienceFromFanvue // Actual current audience from Fanvue
+  // 5. New Fans = count of unique fan_ids whose FIRST transaction falls within this period
+  // This counts genuinely NEW fans, not total audience
+  let newFansCount = 0
+  try {
+    // Get all unique fan_ids in the current period
+    const periodFanIds = new Set(allSubTransactions.map(t => t.fan_id).filter(Boolean))
+
+    if (periodFanIds.size > 0) {
+      // For each fan, check if they had any transaction BEFORE the period start
+      // If not, they're a new fan
+      const fanIdArray = Array.from(periodFanIds)
+      // Batch check: get fans who have transactions before the period
+      const existingFansBefore = new Set<string>()
+      const batchSize = 500
+      for (let i = 0; i < fanIdArray.length; i += batchSize) {
+        const batch = fanIdArray.slice(i, i + batchSize)
+        let q = supabase
+          .from('fanvue_transactions')
+          .select('fan_id')
+          .eq('agency_id', agencyId)
+          .lt('transaction_date', startDate.toISOString())
+          .in('fan_id', batch)
+          .limit(batch.length)
+
+        if (options.modelId) {
+          q = q.eq('model_id', options.modelId)
+        }
+
+        const { data: priorFans } = await q
+        if (priorFans) {
+          priorFans.forEach(f => existingFansBefore.add(f.fan_id))
+        }
+      }
+
+      newFansCount = fanIdArray.filter(id => !existingFansBefore.has(id)).length
+    }
+  } catch (e) {
+    console.error('[analytics-engine] Error calculating new fans:', e)
+    newFansCount = 0
+  }
+  const newFans = newFansCount
 
   // 6. Unlock Rate: approximate from message transactions with revenue vs total messages
   // Messages with revenue / total messages sent gives us a rough unlock rate

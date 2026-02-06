@@ -1,13 +1,32 @@
 'use client'
 
 import Link from 'next/link'
-import { Bell, Search, Command, DollarSign, Users, MessageSquare } from 'lucide-react'
+import {
+  Bell,
+  Search,
+  Command,
+  DollarSign,
+  Users,
+  MessageSquare,
+  Settings,
+  Building2,
+  LogOut,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { TimeClock } from './time-clock'
 import { useAgencyDataOptional } from '@/providers/agency-data-provider'
+import { createClient } from '@/lib/supabase/client'
 
 export function Header() {
   const agencyData = useAgencyDataOptional()
@@ -83,22 +102,63 @@ export function Header() {
 
         <Separator orientation="vertical" className="h-6" />
 
-        {/* User */}
-        <Link
-          href="/dashboard/settings"
-          className="flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer"
-        >
-          <div className="hidden md:block text-right">
-            <p className="text-sm font-medium text-foreground">{profileName}</p>
-            <p className="text-xs text-muted-foreground">Grandmaster</p>
-          </div>
-          <Avatar className="h-8 w-8 border border-border">
-            <AvatarImage src="" alt="User" />
-            <AvatarFallback className="bg-gradient-to-br from-primary to-green-400 text-primary-foreground text-sm font-medium">
-              M
-            </AvatarFallback>
-          </Avatar>
-        </Link>
+        {/* User Dropdown */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer outline-none">
+              <div className="hidden md:block text-right">
+                <p className="text-sm font-medium text-foreground">{profileName}</p>
+                <p className="text-xs text-muted-foreground capitalize">
+                  {agencyData?.profile?.role || 'Member'}
+                </p>
+              </div>
+              <Avatar className="h-8 w-8 border border-border">
+                <AvatarImage src="" alt="User" />
+                <AvatarFallback className="bg-gradient-to-br from-primary to-green-400 text-primary-foreground text-sm font-medium">
+                  {profileName.charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuLabel>
+              <div>
+                <p className="font-medium">{profileName}</p>
+                <p className="text-xs text-muted-foreground font-normal">
+                  {agencyData?.user?.email || ''}
+                </p>
+              </div>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link href="/dashboard/settings" className="flex items-center gap-2 cursor-pointer">
+                <Settings className="w-4 h-4" />
+                Profile Settings
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link
+                href="/dashboard/agency-settings"
+                className="flex items-center gap-2 cursor-pointer"
+              >
+                <Building2 className="w-4 h-4" />
+                Agency Settings
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={async () => {
+                const supabase = createClient()
+                await supabase.auth.signOut()
+                window.location.href = '/'
+              }}
+              className="text-destructive focus:text-destructive cursor-pointer"
+            >
+              <LogOut className="w-4 h-4 mr-2" />
+              Sign Out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </header>
   )

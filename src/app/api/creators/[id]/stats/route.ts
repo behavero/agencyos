@@ -198,45 +198,35 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         })
       }
 
-      // For chats, we need to paginate through ALL pages to get exact count
-      console.log('[Stats API] Fetching ALL chats (full pagination)...')
-      let allChats: unknown[] = []
-      let page = 1
-      let hasMore = true
-      const maxPages = 100 // Safety limit
+      // Get chat count with a single page request (just to get the total)
+      // Instead of paginating ALL chats O(n), we fetch 1 page and use the count if available
+      console.log('[Stats API] Fetching chat count (single page)...')
+      const chatsPage = await fanvue
+        .getCreatorChats(model.fanvue_user_uuid, { page: 1, size: 1 })
+        .catch(e => {
+          console.error('[Stats API] Chats count error:', e.message)
+          return null
+        })
 
-      while (hasMore && page <= maxPages) {
-        const chatsPage = await fanvue
-          .getCreatorChats(model.fanvue_user_uuid, { page, size: 50 })
-          .catch(e => {
-            console.error(`[Stats API] Chats page ${page} error:`, e.message)
-            return null
-          })
-
-        if (chatsPage?.data && chatsPage.data.length > 0) {
-          allChats = [...allChats, ...chatsPage.data]
-          hasMore = chatsPage.pagination.hasMore
-          page++
-          console.log(
-            `[Stats API] Chats page ${page - 1}: ${chatsPage.data.length} chats, total: ${allChats.length}`
-          )
-        } else {
-          hasMore = false
-        }
-
-        if (page > maxPages) {
-          console.warn('[Stats API] Reached max pages limit for chats')
-        }
+      const pagination = chatsPage?.pagination as Record<string, unknown> | undefined
+      if (pagination?.totalCount) {
+        // API returns totalCount in pagination metadata
+        totalMessages = pagination.totalCount as number
+      } else if (chatsPage?.data) {
+        // Fallback: estimate from pagination hasMore
+        // If first page returned data and hasMore is true, we know there's at least > 1
+        // Use the existing unread_messages from DB as the cached count
+        const { data: existingModel } = await adminClient
+          .from('models')
+          .select('unread_messages')
+          .eq('id', id)
+          .single()
+        totalMessages = existingModel?.unread_messages || chatsPage.data.length
       }
 
-      totalMessages = allChats.length
-      console.log(`[Stats API] Total chats: ${totalMessages} (fetched across ${page - 1} pages)`)
+      console.log(`[Stats API] Chat count: ${totalMessages}`)
 
-      // Store for debug output
-      chatsData = {
-        data: allChats,
-        pagination: { page: page - 1, size: allChats.length, hasMore: false },
-      } as any
+      chatsData = chatsPage as any
     }
 
     // Fetch ALL earnings with pagination (from account creation to now)

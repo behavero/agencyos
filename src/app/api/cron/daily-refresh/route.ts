@@ -134,8 +134,12 @@ export async function POST(request: NextRequest) {
         if (totalEarnings !== null) {
           updateData.revenue_total = totalEarnings
         }
-        updateData.unread_messages = unreadMessages
-        updateData.tracking_links_count = trackingLinksCount
+        if (unreadMessages != null && unreadMessages > 0) {
+          updateData.unread_messages = unreadMessages
+        }
+        if (trackingLinksCount != null && trackingLinksCount > 0) {
+          updateData.tracking_links_count = trackingLinksCount
+        }
 
         const { error: updateError } = await adminClient
           .from('models')

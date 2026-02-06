@@ -137,12 +137,6 @@ const fullNavigation: NavigationSection[] = [
         permission: 'showTeam',
       },
       { name: 'Invite', href: '/dashboard/team/invite', icon: UserPlus, permission: 'showTeam' },
-      {
-        name: 'Agency HQ',
-        href: '/dashboard/agency-settings',
-        icon: Building2,
-        permission: 'showAgencySettings',
-      },
     ],
   },
 ]
@@ -267,7 +261,11 @@ export function Sidebar() {
             </div>
           </div>
         )}
-        <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-sidebar-accent/50">
+        <Link
+          href="/dashboard/agency-settings"
+          className="flex items-center gap-3 px-3 py-2 rounded-lg bg-sidebar-accent/50 hover:bg-sidebar-accent transition-colors cursor-pointer"
+          title="Agency Settings"
+        >
           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-green-400 flex items-center justify-center">
             <span className="text-primary-foreground text-sm font-medium">
               {agencyData?.agency?.name?.charAt(0) || 'O'}
@@ -281,7 +279,8 @@ export function Sidebar() {
               {agencyData?.models?.length || 0} creators
             </p>
           </div>
-        </div>
+          <Building2 className="w-4 h-4 text-muted-foreground" />
+        </Link>
       </div>
     </aside>
   )

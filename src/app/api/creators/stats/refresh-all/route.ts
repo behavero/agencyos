@@ -11,22 +11,27 @@ import { getAgencyFanvueToken } from '@/lib/services/agency-fanvue-auth'
 async function getDerivedCounts(
   adminClient: ReturnType<typeof createAdminClient>,
   modelId: string,
-  agencyId: string
+  _agencyId: string
 ): Promise<{ subscribers: number; followers: number }> {
   // Strategy 1: Latest subscriber_history entry (most accurate)
+  // Schema: subscribers_count, followers_count (not subscribers_total)
   const { data: latestHistory } = await adminClient
     .from('subscriber_history')
-    .select('subscribers_total')
+    .select('subscribers_count, followers_count')
     .eq('model_id', modelId)
     .order('date', { ascending: false })
     .limit(1)
     .single()
 
-  if (latestHistory?.subscribers_total && latestHistory.subscribers_total > 0) {
-    return { subscribers: latestHistory.subscribers_total, followers: 0 }
+  if (latestHistory) {
+    const subs = latestHistory.subscribers_count || 0
+    const followers = latestHistory.followers_count || 0
+    if (subs > 0 || followers > 0) {
+      return { subscribers: subs, followers }
+    }
   }
 
-  // Strategy 2: Count unique fans from subscription transactions
+  // Strategy 2: Count unique fans from subscription transactions (subs only, no follower data)
   const { count: uniqueSubFans } = await adminClient
     .from('fanvue_transactions')
     .select('fan_id', { count: 'exact', head: true })
@@ -34,7 +39,9 @@ async function getDerivedCounts(
     .eq('transaction_type', 'subscription')
     .not('fan_id', 'is', null)
 
-  return { subscribers: uniqueSubFans || 0, followers: 0 }
+  // NOTE: We only return subscribers from transactions; we do NOT return followers: 0
+  // to avoid overwriting real follower data. Caller should skip writing followers if derived.
+  return { subscribers: uniqueSubFans || 0, followers: -1 }
 }
 
 /**
@@ -186,13 +193,19 @@ export async function POST(request: Request) {
               if (totalSubscribers > 0) stats.subscribers_count = totalSubscribers
             }
 
-            // Fallback: if smart lists didn't return subs, derive from our own data
-            if (!stats.subscribers_count) {
+            // Fallback: if smart lists didn't return subs/followers, derive from our own data
+            if (!stats.subscribers_count || !stats.followers_count) {
               const derived = await getDerivedCounts(adminClient, model.id, agencyId)
-              if (derived.subscribers > 0) {
+              if (!stats.subscribers_count && derived.subscribers > 0) {
                 stats.subscribers_count = derived.subscribers
                 console.log(
                   `[Bulk Stats] Using derived subscriber count for ${model.name}: ${derived.subscribers}`
+                )
+              }
+              if (!stats.followers_count && derived.followers > 0) {
+                stats.followers_count = derived.followers
+                console.log(
+                  `[Bulk Stats] Using derived follower count for ${model.name}: ${derived.followers}`
                 )
               }
             }
@@ -348,6 +361,12 @@ export async function POST(request: Request) {
                 stats.subscribers_count = derived.subscribers
                 console.log(
                   `[Bulk Stats] Using derived subscriber count for ${model.name}: ${derived.subscribers}`
+                )
+              }
+              if (!stats.followers_count && derived.followers > 0) {
+                stats.followers_count = derived.followers
+                console.log(
+                  `[Bulk Stats] Using derived follower count for ${model.name}: ${derived.followers}`
                 )
               }
             }

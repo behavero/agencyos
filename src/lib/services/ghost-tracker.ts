@@ -273,8 +273,10 @@ export async function scanPublicProfile(
   const scrapeResult = await scrapeWithFirecrawl(profileUrl)
 
   if (!scrapeResult.success || !scrapeResult.markdown) {
-    console.error('[GhostTracker] Scrape failed:', scrapeResult.error)
-    return null
+    const errorMsg = scrapeResult.error || 'Scrape returned no content'
+    console.error('[GhostTracker] Scrape failed:', errorMsg)
+    // Throw so callers can capture the specific error message
+    throw new Error(errorMsg)
   }
 
   // Parse based on platform
@@ -361,7 +363,13 @@ export async function addWatchedAccount(params: {
   }
 
   // Scan the profile first
-  const stats = await scanPublicProfile(cleanUsername, params.platform)
+  let stats: PublicProfileStats | null = null
+  let scanError: string | null = null
+  try {
+    stats = await scanPublicProfile(cleanUsername, params.platform)
+  } catch (e) {
+    scanError = e instanceof Error ? e.message : 'Scan failed'
+  }
 
   // Insert the watched account
   const { data, error } = await supabase
@@ -378,7 +386,7 @@ export async function addWatchedAccount(params: {
       last_stats: stats || {},
       stats_history: stats ? [stats] : [],
       last_scanned_at: stats ? new Date().toISOString() : null,
-      scan_error: stats ? null : 'Scan unavailable — FIRECRAWL_API_KEY not configured',
+      scan_error: stats ? null : scanError || 'Scan unavailable',
       notes: params.notes || null,
       tags: params.tags || [],
       created_by: params.userId || null,
@@ -413,7 +421,15 @@ export async function refreshWatchedAccount(accountId: string): Promise<PublicPr
   }
 
   // Scan the profile
-  const stats = await scanPublicProfile(account.username, account.platform)
+  let stats: PublicProfileStats | null = null
+  let scanError: string | null = null
+
+  try {
+    stats = await scanPublicProfile(account.username, account.platform)
+  } catch (e) {
+    scanError = e instanceof Error ? e.message : 'Scan failed'
+    console.error(`[GhostTracker] Scan failed for @${account.username}:`, scanError)
+  }
 
   // Update the account
   const updateData: Record<string, unknown> = {
@@ -435,7 +451,7 @@ export async function refreshWatchedAccount(accountId: string): Promise<PublicPr
     updateData.display_name = stats.displayName || account.display_name
     updateData.avatar_url = stats.avatarUrl || account.avatar_url
   } else {
-    updateData.scan_error = 'Scan failed'
+    updateData.scan_error = scanError || 'Scan failed — unknown error'
   }
 
   await supabase.from('watched_accounts').update(updateData).eq('id', accountId)
