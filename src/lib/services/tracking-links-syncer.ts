@@ -2,37 +2,16 @@
  * Tracking Links Syncer
  *
  * Syncs tracking link data from Fanvue API to database.
- * Includes clicks, follows, subscribers, and revenue data.
+ * Uses the agency endpoint: GET /creators/{creatorUserUuid}/tracking-links
+ * which returns: uuid, name, linkUrl, externalSocialPlatform, createdAt, clicks
+ *
+ * NOTE: The Fanvue API does NOT return engagement (followers/subs) or earnings
+ * data per tracking link. Only clicks are available from the API.
  */
 
 import { createAdminClient } from '@/lib/supabase/server'
+import { createFanvueClient } from '@/lib/fanvue/client'
 import { getAgencyFanvueToken } from '@/lib/services/agency-fanvue-auth'
-
-const FANVUE_API_VERSION = '2025-06-26'
-
-interface FanvueTrackingLink {
-  uuid: string
-  name: string
-  linkUrl: string
-  externalSocialPlatform: string | null
-  createdAt: string
-  clicks: number
-  // Nested engagement data from API
-  engagement?: {
-    acquiredSubscribers: number
-    acquiredFollowers: number
-  }
-  // Nested earnings data from API (in CENTS!)
-  earnings?: {
-    totalGross: number
-    totalNet: number
-  }
-}
-
-interface TrackingLinksResponse {
-  data: FanvueTrackingLink[]
-  nextCursor: string | null
-}
 
 interface SyncResult {
   synced: number
@@ -40,51 +19,7 @@ interface SyncResult {
 }
 
 /**
- * Fetch tracking links from Fanvue API for a creator
- */
-async function fetchTrackingLinks(
-  creatorUuid: string,
-  accessToken: string,
-  cursor?: string
-): Promise<TrackingLinksResponse> {
-  const url = new URL(`https://api.fanvue.com/creators/${creatorUuid}/tracking-links`)
-  url.searchParams.set('limit', '50')
-  if (cursor) {
-    url.searchParams.set('cursor', cursor)
-  }
-
-  console.log(`[tracking-links] Fetching: ${url.toString()}`)
-
-  const response = await fetch(url.toString(), {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'X-Fanvue-API-Version': FANVUE_API_VERSION,
-    },
-  })
-
-  // Log response status for debugging
-  console.log(`[tracking-links] Response status: ${response.status} for creator ${creatorUuid}`)
-
-  // 404 means no tracking links exist for this creator - return empty
-  if (response.status === 404) {
-    const body = await response.text()
-    console.log(`[tracking-links] 404 response body: ${body}`)
-    return { data: [], nextCursor: null }
-  }
-
-  if (!response.ok) {
-    const errorBody = await response.text()
-    console.error(`[tracking-links] Error response: ${errorBody}`)
-    throw new Error(`Fanvue API error: ${response.status} ${response.statusText} - ${errorBody}`)
-  }
-
-  const data = await response.json()
-  console.log(`[tracking-links] Got ${data.data?.length || 0} links`)
-  return data
-}
-
-/**
- * Sync tracking links for a single model/creator
+ * Sync tracking links for a single model/creator using the Fanvue client
  */
 export async function syncTrackingLinksForModel(
   modelId: string,
@@ -93,32 +28,49 @@ export async function syncTrackingLinksForModel(
   accessToken: string
 ): Promise<SyncResult> {
   const supabase = createAdminClient()
+  const fanvue = createFanvueClient(accessToken)
   const result: SyncResult = { synced: 0, errors: [] }
 
   try {
     let cursor: string | undefined
-    let allLinks: FanvueTrackingLink[] = []
+    let allLinks: Array<{
+      uuid: string
+      name: string
+      linkUrl: string
+      externalSocialPlatform: string
+      createdAt: string
+      clicks: number
+    }> = []
 
-    // Fetch all pages
+    // Fetch all pages using the Fanvue client
     do {
-      const response = await fetchTrackingLinks(creatorUuid, accessToken, cursor)
-      allLinks = allLinks.concat(response.data)
-      cursor = response.nextCursor || undefined
+      try {
+        const response = await fanvue.getCreatorTrackingLinks(creatorUuid, {
+          limit: 50,
+          cursor,
+        })
+        allLinks = allLinks.concat(response.data || [])
+        cursor = response.nextCursor || undefined
+        console.log(
+          `[tracking-links] Page fetched for ${creatorUuid}: ${response.data?.length || 0} links`
+        )
+      } catch (e: unknown) {
+        const err = e as { statusCode?: number; message?: string }
+        // 404 = no tracking links for this creator — not an error
+        if (err.statusCode === 404) {
+          console.log(`[tracking-links] No tracking links for creator ${creatorUuid} (404)`)
+          break
+        }
+        throw e
+      }
     } while (cursor)
 
-    console.log(`[tracking-links] Fetched ${allLinks.length} links for model ${modelId}`)
+    console.log(
+      `[tracking-links] Total fetched: ${allLinks.length} links for model ${modelId} (creator ${creatorUuid})`
+    )
 
     // Upsert each tracking link
     for (const link of allLinks) {
-      // Extract nested data (API returns amounts in CENTS!)
-      const subsCount = link.engagement?.acquiredSubscribers || 0
-      const followsCount = link.engagement?.acquiredFollowers || 0
-      const totalGross = (link.earnings?.totalGross || 0) / 100 // Convert cents to dollars
-
-      // Note: Fanvue API doesn't separate subs_revenue from user_spend
-      // We only get totalGross which is ALL revenue from this tracking link
-      // Store it as subs_revenue for now (it's actually total attributed revenue)
-
       const { error } = await supabase.from('tracking_links').upsert(
         {
           fanvue_uuid: link.uuid,
@@ -128,11 +80,11 @@ export async function syncTrackingLinksForModel(
           link_url: link.linkUrl,
           external_social_platform: link.externalSocialPlatform,
           clicks: link.clicks || 0,
-          follows_count: followsCount,
-          subs_count: subsCount,
-          subs_revenue: totalGross, // Total attributed revenue (was in cents)
-          total_revenue: totalGross, // Same as subs_revenue -- Fanvue doesn't split further
-          user_spend: 0, // API doesn't provide this breakdown
+          follows_count: 0, // Not available from Fanvue tracking links API
+          subs_count: 0, // Not available from Fanvue tracking links API
+          subs_revenue: 0, // Not available from Fanvue tracking links API
+          total_revenue: 0, // Not available from Fanvue tracking links API
+          user_spend: 0, // Not available from Fanvue tracking links API
           link_created_at: link.createdAt,
           last_synced_at: new Date().toISOString(),
         },
@@ -142,13 +94,21 @@ export async function syncTrackingLinksForModel(
       )
 
       if (error) {
+        console.error(
+          `[tracking-links] Upsert error for link "${link.name}":`,
+          error.message,
+          error.details,
+          error.hint
+        )
         result.errors.push(`Failed to upsert link ${link.name}: ${error.message}`)
       } else {
         result.synced++
       }
     }
   } catch (error) {
-    result.errors.push(`Sync failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    const msg = error instanceof Error ? error.message : 'Unknown error'
+    console.error(`[tracking-links] Sync failed for model ${modelId}:`, msg)
+    result.errors.push(`Sync failed: ${msg}`)
   }
 
   return result
@@ -162,7 +122,7 @@ export async function syncAllTrackingLinks(agencyId: string): Promise<{
   modelsProcessed: number
   errors: string[]
 }> {
-  const supabase = await createAdminClient()
+  const supabase = createAdminClient()
 
   // Get all models with Fanvue connection
   const { data: models, error: modelsError } = await supabase
@@ -183,6 +143,7 @@ export async function syncAllTrackingLinks(agencyId: string): Promise<{
   let agencyToken: string | null = null
   try {
     agencyToken = await getAgencyFanvueToken(agencyId)
+    console.log('[tracking-links] Using agency connection token')
   } catch {
     // Fall back to model-level token if agency connection unavailable
     const { data: agencyAdmin } = await supabase
@@ -193,6 +154,9 @@ export async function syncAllTrackingLinks(agencyId: string): Promise<{
       .limit(1)
       .single()
     agencyToken = agencyAdmin?.fanvue_access_token || null
+    if (agencyToken) {
+      console.log('[tracking-links] Using model-level token as fallback')
+    }
   }
 
   if (!agencyToken) {
@@ -202,15 +166,13 @@ export async function syncAllTrackingLinks(agencyId: string): Promise<{
   for (const model of models || []) {
     if (!model.fanvue_user_uuid) continue
 
-    // Always use agency token for tracking links (more reliable scopes)
-    const token = agencyToken
-
     try {
+      console.log(`[tracking-links] Syncing for ${model.name} (uuid: ${model.fanvue_user_uuid})...`)
       const result = await syncTrackingLinksForModel(
         model.id,
         agencyId,
         model.fanvue_user_uuid,
-        token
+        agencyToken
       )
 
       totalSynced += result.synced
@@ -222,7 +184,9 @@ export async function syncAllTrackingLinks(agencyId: string): Promise<{
 
       console.log(`[tracking-links] Synced ${result.synced} links for ${model.name}`)
     } catch (error) {
-      errors.push(`[${model.name}] ${error instanceof Error ? error.message : 'Unknown error'}`)
+      const msg = error instanceof Error ? error.message : 'Unknown error'
+      errors.push(`[${model.name}] ${msg}`)
+      console.error(`[tracking-links] Error for ${model.name}:`, msg)
     }
   }
 
@@ -264,7 +228,6 @@ export async function getTopTrackingLinks(
     .from('tracking_links')
     .select('*, models(name)')
     .eq('agency_id', agencyId)
-    .gt('clicks', 0)
     .order(sortBy === 'roi' ? 'total_revenue' : sortBy, { ascending: false })
     .limit(limit)
 

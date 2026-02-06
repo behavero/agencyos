@@ -707,6 +707,33 @@ export class FanvueClient {
     return this.request(`/tracking-links/${linkUuid}`, { method: 'DELETE' })
   }
 
+  // ==================== CREATOR TRACKING LINKS (Agency endpoint) ====================
+  /**
+   * Get tracking links for a specific creator (agency endpoint)
+   * Requires agency admin token with read:tracking_links and read:creator scopes
+   */
+  async getCreatorTrackingLinks(
+    creatorUserUuid: string,
+    params?: { limit?: number; cursor?: string }
+  ) {
+    const queryParams = new URLSearchParams()
+    if (params?.limit) queryParams.set('limit', String(params.limit))
+    if (params?.cursor) queryParams.set('cursor', params.cursor)
+
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : ''
+    return this.request<{
+      data: Array<{
+        uuid: string
+        name: string
+        linkUrl: string
+        externalSocialPlatform: string
+        createdAt: string
+        clicks: number
+      }>
+      nextCursor: string | null
+    }>(`/creators/${creatorUserUuid}/tracking-links${query}`)
+  }
+
   // ==================== AGENCY ENDPOINTS ====================
   async getAgencyCreators(params?: { page?: number; size?: number }) {
     const query = params

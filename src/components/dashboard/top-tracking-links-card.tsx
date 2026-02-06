@@ -195,7 +195,9 @@ export function TopTrackingLinksCard({ models = [], initialModelId }: TopTrackin
           <div className="flex flex-col items-center justify-center h-[200px] text-muted-foreground">
             <Link2 className="h-10 w-10 mb-2 opacity-50" />
             <p>No tracking links found</p>
-            <p className="text-sm">Create tracking links in Fanvue to track traffic sources</p>
+            <p className="text-sm">
+              Create tracking links in Fanvue to track traffic sources, then sync your agency
+            </p>
           </div>
         ) : (
           <div className="space-y-3">

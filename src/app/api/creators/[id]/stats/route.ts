@@ -178,34 +178,60 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       // OPTION B: Using agency admin token - fetch via agency endpoints
       console.log('[Stats API] Fetching stats via agency endpoints...')
 
-      // Use Smart Lists endpoint for ACCURATE follower/subscriber counts (single API call!)
-      const smartListsResponse = await fanvue
-        .getCreatorSmartLists(model.fanvue_user_uuid)
-        .catch(e => {
-          console.error('[Stats API] Smart lists error:', e.message)
-          return null
-        })
+      // Use the actual /creators/{uuid}/subscribers and /creators/{uuid}/followers endpoints
+      // These return the REAL paginated list of current subscribers/followers (per Fanvue API docs)
+      // Smart lists were giving inflated counts by summing categories
+      const [subsResult, followersResult] = await Promise.allSettled([
+        // Count actual subscribers by paginating through the list
+        (async () => {
+          let count = 0
+          let page = 1
+          let hasMore = true
+          while (hasMore && page <= 100) {
+            const resp = await fanvue.getCreatorSubscribers(model.fanvue_user_uuid, {
+              page,
+              size: 50,
+            })
+            count += resp.data.length
+            hasMore = resp.pagination.hasMore
+            page++
+          }
+          return count
+        })(),
+        // Count actual followers by paginating
+        (async () => {
+          let count = 0
+          let page = 1
+          let hasMore = true
+          while (hasMore && page <= 100) {
+            const resp = await fanvue.getCreatorFollowers(model.fanvue_user_uuid, {
+              page,
+              size: 50,
+            })
+            count += resp.data.length
+            hasMore = resp.pagination.hasMore
+            page++
+          }
+          return count
+        })(),
+      ])
 
-      if (smartListsResponse) {
-        const followersSmartList = smartListsResponse.find(list => list.uuid === 'followers')
-        // "subscribers" smart list = ALL (active + expired + free trial)
-        // Use auto_renewing + non_renewing + free_trial for ACTIVE count
-        const autoRenewing = smartListsResponse.find(list => list.uuid === 'auto_renewing')
-        const nonRenewing = smartListsResponse.find(list => list.uuid === 'non_renewing')
-        const freeTrialSubs = smartListsResponse.find(
-          list => list.uuid === 'free_trial_subscribers'
-        )
-
-        totalFollowers = followersSmartList?.count || 0
-        totalSubscribers =
-          (autoRenewing?.count || 0) + (nonRenewing?.count || 0) + (freeTrialSubs?.count || 0)
-
-        console.log('[Stats API] Smart Lists:', {
-          followers: totalFollowers,
-          activeSubscribers: totalSubscribers,
-          allLists: smartListsResponse.map(l => `${l.name}: ${l.count}`).join(', '),
-        })
+      if (subsResult.status === 'fulfilled') {
+        totalSubscribers = subsResult.value
+      } else {
+        console.error('[Stats API] Subscribers count error:', subsResult.reason)
       }
+
+      if (followersResult.status === 'fulfilled') {
+        totalFollowers = followersResult.value
+      } else {
+        console.error('[Stats API] Followers count error:', followersResult.reason)
+      }
+
+      console.log('[Stats API] Direct API counts:', {
+        subscribers: totalSubscribers,
+        followers: totalFollowers,
+      })
 
       // Get chat count with a single page request (just to get the total)
       // Instead of paginating ALL chats O(n), we fetch 1 page and use the count if available
@@ -392,30 +418,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       if (userInfo?.contentCounts?.videoCount) stats.video_count = userInfo.contentCounts.videoCount
       if (userInfo?.contentCounts?.audioCount) stats.audio_count = userInfo.contentCounts.audioCount
     } else {
-      // Agency endpoints: only subs/followers available via smart lists
-      if (totalFollowers > 0) stats.followers_count = totalFollowers
-      if (totalSubscribers > 0) stats.subscribers_count = totalSubscribers
+      // Agency endpoints: subscribers/followers come from actual paginated API
+      // Always write even if 0 — this is the REAL count from Fanvue (prevents stale inflated values)
+      stats.followers_count = totalFollowers
+      stats.subscribers_count = totalSubscribers
       if (totalMessages > 0) stats.unread_messages = totalMessages
       // posts_count, likes_count NOT available via agency API — omit to preserve existing values
     }
 
-    // Fallback: if we still don't have subscriber counts, try dedicated endpoints
-    if (!stats.subscribers_count) {
+    // Fallback: if we still don't have subscriber counts, try personal endpoint
+    if (!stats.subscribers_count && usePersonalEndpoints) {
       try {
-        if (usePersonalEndpoints) {
-          const subCount = await fanvue.getSubscribersCount()
-          if (subCount?.total > 0) stats.subscribers_count = subCount.total
-        } else {
-          // Try subscriber history endpoint (agency endpoint)
-          const subHistory = await fanvue.getCreatorSubscriberHistory(model.fanvue_user_uuid, {
-            startDate: new Date(Date.now() - 7 * 86400000).toISOString(),
-            size: 1,
-          })
-          if (subHistory?.data?.length > 0) {
-            const latest = subHistory.data[subHistory.data.length - 1]
-            if (latest.total > 0) stats.subscribers_count = latest.total
-          }
-        }
+        const subCount = await fanvue.getSubscribersCount()
+        if (subCount?.total > 0) stats.subscribers_count = subCount.total
       } catch {
         // Fallback endpoint not available
       }

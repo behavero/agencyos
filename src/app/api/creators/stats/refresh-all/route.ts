@@ -124,10 +124,35 @@ export async function POST(request: Request) {
           const isConnectedUser = uuid === connectedFanvueUserId
 
           if (useAgencyEndpoint) {
-            // Agency token path: use agency endpoints for ALL creators
-            // (including the connected user — smart lists give accurate active subs)
-            const [smartListsResult, earningsResult] = await Promise.allSettled([
-              fanvue.getCreatorSmartLists(uuid),
+            // Agency token path: use actual subscribers/followers endpoints for accurate counts
+            // Smart lists were summing categories and giving inflated numbers
+            const [subsResult, followersResult, earningsResult] = await Promise.allSettled([
+              // Count actual subscribers by paginating /creators/{uuid}/subscribers
+              (async () => {
+                let count = 0
+                let page = 1
+                let hasMore = true
+                while (hasMore && page <= 100) {
+                  const resp = await fanvue.getCreatorSubscribers(uuid, { page, size: 50 })
+                  count += resp.data.length
+                  hasMore = resp.pagination.hasMore
+                  page++
+                }
+                return count
+              })(),
+              // Count actual followers by paginating /creators/{uuid}/followers
+              (async () => {
+                let count = 0
+                let page = 1
+                let hasMore = true
+                while (hasMore && page <= 100) {
+                  const resp = await fanvue.getCreatorFollowers(uuid, { page, size: 50 })
+                  count += resp.data.length
+                  hasMore = resp.pagination.hasMore
+                  page++
+                }
+                return count
+              })(),
               fanvue.getCreatorEarnings(uuid, {
                 startDate: '2020-01-01T00:00:00Z',
                 endDate: new Date().toISOString(),
@@ -138,26 +163,16 @@ export async function POST(request: Request) {
             let totalFollowers = 0
             let totalSubscribers = 0
 
-            if (smartListsResult.status === 'fulfilled' && smartListsResult.value) {
-              const lists = smartListsResult.value
-              const followers = lists.find(l => l.uuid === 'followers')
-              // "subscribers" smart list = ALL subscribers (active + expired + free trial)
-              // Use auto_renewing + non_renewing for ACTIVE subscriber count
-              const autoRenewing = lists.find(l => l.uuid === 'auto_renewing')
-              const nonRenewing = lists.find(l => l.uuid === 'non_renewing')
-              const freeTrialSubs = lists.find(l => l.uuid === 'free_trial_subscribers')
-              const activeSubscribers =
-                (autoRenewing?.count || 0) + (nonRenewing?.count || 0) + (freeTrialSubs?.count || 0)
-
-              totalFollowers = followers?.count || 0
-              totalSubscribers = activeSubscribers
-
-              console.log(
-                `[Bulk Stats] Smart Lists for ${model.name}:`,
-                lists.map(l => `${l.uuid}: ${l.count}`).join(', '),
-                `=> active subs: ${activeSubscribers}, followers: ${totalFollowers}`
-              )
+            if (subsResult.status === 'fulfilled') {
+              totalSubscribers = subsResult.value
             }
+            if (followersResult.status === 'fulfilled') {
+              totalFollowers = followersResult.value
+            }
+
+            console.log(
+              `[Bulk Stats] Direct counts for ${model.name}: subs=${totalSubscribers}, followers=${totalFollowers}`
+            )
 
             // Calculate total revenue from earnings (first page only for speed)
             let totalRevenueCents = 0
@@ -204,47 +219,29 @@ export async function POST(request: Request) {
               updated_at: new Date().toISOString(),
             }
 
-            // Only update followers/subs if we got real non-zero data
-            if (smartListsResult.status === 'fulfilled' && smartListsResult.value) {
-              if (totalFollowers > 0) stats.followers_count = totalFollowers
-              if (totalSubscribers > 0) stats.subscribers_count = totalSubscribers
+            // Only update followers/subs if we got real data from the API
+            if (subsResult.status === 'fulfilled') {
+              // Always write the count, even if 0 — this is the REAL count from Fanvue
+              stats.subscribers_count = totalSubscribers
+            }
+            if (followersResult.status === 'fulfilled') {
+              stats.followers_count = totalFollowers
             }
 
-            // Fallback: if smart lists didn't return subs/followers, derive from our own data
-            if (!stats.subscribers_count || !stats.followers_count) {
+            // Fallback: if the direct API calls failed, derive from our own data
+            if (stats.subscribers_count === undefined || stats.followers_count === undefined) {
               const derived = await getDerivedCounts(adminClient, model.id, agencyId)
-              if (!stats.subscribers_count && derived.subscribers > 0) {
+              if (stats.subscribers_count === undefined && derived.subscribers > 0) {
                 stats.subscribers_count = derived.subscribers
                 console.log(
                   `[Bulk Stats] Using derived subscriber count for ${model.name}: ${derived.subscribers}`
                 )
               }
-              if (!stats.followers_count && derived.followers > 0) {
+              if (stats.followers_count === undefined && derived.followers > 0) {
                 stats.followers_count = derived.followers
                 console.log(
                   `[Bulk Stats] Using derived follower count for ${model.name}: ${derived.followers}`
                 )
-              }
-            }
-
-            // Fallback: try subscriber history endpoint for subscriber count
-            if (!stats.subscribers_count) {
-              try {
-                const subHistory = await fanvue.getCreatorSubscriberHistory(uuid, {
-                  startDate: new Date(Date.now() - 7 * 86400000).toISOString(),
-                  size: 1,
-                })
-                if (subHistory?.data?.length > 0) {
-                  const latest = subHistory.data[subHistory.data.length - 1]
-                  if (latest.total > 0) {
-                    stats.subscribers_count = latest.total
-                    console.log(
-                      `[Bulk Stats] Using subscriber history for ${model.name}: ${latest.total}`
-                    )
-                  }
-                }
-              } catch {
-                // Subscriber history not available
               }
             }
 

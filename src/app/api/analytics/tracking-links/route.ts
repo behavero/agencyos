@@ -4,11 +4,13 @@
  * Returns tracking link data with calculated metrics for dashboard display.
  * Supports sorting by clicks, subs, revenue, or ROI.
  *
- * Queries directly using the admin client (bypasses RLS) for reliability.
+ * Strategy: Check database first. If empty, fetch LIVE from Fanvue API,
+ * store in database, then return the results.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
+import { syncAllTrackingLinks } from '@/lib/services/tracking-links-syncer'
 
 export const dynamic = 'force-dynamic'
 
@@ -46,8 +48,30 @@ export async function GET(request: NextRequest) {
       'total_revenue'
     const limit = parseInt(searchParams.get('limit') || '10')
 
-    // Query directly with admin client for reliability
     const adminClient = createAdminClient()
+
+    // Check if we have ANY tracking links in the database for this agency
+    const { count: existingCount } = await adminClient
+      .from('tracking_links')
+      .select('*', { count: 'exact', head: true })
+      .eq('agency_id', agencyId)
+
+    // If database is empty, trigger a live sync from Fanvue API first
+    if (!existingCount || existingCount === 0) {
+      console.log('[tracking-links API] Database empty — triggering live sync from Fanvue API...')
+      try {
+        const syncResult = await syncAllTrackingLinks(agencyId)
+        console.log(
+          `[tracking-links API] Live sync complete: ${syncResult.totalSynced} links from ${syncResult.modelsProcessed} models`,
+          syncResult.errors.length > 0 ? `Errors: ${syncResult.errors.join(', ')}` : ''
+        )
+      } catch (syncError) {
+        console.error(
+          '[tracking-links API] Live sync failed:',
+          syncError instanceof Error ? syncError.message : syncError
+        )
+      }
+    }
 
     // --- Top Links Query ---
     const orderCol = sortBy === 'roi' ? 'total_revenue' : sortBy
@@ -55,7 +79,6 @@ export async function GET(request: NextRequest) {
       .from('tracking_links')
       .select('*')
       .eq('agency_id', agencyId)
-      .gt('clicks', 0)
       .order(orderCol, { ascending: false })
       .limit(limit)
 
@@ -68,10 +91,7 @@ export async function GET(request: NextRequest) {
     if (linksError) {
       console.error('[tracking-links API] Query error:', linksError.message, linksError.details)
       return NextResponse.json(
-        {
-          success: false,
-          error: `Database query failed: ${linksError.message}`,
-        },
+        { success: false, error: `Database query failed: ${linksError.message}` },
         { status: 500 }
       )
     }
@@ -146,10 +166,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('[tracking-links API] Error:', error)
     return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      },
+      { success: false, error: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     )
   }

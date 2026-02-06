@@ -496,9 +496,9 @@ export async function POST(_request: NextRequest) {
       console.error('   ⚠️ Tracking links sync failed:', error.message)
     }
 
-    // STEP 8: Refresh model stats (subs, followers, etc.) using smart lists
-    // Done INLINE to avoid a second HTTP round-trip that causes timeouts
-    console.log('\n📊 STEP 8: REFRESH MODEL STATS (Smart Lists)')
+    // STEP 8: Refresh model stats (subs, followers) using actual subscribers/followers endpoints
+    // These endpoints return the real paginated list of current subscribers and followers
+    console.log('\n📊 STEP 8: REFRESH MODEL STATS (Subscribers + Followers endpoints)')
     let statsRefreshed = 0
     try {
       const fanvue = createFanvueClient(agencyToken)
@@ -507,28 +507,51 @@ export async function POST(_request: NextRequest) {
         if (!modelId) continue
 
         try {
-          const lists = await fanvue.getCreatorSmartLists(creator.uuid)
-          if (!lists || lists.length === 0) continue
+          // Count actual subscribers by paginating /creators/{uuid}/subscribers
+          let totalSubscribers = 0
+          let totalFollowers = 0
 
-          const followers = lists.find(l => l.uuid === 'followers')
-          const autoRenewing = lists.find(l => l.uuid === 'auto_renewing')
-          const nonRenewing = lists.find(l => l.uuid === 'non_renewing')
-          const freeTrialSubs = lists.find(l => l.uuid === 'free_trial_subscribers')
-          const activeSubscribers =
-            (autoRenewing?.count || 0) + (nonRenewing?.count || 0) + (freeTrialSubs?.count || 0)
-          const totalFollowers = followers?.count || 0
+          const [subsResult, followersResult] = await Promise.allSettled([
+            (async () => {
+              let count = 0
+              let page = 1
+              let hasMore = true
+              while (hasMore && page <= 100) {
+                const resp = await fanvue.getCreatorSubscribers(creator.uuid, { page, size: 50 })
+                count += resp.data.length
+                hasMore = resp.pagination.hasMore
+                page++
+              }
+              return count
+            })(),
+            (async () => {
+              let count = 0
+              let page = 1
+              let hasMore = true
+              while (hasMore && page <= 100) {
+                const resp = await fanvue.getCreatorFollowers(creator.uuid, { page, size: 50 })
+                count += resp.data.length
+                hasMore = resp.pagination.hasMore
+                page++
+              }
+              return count
+            })(),
+          ])
+
+          if (subsResult.status === 'fulfilled') totalSubscribers = subsResult.value
+          if (followersResult.status === 'fulfilled') totalFollowers = followersResult.value
 
           const stats: Record<string, unknown> = {
             stats_updated_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
+            subscribers_count: totalSubscribers,
+            followers_count: totalFollowers,
           }
-          if (activeSubscribers > 0) stats.subscribers_count = activeSubscribers
-          if (totalFollowers > 0) stats.followers_count = totalFollowers
 
           await adminClient2.from('models').update(stats).eq('id', modelId)
           statsRefreshed++
           console.log(
-            `   ✅ ${creator.displayName}: subs=${activeSubscribers}, followers=${totalFollowers}`
+            `   ✅ ${creator.displayName}: subs=${totalSubscribers}, followers=${totalFollowers}`
           )
         } catch (e: unknown) {
           console.error(
