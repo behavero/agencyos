@@ -729,11 +729,15 @@ export class FanvueClient {
         externalSocialPlatform: string
         createdAt: string
         clicks: number
-        // Attribution metrics (available from API but not in OpenAPI spec)
-        followsCount?: number
-        subsCount?: number
-        subsRevenue?: number
-        userSpend?: number
+        // Attribution metrics (undocumented but confirmed in API response)
+        engagement?: {
+          acquiredSubscribers: number
+          acquiredFollowers: number
+        }
+        earnings?: {
+          totalGross: number // in cents
+          totalNet: number // in cents
+        }
       }>
       nextCursor: string | null
     }>(`/creators/${creatorUserUuid}/tracking-links${query}`)

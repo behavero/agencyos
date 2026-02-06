@@ -38,10 +38,14 @@ export async function syncTrackingLinksForModel(
       externalSocialPlatform: string
       createdAt: string
       clicks: number
-      followsCount?: number
-      subsCount?: number
-      subsRevenue?: number
-      userSpend?: number
+      engagement?: {
+        acquiredSubscribers: number
+        acquiredFollowers: number
+      }
+      earnings?: {
+        totalGross: number // cents
+        totalNet: number // cents
+      }
     }> = []
 
     // Fetch all pages using the Fanvue client
@@ -92,6 +96,12 @@ export async function syncTrackingLinksForModel(
 
     // Upsert each tracking link
     for (const link of allLinks) {
+      // Map nested engagement & earnings from the Fanvue API response
+      const followsCount = link.engagement?.acquiredFollowers || 0
+      const subsCount = link.engagement?.acquiredSubscribers || 0
+      const grossCents = link.earnings?.totalGross || 0
+      const netCents = link.earnings?.totalNet || 0
+
       const { error } = await supabase.from('tracking_links').upsert(
         {
           fanvue_uuid: link.uuid,
@@ -101,10 +111,10 @@ export async function syncTrackingLinksForModel(
           link_url: link.linkUrl,
           external_social_platform: link.externalSocialPlatform,
           clicks: link.clicks || 0,
-          follows_count: link.followsCount || 0,
-          subs_count: link.subsCount || 0,
-          subs_revenue: link.subsRevenue || 0,
-          user_spend: link.userSpend || 0,
+          follows_count: followsCount,
+          subs_count: subsCount,
+          subs_revenue: netCents / 100, // cents → dollars (net to creator)
+          user_spend: grossCents / 100, // cents → dollars (gross user spend)
           // NOTE: total_revenue is a GENERATED column (subs_revenue + user_spend) — do NOT include it
           link_created_at: link.createdAt,
           last_synced_at: new Date().toISOString(),
