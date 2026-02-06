@@ -6,6 +6,7 @@
 
 import { createAdminClient } from '@/lib/supabase/server'
 import { refreshAccessToken, getClientId, getClientSecret } from '@/lib/fanvue/oauth'
+import { getAgencyFanvueToken } from '@/lib/services/agency-fanvue-auth'
 
 interface FanvueTokenResponse {
   access_token: string
@@ -133,7 +134,7 @@ export async function getModelAccessToken(modelId: string): Promise<string> {
   // Get model's token info
   const { data: model, error } = await supabase
     .from('models')
-    .select('fanvue_access_token, fanvue_refresh_token, fanvue_token_expires_at')
+    .select('agency_id, fanvue_access_token, fanvue_refresh_token, fanvue_token_expires_at')
     .eq('id', modelId)
     .single()
 
@@ -141,8 +142,14 @@ export async function getModelAccessToken(modelId: string): Promise<string> {
     throw new Error(`Model not found: ${modelId}`)
   }
 
+  // If model has no personal token, fall back to agency connection token
+  // This is common for agency-imported creators who don't have individual OAuth tokens
   if (!model.fanvue_access_token) {
-    throw new Error(`Model ${modelId} has no Fanvue access token`)
+    if (model.agency_id) {
+      console.log(`[fanvue-auth] Model ${modelId} has no personal token, trying agency token...`)
+      return getAgencyFanvueToken(model.agency_id)
+    }
+    throw new Error(`Model ${modelId} has no Fanvue access token and no agency connection`)
   }
 
   // Check if token is expired or expiring soon (within 1 hour)

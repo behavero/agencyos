@@ -501,12 +501,18 @@ export default function DashboardClient() {
   const totalGrossRevenue = isAllTimeView
     ? liveTotalRevenue
     : (overviewData?.kpiMetrics?.totalRevenue ?? 0)
-  // Net revenue from analytics engine (transaction-based). When transactions haven't been synced
-  // yet, this will be 0 even though gross revenue exists from model stats. In that case, estimate
-  // net revenue as 80% of gross (Fanvue's standard 20% platform fee).
+  // Net revenue must come from the same source as gross revenue to avoid mismatched calculations.
+  // When in "All Time" view, gross comes from model stats (live total), so we estimate net
+  // at 80% (Fanvue's standard 20% fee) rather than using transaction-based net which may
+  // only represent a partial sync. When using date-filtered view, both come from transactions.
+  const analyticsGrossRevenue = overviewData?.kpiMetrics?.totalRevenue ?? 0
   const analyticsNetRevenue = overviewData?.kpiMetrics?.netRevenue ?? 0
   const totalNetRevenue =
-    analyticsNetRevenue > 0 ? analyticsNetRevenue : Math.round(totalGrossRevenue * 0.8)
+    isAllTimeView && liveTotalRevenue > 0 && analyticsGrossRevenue < liveTotalRevenue * 0.5
+      ? Math.round(liveTotalRevenue * 0.8) // Transactions only partially synced; estimate from model stats
+      : analyticsNetRevenue > 0
+        ? analyticsNetRevenue
+        : Math.round(totalGrossRevenue * 0.8) // No transactions at all; estimate 80%
   const platformFee = totalGrossRevenue - totalNetRevenue
   const afterPlatformFee = totalNetRevenue
   const taxRate = agency?.tax_rate ?? 0.2

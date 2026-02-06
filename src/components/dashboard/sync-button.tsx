@@ -49,9 +49,19 @@ export function SyncButton() {
         })
         router.refresh()
       } else {
+        // Provide actionable error for connection issues
+        const isConnectionIssue =
+          result.error?.includes('NO_AGENCY_FANVUE_CONNECTION') ||
+          result.error?.includes('token') ||
+          result.error?.includes('expired') ||
+          result.error?.includes('reconnect')
+
         toast.error('Agency sync failed', {
           id: 'sync-toast',
-          description: result.error || 'Please try again',
+          description: isConnectionIssue
+            ? 'Fanvue connection expired. Go to Agency Settings to reconnect.'
+            : result.error || 'Please try again',
+          duration: 8000,
         })
       }
     } catch (error) {
