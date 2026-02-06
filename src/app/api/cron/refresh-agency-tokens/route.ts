@@ -42,14 +42,16 @@ export async function GET(request: NextRequest) {
 
   try {
     // Find all agency connections that need refreshing
-    // Tokens expiring within 2 hours or already expired
-    const twoHoursFromNow = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
+    // Only refresh tokens expiring within 15 minutes (cron runs every 30 min)
+    // IMPORTANT: Fanvue tokens last ~1 hour. Using a small window prevents
+    // unnecessary refresh attempts that burn through refresh tokens.
+    const fifteenMinutesFromNow = new Date(Date.now() + 15 * 60 * 1000).toISOString()
 
     const { data: connections, error } = await adminClient
       .from('agency_fanvue_connections')
       .select('agency_id, fanvue_token_expires_at, status')
       .eq('status', 'active')
-      .lte('fanvue_token_expires_at', twoHoursFromNow)
+      .lte('fanvue_token_expires_at', fifteenMinutesFromNow)
 
     if (error) {
       throw new Error(`Failed to fetch agency connections: ${error.message}`)

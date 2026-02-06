@@ -76,17 +76,19 @@ export async function getAgencyFanvueToken(agencyId: string): Promise<string> {
     .single()
 
   if (activeConnection) {
-    // Check if token is still valid (not expiring within 1 hour)
+    // Check if token is still valid (not expiring within 5 minutes)
+    // IMPORTANT: Fanvue tokens last ~1 hour. Using a small window prevents
+    // unnecessary refresh attempts that burn through refresh tokens.
     const expiresAt = new Date(activeConnection.fanvue_token_expires_at)
-    const oneHourFromNow = new Date(Date.now() + 60 * 60 * 1000)
+    const fiveMinutesFromNow = new Date(Date.now() + 5 * 60 * 1000)
 
-    if (expiresAt > oneHourFromNow) {
-      console.log(`✅ Agency ${agencyId} token is valid`)
+    if (expiresAt > fiveMinutesFromNow) {
+      console.log(`✅ Agency ${agencyId} token is valid (expires ${expiresAt.toISOString()})`)
       return activeConnection.fanvue_access_token
     }
 
-    // Token is expiring soon -- refresh it
-    console.log(`🔄 Agency ${agencyId} token expiring soon, refreshing...`)
+    // Token is expiring in less than 5 minutes -- refresh it
+    console.log(`🔄 Agency ${agencyId} token expiring in <5min, refreshing...`)
     try {
       await refreshAgencyToken(agencyId)
       return await fetchUpdatedToken(adminClient, agencyId)
