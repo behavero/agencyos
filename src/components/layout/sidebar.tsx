@@ -22,7 +22,6 @@ import {
   Megaphone,
   Banknote,
   Ghost,
-  BarChart3,
   Calendar,
   CalendarClock,
   Link2,
@@ -106,12 +105,6 @@ const fullNavigation: NavigationSection[] = [
   {
     title: 'Finance',
     items: [
-      {
-        name: 'Analytics',
-        href: '/dashboard/finance/analytics',
-        icon: BarChart3,
-        permission: 'showDashboard',
-      },
       {
         name: 'Expenses',
         href: '/dashboard/expenses',

@@ -186,14 +186,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
       if (smartListsResponse) {
         const followersSmartList = smartListsResponse.find(list => list.uuid === 'followers')
-        const subscribersSmartList = smartListsResponse.find(list => list.uuid === 'subscribers')
+        // "subscribers" smart list = ALL (active + expired + free trial)
+        // Use auto_renewing + non_renewing + free_trial for ACTIVE count
+        const autoRenewing = smartListsResponse.find(list => list.uuid === 'auto_renewing')
+        const nonRenewing = smartListsResponse.find(list => list.uuid === 'non_renewing')
+        const freeTrialSubs = smartListsResponse.find(
+          list => list.uuid === 'free_trial_subscribers'
+        )
 
         totalFollowers = followersSmartList?.count || 0
-        totalSubscribers = subscribersSmartList?.count || 0
+        totalSubscribers =
+          (autoRenewing?.count || 0) + (nonRenewing?.count || 0) + (freeTrialSubs?.count || 0)
 
-        console.log('[Stats API] Smart Lists (accurate counts):', {
+        console.log('[Stats API] Smart Lists:', {
           followers: totalFollowers,
-          subscribers: totalSubscribers,
+          activeSubscribers: totalSubscribers,
           allLists: smartListsResponse.map(l => `${l.name}: ${l.count}`).join(', '),
         })
       }

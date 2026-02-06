@@ -136,10 +136,24 @@ export async function POST(request: Request) {
             let totalSubscribers = 0
 
             if (smartListsResult.status === 'fulfilled' && smartListsResult.value) {
-              const followers = smartListsResult.value.find(l => l.uuid === 'followers')
-              const subscribers = smartListsResult.value.find(l => l.uuid === 'subscribers')
+              const lists = smartListsResult.value
+              const followers = lists.find(l => l.uuid === 'followers')
+              // "subscribers" smart list = ALL subscribers (active + expired + free trial)
+              // Use auto_renewing + non_renewing for ACTIVE subscriber count
+              const autoRenewing = lists.find(l => l.uuid === 'auto_renewing')
+              const nonRenewing = lists.find(l => l.uuid === 'non_renewing')
+              const freeTrialSubs = lists.find(l => l.uuid === 'free_trial_subscribers')
+              const activeSubscribers =
+                (autoRenewing?.count || 0) + (nonRenewing?.count || 0) + (freeTrialSubs?.count || 0)
+
               totalFollowers = followers?.count || 0
-              totalSubscribers = subscribers?.count || 0
+              totalSubscribers = activeSubscribers
+
+              console.log(
+                `[Bulk Stats] Smart Lists for ${model.name}:`,
+                lists.map(l => `${l.uuid}: ${l.count}`).join(', '),
+                `=> active subs: ${activeSubscribers}, followers: ${totalFollowers}`
+              )
             }
 
             // Calculate total revenue from earnings (first page only for speed)
