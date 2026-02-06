@@ -1,6 +1,10 @@
 /**
  * Fanvue Vault Sync Service
- * Syncs media from Fanvue Vault to content_assets table
+ * Syncs media from Fanvue creator media library to content_assets table.
+ *
+ * IMPORTANT: Uses the agency endpoint GET /creators/{uuid}/media
+ * (NOT /vault/folders which requires a personal token).
+ * Scopes required: read:creator, read:media
  */
 
 import { createAdminClient } from '@/lib/supabase/server'
@@ -10,20 +14,34 @@ import { getAgencyFanvueToken } from '@/lib/services/agency-fanvue-auth'
 export interface VaultSyncResult {
   success: boolean
   assetsSynced: number
+  assetsSkipped: number
+  totalMediaFound: number
   errors: string[]
+  modelResults: Array<{
+    modelId: string
+    modelName: string
+    synced: number
+    skipped: number
+    total: number
+    error?: string
+  }>
 }
 
+const MAX_PAGES = 50 // Safety limit: 50 pages × 50 items = 2500 media max per creator
+const PAGE_SIZE = 50 // Max allowed by Fanvue API
+
 /**
- * Sync Fanvue Vault media for a specific model
+ * Sync Fanvue media library for a specific model using the agency endpoint
  */
 export async function syncFanvueVault(modelId: string): Promise<VaultSyncResult> {
   const supabase = createAdminClient()
+  const modelResults: VaultSyncResult['modelResults'] = []
 
   try {
-    // Get model details
+    // Get model details including fanvue_user_uuid
     const { data: model, error: modelError } = await supabase
       .from('models')
-      .select('id, agency_id, fanvue_access_token, name')
+      .select('id, agency_id, fanvue_user_uuid, fanvue_access_token, name')
       .eq('id', modelId)
       .single()
 
@@ -31,19 +49,32 @@ export async function syncFanvueVault(modelId: string): Promise<VaultSyncResult>
       return {
         success: false,
         assetsSynced: 0,
+        assetsSkipped: 0,
+        totalMediaFound: 0,
         errors: ['Model not found or no access'],
+        modelResults: [],
       }
     }
 
-    // Use agency token as primary source (OAuth token has correct scopes)
-    // Fall back to model's own token only if no agency connection
+    if (!model.fanvue_user_uuid) {
+      return {
+        success: false,
+        assetsSynced: 0,
+        assetsSkipped: 0,
+        totalMediaFound: 0,
+        errors: [
+          `Model "${model.name}" has no fanvue_user_uuid. Sync creator stats first to populate this field.`,
+        ],
+        modelResults: [],
+      }
+    }
+
+    // Get agency token (required for the /creators/{uuid}/media endpoint)
     let accessToken: string | null = null
-    let tokenSource = 'none'
 
     if (model.agency_id) {
       try {
         accessToken = await getAgencyFanvueToken(model.agency_id)
-        tokenSource = 'agency'
       } catch (e) {
         console.warn(
           `[Vault Sync] Agency token failed for ${model.name}:`,
@@ -52,119 +83,77 @@ export async function syncFanvueVault(modelId: string): Promise<VaultSyncResult>
       }
     }
 
+    // Fallback to model's own token (won't work for agency endpoint, but try anyway)
     if (!accessToken && model.fanvue_access_token) {
       accessToken = model.fanvue_access_token
-      tokenSource = 'model'
     }
 
     if (!accessToken) {
       return {
         success: false,
         assetsSynced: 0,
+        assetsSkipped: 0,
+        totalMediaFound: 0,
         errors: [
           'No Fanvue access token available. Agency admin may need to reconnect their Fanvue account via OAuth.',
         ],
+        modelResults: [],
       }
     }
 
-    // Initialize Fanvue client
-    const fanvueClient = createFanvueClient(accessToken)
+    const result = await syncModelMedia(supabase, accessToken, model)
+    modelResults.push(result)
 
-    // Fetch media from Fanvue Vault
-    let vaultFolders
-    try {
-      vaultFolders = await fanvueClient.getVaultFolders()
-    } catch (vaultError: any) {
-      const status = vaultError?.status || vaultError?.statusCode || 'unknown'
-      const msg = vaultError?.message || String(vaultError)
-      let hint = ''
-      if (status === 401) {
-        hint = ' Token may be expired — try reconnecting the agency Fanvue account.'
-      } else if (status === 403) {
-        hint =
-          ' The OAuth token may be missing the read:media scope. Re-authorize with the correct permissions.'
-      }
-      return {
-        success: false,
-        assetsSynced: 0,
-        errors: [`Vault API error (${status}, token: ${tokenSource}): ${msg}.${hint}`],
-      }
-    }
-
-    let totalSynced = 0
-    const errors: string[] = []
-
-    // Iterate through folders and fetch media
-    for (const folder of vaultFolders.data) {
-      try {
-        const folderMedia = await fanvueClient.getVaultFolderMedia(folder.name, {
-          size: 100, // Fetch 100 media items per folder
-        })
-
-        // Map Fanvue media to content_assets format
-        const assets = folderMedia.data.map(media => ({
-          agency_id: model.agency_id,
-          model_id: model.id,
-          file_name: media.name || `${folder.name}-${media.uuid}`,
-          file_type:
-            media.mediaType === 'image' ? 'image' : media.mediaType === 'video' ? 'video' : 'audio',
-          media_type: media.mediaType,
-          file_url: '', // Fanvue doesn't expose direct URLs in vault API
-          thumbnail_url: null,
-          fanvue_media_uuid: media.uuid,
-          fanvue_folder: folder.name,
-          title: media.name || folder.name,
-          description: `From Fanvue Vault: ${folder.name}`,
-          content_type: 'ppv' as const, // Default to PPV
-          tags: [folder.name, 'fanvue-vault'],
-          created_at: media.createdAt,
-        }))
-
-        // Upsert assets (avoid duplicates based on fanvue_media_uuid)
-        for (const asset of assets) {
-          const { error: upsertError } = await supabase.from('content_assets').upsert(asset, {
-            onConflict: 'fanvue_media_uuid',
-            ignoreDuplicates: true,
-          })
-
-          if (upsertError) {
-            errors.push(`Failed to sync ${asset.file_name}: ${upsertError.message}`)
-          } else {
-            totalSynced++
-          }
-        }
-      } catch (folderError) {
-        errors.push(
-          `Failed to sync folder ${folder.name}: ${folderError instanceof Error ? folderError.message : 'Unknown error'}`
-        )
-      }
-    }
+    const totalSynced = result.synced
+    const totalSkipped = result.skipped
+    const totalMedia = result.total
 
     return {
-      success: errors.length === 0,
+      success: !result.error,
       assetsSynced: totalSynced,
-      errors,
+      assetsSkipped: totalSkipped,
+      totalMediaFound: totalMedia,
+      errors: result.error ? [result.error] : [],
+      modelResults,
     }
   } catch (error) {
-    console.error('Error syncing Fanvue vault:', error)
+    console.error('[Vault Sync] Fatal error:', error)
     return {
       success: false,
       assetsSynced: 0,
+      assetsSkipped: 0,
+      totalMediaFound: 0,
       errors: [error instanceof Error ? error.message : 'Unknown error'],
+      modelResults,
     }
   }
 }
 
 /**
- * Sync Fanvue Vault for all models in an agency
+ * Sync Fanvue media library for all models in an agency
  */
 export async function syncAgencyVault(agencyId: string): Promise<VaultSyncResult> {
   const supabase = createAdminClient()
 
-  // Get all active models
+  // Get agency token once (shared across all models)
+  let accessToken: string
+  try {
+    accessToken = await getAgencyFanvueToken(agencyId)
+  } catch (e) {
+    return {
+      success: false,
+      assetsSynced: 0,
+      assetsSkipped: 0,
+      totalMediaFound: 0,
+      errors: [`Failed to get agency Fanvue token: ${e instanceof Error ? e.message : String(e)}`],
+      modelResults: [],
+    }
+  }
+
+  // Get all active models with fanvue_user_uuid
   const { data: models, error } = await supabase
     .from('models')
-    .select('id')
+    .select('id, name, fanvue_user_uuid')
     .eq('agency_id', agencyId)
     .eq('status', 'active')
 
@@ -172,19 +161,216 @@ export async function syncAgencyVault(agencyId: string): Promise<VaultSyncResult
     return {
       success: false,
       assetsSynced: 0,
-      errors: ['No active models found'],
+      assetsSkipped: 0,
+      totalMediaFound: 0,
+      errors: ['No active models found for this agency'],
+      modelResults: [],
     }
   }
 
-  // Sync each model
-  const results = await Promise.all(models.map(model => syncFanvueVault(model.id)))
+  const modelResults: VaultSyncResult['modelResults'] = []
+  let totalSynced = 0
+  let totalSkipped = 0
+  let totalMedia = 0
+  const errors: string[] = []
 
-  const totalSynced = results.reduce((sum, result) => sum + result.assetsSynced, 0)
-  const allErrors = results.flatMap(result => result.errors)
+  // Sync each model sequentially (to avoid rate limiting)
+  for (const model of models) {
+    if (!model.fanvue_user_uuid) {
+      modelResults.push({
+        modelId: model.id,
+        modelName: model.name,
+        synced: 0,
+        skipped: 0,
+        total: 0,
+        error: 'No fanvue_user_uuid — sync creator stats first',
+      })
+      continue
+    }
+
+    try {
+      const result = await syncModelMedia(supabase, accessToken, {
+        id: model.id,
+        agency_id: agencyId,
+        fanvue_user_uuid: model.fanvue_user_uuid,
+        name: model.name,
+      })
+      modelResults.push(result)
+      totalSynced += result.synced
+      totalSkipped += result.skipped
+      totalMedia += result.total
+      if (result.error) {
+        errors.push(`${model.name}: ${result.error}`)
+      }
+    } catch (e) {
+      const errMsg = e instanceof Error ? e.message : String(e)
+      errors.push(`${model.name}: ${errMsg}`)
+      modelResults.push({
+        modelId: model.id,
+        modelName: model.name,
+        synced: 0,
+        skipped: 0,
+        total: 0,
+        error: errMsg,
+      })
+    }
+  }
 
   return {
-    success: results.every(r => r.success),
+    success: errors.length === 0,
     assetsSynced: totalSynced,
-    errors: allErrors,
+    assetsSkipped: totalSkipped,
+    totalMediaFound: totalMedia,
+    errors,
+    modelResults,
+  }
+}
+
+/**
+ * Sync media for a single model by paginating through the agency media endpoint
+ */
+async function syncModelMedia(
+  supabase: ReturnType<typeof createAdminClient>,
+  accessToken: string,
+  model: {
+    id: string
+    agency_id: string
+    fanvue_user_uuid: string
+    name: string
+  }
+): Promise<VaultSyncResult['modelResults'][0]> {
+  const fanvue = createFanvueClient(accessToken)
+
+  let page = 1
+  let hasMore = true
+  let synced = 0
+  let skipped = 0
+  let total = 0
+
+  console.log(
+    `[Vault Sync] Starting media sync for "${model.name}" (uuid: ${model.fanvue_user_uuid})`
+  )
+
+  try {
+    while (hasMore && page <= MAX_PAGES) {
+      // Fetch media with main + thumbnail variants so we get actual URLs
+      const response = await fanvue.getCreatorMedia(model.fanvue_user_uuid, {
+        page,
+        size: PAGE_SIZE,
+        variants: 'main,thumbnail',
+      })
+
+      if (!response?.data || response.data.length === 0) {
+        break
+      }
+
+      total += response.data.length
+
+      // Process each media item
+      for (const media of response.data) {
+        // Skip non-finalized media (only uuid + status returned for those)
+        if (!media.mediaType) {
+          skipped++
+          continue
+        }
+
+        // Extract URLs from variants
+        let mainUrl = media.url || ''
+        let thumbnailUrl: string | null = null
+
+        if (media.variants && media.variants.length > 0) {
+          const mainVariant = media.variants.find(v => v.variantType === 'main')
+          const thumbVariant = media.variants.find(v => v.variantType === 'thumbnail')
+
+          if (mainVariant?.url) mainUrl = mainVariant.url
+          if (thumbVariant?.url) thumbnailUrl = thumbVariant.url
+        }
+
+        // Map Fanvue media type to our file_type
+        const fileType =
+          media.mediaType === 'image'
+            ? 'image'
+            : media.mediaType === 'video'
+              ? 'video'
+              : media.mediaType === 'audio'
+                ? 'audio'
+                : 'image'
+
+        const asset = {
+          agency_id: model.agency_id,
+          model_id: model.id,
+          file_name: media.name || `${model.name}-${media.uuid}`,
+          file_type: fileType,
+          media_type: media.mediaType,
+          url: mainUrl,
+          file_url: mainUrl,
+          thumbnail_url: thumbnailUrl,
+          fanvue_media_uuid: media.uuid,
+          title: media.name || media.caption || `Media ${media.uuid.slice(0, 8)}`,
+          description: media.description || media.caption || null,
+          content_type: 'ppv' as const,
+          tags: ['fanvue-vault', fileType],
+          price: media.recommendedPrice || 0,
+          created_at: media.createdAt || new Date().toISOString(),
+        }
+
+        const { error: upsertError } = await supabase.from('content_assets').upsert(asset, {
+          onConflict: 'fanvue_media_uuid',
+        })
+
+        if (upsertError) {
+          console.error(`[Vault Sync] Failed to upsert media ${media.uuid}:`, upsertError.message)
+          skipped++
+        } else {
+          synced++
+        }
+      }
+
+      hasMore = response.pagination?.hasMore ?? false
+      page++
+
+      // Small delay between pages to avoid rate limiting
+      if (hasMore) {
+        await new Promise(r => setTimeout(r, 200))
+      }
+    }
+
+    console.log(
+      `[Vault Sync] "${model.name}": ${synced} synced, ${skipped} skipped, ${total} found across ${page - 1} pages`
+    )
+
+    return {
+      modelId: model.id,
+      modelName: model.name,
+      synced,
+      skipped,
+      total,
+    }
+  } catch (e: unknown) {
+    const err = e as { status?: number; statusCode?: number; message?: string }
+    const status = err.status || err.statusCode || 'unknown'
+    const msg = err.message || String(e)
+
+    let hint = ''
+    if (status === 401) {
+      hint = ' Token may be expired — reconnect the agency Fanvue account.'
+    } else if (status === 403) {
+      hint =
+        ' The OAuth token may be missing read:media scope. Re-authorize with the correct permissions.'
+    } else if (status === 404) {
+      hint = ` Creator UUID ${model.fanvue_user_uuid} may be incorrect.`
+    }
+
+    const errorMsg = `Fanvue API error (${status}): ${msg}.${hint}`
+    console.error(`[Vault Sync] "${model.name}":`, errorMsg)
+
+    return {
+      modelId: model.id,
+      modelName: model.name,
+      synced,
+      skipped,
+      total,
+      error: errorMsg,
+    }
   }
 }

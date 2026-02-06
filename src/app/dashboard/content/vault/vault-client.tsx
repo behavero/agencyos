@@ -49,6 +49,7 @@ interface ContentAsset {
   file_name: string
   file_type: 'image' | 'video' | 'audio'
   url: string
+  file_url?: string
   thumbnail_url: string | null
   title: string | null
   description: string | null
@@ -58,6 +59,7 @@ interface ContentAsset {
   usage_count: number
   model_id: string | null
   models?: { id: string; name: string } | null
+  fanvue_media_uuid?: string | null
   created_at: string
   // Phase 50: Performance metrics
   performance?: {
@@ -306,7 +308,7 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
     }
   }
 
-  // Phase 50B: Sync from Fanvue Vault
+  // Sync from Fanvue creator media library (agency endpoint)
   const handleSyncFanvue = async () => {
     setIsSyncingFanvue(true)
     try {
@@ -316,17 +318,39 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
       const result = await response.json()
 
       if (result.success) {
-        toast.success(`Synced ${result.assetsSynced} assets from Fanvue Vault`)
-        // Reload the page to show new assets
+        // Show per-model breakdown
+        const modelSummary = result.modelResults
+          ?.map(
+            (m: { modelName: string; synced: number; total: number }) =>
+              `${m.modelName}: ${m.synced}/${m.total}`
+          )
+          .join(', ')
+        toast.success(
+          `Synced ${result.assetsSynced} media items from Fanvue${modelSummary ? ` (${modelSummary})` : ''}`
+        )
+        // Reload to show new assets
         window.location.reload()
       } else {
-        toast.error(result.error || 'Failed to sync from Fanvue Vault')
+        // Show partial success info if any
+        if (result.assetsSynced > 0) {
+          toast.warning(
+            `Partial sync: ${result.assetsSynced} items synced, but ${result.errors?.length || 0} error(s) occurred`
+          )
+          window.location.reload()
+        } else {
+          const errorMsg = result.errors?.[0] || result.error || 'Failed to sync from Fanvue'
+          toast.error(errorMsg)
+        }
         if (result.errors && result.errors.length > 0) {
-          console.error('Fanvue sync errors:', result.errors)
+          console.error('[Vault Sync] Errors:', result.errors)
+        }
+        if (result.modelResults) {
+          console.log('[Vault Sync] Per-model results:', result.modelResults)
         }
       }
     } catch (error) {
-      toast.error('Failed to sync from Fanvue Vault')
+      toast.error('Failed to sync from Fanvue — check console for details')
+      console.error('[Vault Sync] Fetch error:', error)
     } finally {
       setIsSyncingFanvue(false)
     }
@@ -568,11 +592,14 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
                 <>
                   {/* Thumbnail */}
                   <div className="aspect-square relative bg-muted">
-                    {asset.file_type === 'image' ? (
+                    {asset.thumbnail_url || asset.url ? (
                       <img
-                        src={asset.url}
+                        src={asset.thumbnail_url || asset.url}
                         alt={asset.title || asset.file_name}
                         className="w-full h-full object-cover"
+                        onError={e => {
+                          ;(e.target as HTMLImageElement).style.display = 'none'
+                        }}
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
@@ -667,8 +694,15 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
               ) : (
                 <CardContent className="p-4 flex items-center gap-4">
                   <div className="w-16 h-16 rounded-lg bg-muted flex items-center justify-center overflow-hidden">
-                    {asset.file_type === 'image' ? (
-                      <img src={asset.url} alt="" className="w-full h-full object-cover" />
+                    {asset.thumbnail_url || asset.url ? (
+                      <img
+                        src={asset.thumbnail_url || asset.url}
+                        alt=""
+                        className="w-full h-full object-cover"
+                        onError={e => {
+                          ;(e.target as HTMLImageElement).style.display = 'none'
+                        }}
+                      />
                     ) : (
                       getFileIcon(asset.file_type)
                     )}
@@ -710,12 +744,26 @@ export function VaultClient({ initialAssets, models, agencyId }: VaultClientProp
             {/* Preview */}
             {selectedAsset && (
               <div className="aspect-video rounded-lg bg-muted overflow-hidden">
-                {selectedAsset.file_type === 'image' ? (
-                  <img src={selectedAsset.url} alt="" className="w-full h-full object-contain" />
+                {selectedAsset.thumbnail_url || selectedAsset.url ? (
+                  <img
+                    src={selectedAsset.url || selectedAsset.thumbnail_url || ''}
+                    alt=""
+                    className="w-full h-full object-contain"
+                    onError={e => {
+                      ;(e.target as HTMLImageElement).style.display = 'none'
+                    }}
+                  />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center">
                     {getFileIcon(selectedAsset.file_type)}
                     <span className="ml-2">{selectedAsset.file_name}</span>
+                  </div>
+                )}
+                {selectedAsset.fanvue_media_uuid && (
+                  <div className="absolute bottom-2 left-2">
+                    <Badge variant="secondary" className="text-xs">
+                      Fanvue
+                    </Badge>
                   </div>
                 )}
               </div>

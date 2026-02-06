@@ -1,6 +1,9 @@
 /**
  * Fanvue Vault Sync API
- * Syncs media from Fanvue Vault to content_assets
+ * Syncs creator media from Fanvue (via agency endpoint) to content_assets.
+ *
+ * Uses GET /creators/{uuid}/media (agency endpoint) which works with agency OAuth tokens.
+ * The old /vault/folders endpoint required a personal creator token and always failed.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -9,6 +12,7 @@ import { syncFanvueVault, syncAgencyVault } from '@/lib/services/fanvue-vault-sy
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+export const maxDuration = 120 // Allow up to 2 minutes for large vaults
 
 export async function POST(request: NextRequest) {
   try {
@@ -50,12 +54,17 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: result.success,
-      message: `Synced ${result.assetsSynced} assets from Fanvue Vault`,
+      message: result.success
+        ? `Synced ${result.assetsSynced} media items from Fanvue (${result.totalMediaFound} found, ${result.assetsSkipped} skipped)`
+        : `Partial sync: ${result.assetsSynced} synced with ${result.errors.length} error(s)`,
       assetsSynced: result.assetsSynced,
+      assetsSkipped: result.assetsSkipped,
+      totalMediaFound: result.totalMediaFound,
+      modelResults: result.modelResults,
       errors: result.errors,
     })
   } catch (error) {
-    console.error('Fanvue vault sync error:', error)
+    console.error('[Vault Sync API] Error:', error)
     return NextResponse.json(
       {
         success: false,

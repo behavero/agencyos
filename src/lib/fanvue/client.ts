@@ -593,6 +593,91 @@ export class FanvueClient {
     })
   }
 
+  // ==================== CREATOR MEDIA (Agency endpoint) ====================
+
+  /**
+   * Get a creator's media library via agency endpoint
+   * This is the correct endpoint for agency tokens (not /vault/folders which requires personal token)
+   * Scopes required: read:creator, read:media
+   */
+  async getCreatorMedia(
+    creatorUserUuid: string,
+    params?: {
+      page?: number
+      size?: number
+      mediaType?: 'image' | 'video' | 'audio' | 'document'
+      folderName?: string
+      usage?: 'subscribers' | 'followers' | 'ppv' | 'mass_messages'
+      variants?: string // comma-separated: 'main,thumbnail,blurred,thumbnail_gallery'
+    }
+  ) {
+    const searchParams = new URLSearchParams()
+    if (params?.page) searchParams.set('page', String(params.page))
+    if (params?.size) searchParams.set('size', String(params.size))
+    if (params?.mediaType) searchParams.set('mediaType', params.mediaType)
+    if (params?.folderName) searchParams.set('folderName', params.folderName)
+    if (params?.usage) searchParams.set('usage', params.usage)
+    if (params?.variants) searchParams.set('variants', params.variants)
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : ''
+
+    return this.request<{
+      data: Array<{
+        uuid: string
+        status: string // 'created' | 'processing' | 'ready' | 'error'
+        createdAt?: string
+        url?: string
+        caption?: string | null
+        description?: string | null
+        name?: string | null
+        mediaType?: string // 'image' | 'video' | 'audio' | 'document'
+        recommendedPrice?: number | null
+        variants?: Array<{
+          uuid: string
+          variantType: string // 'blurred' | 'main' | 'thumbnail' | 'thumbnail_gallery'
+          displayPosition: number
+          url?: string
+          width?: number | null
+          height?: number | null
+          lengthMs?: number | null
+        }>
+        purchasedByFan?: boolean
+      }>
+      pagination: { page: number; size: number; hasMore: boolean }
+    }>(`/creators/${creatorUserUuid}/media${query}`)
+  }
+
+  /**
+   * Get a single creator media item by UUID (agency endpoint)
+   * IMPORTANT: Pass variants param to get URLs (e.g. ?variants=main,thumbnail)
+   */
+  async getCreatorMediaByUuid(
+    creatorUserUuid: string,
+    mediaUuid: string,
+    params?: { variants?: string }
+  ) {
+    const query = params?.variants ? `?variants=${params.variants}` : ''
+    return this.request<{
+      uuid: string
+      status: string
+      createdAt?: string
+      url?: string
+      caption?: string | null
+      description?: string | null
+      name?: string | null
+      mediaType?: string
+      recommendedPrice?: number | null
+      variants?: Array<{
+        uuid: string
+        variantType: string
+        displayPosition: number
+        url?: string
+        width?: number | null
+        height?: number | null
+        lengthMs?: number | null
+      }>
+    }>(`/creators/${creatorUserUuid}/media/${mediaUuid}${query}`)
+  }
+
   // ==================== TRACKING LINKS ====================
   async getTrackingLinks(params?: { limit?: number; cursor?: string }) {
     const query = params
