@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createClient } from '@/lib/supabase/server'
 import { createFanvueClient } from '@/lib/fanvue/client'
-import { getModelAccessToken } from '@/lib/services/fanvue-auth'
+import { getAgencyFanvueToken } from '@/lib/services/agency-fanvue-auth'
 
 /**
- * Messages API for a specific creator
- * - GET: Fetch chats/messages
- * - POST: Send a message to a fan
+ * Messages API for a specific creator (agency endpoint)
+ *
+ * GET: Fetch the creator's chat roster via /creators/{uuid}/chats
+ * POST: Send a message as the creator via /creators/{uuid}/chats/{userUuid}/message
  */
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -25,16 +26,22 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }
 
-    // Get creator's access token (auto-refreshes if expired)
-    let accessToken: string
-    try {
-      accessToken = await getModelAccessToken(id)
-    } catch (error) {
-      return NextResponse.json({ error: 'Creator not connected' }, { status: 400 })
+    // Get model's fanvue_user_uuid and agency_id
+    const admin = createAdminClient()
+    const { data: model } = await admin
+      .from('models')
+      .select('fanvue_user_uuid, agency_id')
+      .eq('id', id)
+      .single()
+
+    if (!model?.fanvue_user_uuid || !model?.agency_id) {
+      return NextResponse.json({ error: 'Model not connected to Fanvue' }, { status: 400 })
     }
 
+    // Use agency token with the creator-specific chats endpoint
+    const accessToken = await getAgencyFanvueToken(model.agency_id)
     const fanvue = createFanvueClient(accessToken)
-    const chats = await fanvue.getChats({ page, size })
+    const chats = await fanvue.getCreatorChats(model.fanvue_user_uuid, { page, size })
 
     return NextResponse.json(chats)
   } catch (error) {
@@ -67,26 +74,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }
 
-    // Get creator's access token (auto-refreshes if expired)
-    let accessToken: string
-    try {
-      accessToken = await getModelAccessToken(id)
-    } catch (error) {
-      return NextResponse.json({ error: 'Creator not connected' }, { status: 400 })
+    // Get model's fanvue_user_uuid and agency_id
+    const admin = createAdminClient()
+    const { data: model } = await admin
+      .from('models')
+      .select('fanvue_user_uuid, agency_id')
+      .eq('id', id)
+      .single()
+
+    if (!model?.fanvue_user_uuid || !model?.agency_id) {
+      return NextResponse.json({ error: 'Model not connected to Fanvue' }, { status: 400 })
     }
 
+    // Use agency token with the creator-specific message endpoint
+    const accessToken = await getAgencyFanvueToken(model.agency_id)
     const fanvue = createFanvueClient(accessToken)
 
-    // Try to ensure chat exists (this is optional, sendMessage may auto-create)
-    try {
-      await fanvue.createChat(userUuid)
-    } catch (e) {
-      // Chat might already exist, which is fine
-      console.log('[Messages API] Chat may already exist for user:', userUuid)
-    }
-
-    // Send message directly to the user (Fanvue API uses userUuid, not chatUuid)
-    const result = await fanvue.sendMessage(userUuid, {
+    const result = await fanvue.sendCreatorMessage(model.fanvue_user_uuid, userUuid, {
       text: text || null,
       mediaUuids,
       price: price || null,
@@ -101,7 +105,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   } catch (error) {
     console.error('[Messages API] POST Error:', error)
 
-    // Handle rate limiting
     const statusCode = (error as { statusCode?: number })?.statusCode
     if (statusCode === 429) {
       return NextResponse.json(

@@ -917,6 +917,62 @@ export class FanvueClient {
   }
 
   /**
+   * Get messages between a creator and a user (agency endpoint)
+   * Uses /creators/{creatorUserUuid}/chats/{userUuid}/messages
+   * Requires agency admin token with read:creator, read:chat scopes
+   */
+  async getCreatorMessages(
+    creatorUserUuid: string,
+    userUuid: string,
+    params?: { page?: number; size?: number }
+  ) {
+    const queryParams = new URLSearchParams()
+    if (params?.page) queryParams.set('page', String(params.page))
+    if (params?.size) queryParams.set('size', String(params.size))
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : ''
+
+    return this.request<{
+      data: Array<{
+        uuid: string
+        text: string | null
+        sentAt: string | null
+        sender: { uuid: string; handle: string }
+        recipient: { uuid: string; handle: string }
+        hasMedia: boolean | null
+        mediaType: string | null
+        type: string
+        pricing: { USD: { price: number } } | null
+        purchasedAt: string | null
+      }>
+      pagination: { page: number; size: number; hasMore: boolean }
+    }>(`/creators/${creatorUserUuid}/chats/${userUuid}/messages${query}`)
+  }
+
+  /**
+   * Send a message as a creator to a user (agency endpoint)
+   * Uses /creators/{creatorUserUuid}/chats/{userUuid}/message
+   * Requires agency admin token with write:chat, read:creator scopes
+   */
+  async sendCreatorMessage(
+    creatorUserUuid: string,
+    userUuid: string,
+    data: {
+      text?: string | null
+      mediaUuids?: string[]
+      price?: number | null
+      templateUuid?: string | null
+    }
+  ) {
+    return this.request<{ messageUuid: string }>(
+      `/creators/${creatorUserUuid}/chats/${userUuid}/message`,
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }
+    )
+  }
+
+  /**
    * Get smart lists for a specific creator (agency endpoint)
    * Returns accurate counts for followers, subscribers, and other segments
    * This is MUCH more efficient than paginating through all followers/subscribers!

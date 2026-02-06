@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, createClient } from '@/lib/supabase/server'
 import { createFanvueClient } from '@/lib/fanvue/client'
-import { getModelAccessToken } from '@/lib/services/fanvue-auth'
+import { getAgencyFanvueToken } from '@/lib/services/agency-fanvue-auth'
 
 /**
  * GET /api/creators/[id]/chats/[userUuid]/messages
- * Fetch message history for a specific chat
+ * Fetch message history between a creator and a fan (agency endpoint)
+ * Uses /creators/{creatorUserUuid}/chats/{userUuid}/messages
  */
 export async function GET(
   request: NextRequest,
@@ -26,28 +27,29 @@ export async function GET(
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }
 
-    const adminClient = createAdminClient()
+    const admin = createAdminClient()
 
-    // Get creator's access token (auto-refreshes if expired)
-    let accessToken: string
-    try {
-      accessToken = await getModelAccessToken(id)
-    } catch (error) {
-      return NextResponse.json({ error: 'Creator not connected' }, { status: 400 })
-    }
-
-    // Get creator's UUID for message transformation
-    const { data: model } = await adminClient
+    // Get model's fanvue_user_uuid and agency_id
+    const { data: model } = await admin
       .from('models')
-      .select('fanvue_user_uuid')
+      .select('fanvue_user_uuid, agency_id')
       .eq('id', id)
       .single()
 
-    const fanvue = createFanvueClient(accessToken)
-    const messages = await fanvue.getMessages(userUuid, { page, size })
+    if (!model?.fanvue_user_uuid || !model?.agency_id) {
+      return NextResponse.json({ error: 'Model not connected to Fanvue' }, { status: 400 })
+    }
 
-    // Transform messages to include isFromCreator flag
-    const creatorUuid = model?.fanvue_user_uuid
+    // Use agency token with the creator-specific messages endpoint
+    const accessToken = await getAgencyFanvueToken(model.agency_id)
+    const fanvue = createFanvueClient(accessToken)
+    const messages = await fanvue.getCreatorMessages(model.fanvue_user_uuid, userUuid, {
+      page,
+      size,
+    })
+
+    // Add isFromCreator flag
+    const creatorUuid = model.fanvue_user_uuid
     const transformedMessages = messages.data.map(msg => ({
       ...msg,
       isFromCreator: msg.sender.uuid === creatorUuid,
