@@ -77,6 +77,7 @@ import { useAgencyData } from '@/providers/agency-data-provider'
 import { LiveRevenueIndicator } from '@/components/dashboard/live-revenue-indicator'
 import { useQuery } from '@tanstack/react-query'
 import { useRevenueHeartbeat } from '@/hooks/useRevenueHeartbeat'
+import { FanvueConnectionBanner } from '@/components/dashboard/fanvue-connection-banner'
 
 // Dark mode chart theme for Recharts
 const CHART_THEME = {
@@ -641,6 +642,9 @@ export default function DashboardClient() {
           </Button>
         </div>
       </div>
+
+      {/* Fanvue Connection Status Banner */}
+      <FanvueConnectionBanner agencyId={agency?.id} />
 
       {/* Unified Dashboard Tabs */}
       <Tabs defaultValue="overview" className="space-y-6">

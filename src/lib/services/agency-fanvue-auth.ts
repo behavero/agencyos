@@ -60,68 +60,104 @@ interface FanvueEarningsResponse {
 }
 
 /**
- * Gets a valid Fanvue access token for an agency
- * Automatically refreshes if expired
+ * Gets a valid Fanvue access token for an agency.
+ * Automatically refreshes if expired or expiring soon.
+ * Auto-recovers expired connections by attempting a refresh before giving up.
  */
 export async function getAgencyFanvueToken(agencyId: string): Promise<string> {
   const adminClient = createAdminClient()
 
-  // Get the agency's connection
-  const { data: connection, error } = await adminClient
+  // Step 1: Try to find an active connection
+  const { data: activeConnection } = await adminClient
     .from('agency_fanvue_connections')
     .select('*')
     .eq('agency_id', agencyId)
     .eq('status', 'active')
     .single()
 
-  if (error || !connection) {
-    throw new Error(
-      `NO_AGENCY_FANVUE_CONNECTION: Agency ${agencyId} has no active Fanvue connection. ` +
-        'An agency admin must connect their Fanvue account in the agency settings.'
-    )
-  }
+  if (activeConnection) {
+    // Check if token is still valid (not expiring within 1 hour)
+    const expiresAt = new Date(activeConnection.fanvue_token_expires_at)
+    const oneHourFromNow = new Date(Date.now() + 60 * 60 * 1000)
 
-  // Check if token is expired or expiring soon (within 1 hour)
-  const expiresAt = new Date(connection.fanvue_token_expires_at)
-  const now = new Date()
-  const oneHourFromNow = new Date(now.getTime() + 60 * 60 * 1000)
-
-  const needsRefresh = expiresAt < oneHourFromNow
-
-  if (!needsRefresh) {
-    console.log(`✅ Agency ${agencyId} token is valid`)
-    return connection.fanvue_access_token
-  }
-
-  // Token needs refresh
-  console.log(`🔄 Refreshing agency ${agencyId} token...`)
-
-  try {
-    await refreshAgencyToken(agencyId)
-
-    // Fetch the updated token
-    const { data: updatedConnection } = await adminClient
-      .from('agency_fanvue_connections')
-      .select('fanvue_access_token')
-      .eq('agency_id', agencyId)
-      .single()
-
-    if (!updatedConnection) {
-      throw new Error('Failed to retrieve updated token after refresh')
+    if (expiresAt > oneHourFromNow) {
+      console.log(`✅ Agency ${agencyId} token is valid`)
+      return activeConnection.fanvue_access_token
     }
 
-    return updatedConnection.fanvue_access_token
-  } catch (error: any) {
-    console.error(`❌ Failed to refresh agency token:`, error.message)
-    throw new Error(
-      `Agency token refresh failed: ${error.message}. ` +
-        'Agency admin may need to reconnect their Fanvue account.'
-    )
+    // Token is expiring soon -- refresh it
+    console.log(`🔄 Agency ${agencyId} token expiring soon, refreshing...`)
+    try {
+      await refreshAgencyToken(agencyId)
+      return await fetchUpdatedToken(adminClient, agencyId)
+    } catch (err: any) {
+      console.error(`❌ Failed to refresh expiring agency token:`, err.message)
+      throw new Error(
+        `Agency token refresh failed: ${err.message}. ` +
+          'Agency admin may need to reconnect their Fanvue account.'
+      )
+    }
   }
+
+  // Step 2: No active connection -- check if there's an expired one we can recover
+  const { data: expiredConnection } = await adminClient
+    .from('agency_fanvue_connections')
+    .select('*')
+    .eq('agency_id', agencyId)
+    .eq('status', 'expired')
+    .single()
+
+  if (expiredConnection && expiredConnection.fanvue_refresh_token) {
+    console.log(`🔄 Agency ${agencyId} connection expired, attempting auto-recovery...`)
+    try {
+      await refreshAgencyToken(agencyId)
+      console.log(`✅ Agency ${agencyId} connection auto-recovered!`)
+      return await fetchUpdatedToken(adminClient, agencyId)
+    } catch (err: any) {
+      console.error(`❌ Auto-recovery failed for agency ${agencyId}:`, err.message)
+      // Fall through to the error below
+    }
+  }
+
+  // Step 3: No recoverable connection found
+  throw new Error(
+    `NO_AGENCY_FANVUE_CONNECTION: Agency ${agencyId} has no active Fanvue connection. ` +
+      'An agency admin must connect their Fanvue account in the agency settings.'
+  )
 }
 
 /**
- * Refreshes a Fanvue access token for an agency
+ * Helper: fetch the latest access token from the database after a refresh
+ */
+async function fetchUpdatedToken(
+  adminClient: ReturnType<typeof createAdminClient>,
+  agencyId: string
+): Promise<string> {
+  const { data: updatedConnection } = await adminClient
+    .from('agency_fanvue_connections')
+    .select('fanvue_access_token')
+    .eq('agency_id', agencyId)
+    .eq('status', 'active')
+    .single()
+
+  if (!updatedConnection) {
+    throw new Error('Failed to retrieve updated token after refresh')
+  }
+
+  return updatedConnection.fanvue_access_token
+}
+
+/**
+ * Utility: sleep for a given number of milliseconds
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+/**
+ * Refreshes a Fanvue access token for an agency.
+ * Retries up to 3 times with exponential backoff before marking expired.
+ * A single network blip should not kill the connection.
  */
 export async function refreshAgencyToken(agencyId: string): Promise<void> {
   const adminClient = createAdminClient()
@@ -135,10 +171,10 @@ export async function refreshAgencyToken(agencyId: string): Promise<void> {
     )
   }
 
-  // Get current connection
+  // Get current connection (don't filter by status -- allow refreshing expired connections too)
   const { data: connection, error } = await adminClient
     .from('agency_fanvue_connections')
-    .select('fanvue_refresh_token')
+    .select('fanvue_refresh_token, status')
     .eq('agency_id', agencyId)
     .single()
 
@@ -146,48 +182,79 @@ export async function refreshAgencyToken(agencyId: string): Promise<void> {
     throw new Error(`Agency connection not found: ${agencyId}`)
   }
 
+  if (!connection.fanvue_refresh_token) {
+    throw new Error(`Agency ${agencyId} has no refresh token. Reconnect required.`)
+  }
+
   console.log(`🔄 Refreshing Fanvue token for agency ${agencyId}...`)
 
-  try {
-    const tokenData = await refreshAccessToken({
-      refreshToken: connection.fanvue_refresh_token,
-      clientId,
-      clientSecret,
-    })
+  const MAX_RETRIES = 3
+  const BACKOFF_MS = [0, 2000, 5000] // immediate, 2s, 5s
+  let lastError: Error | null = null
 
-    // Update database with new tokens
-    const { error: updateError } = await adminClient
-      .from('agency_fanvue_connections')
-      .update({
-        fanvue_access_token: tokenData.access_token,
-        fanvue_refresh_token: tokenData.refresh_token || connection.fanvue_refresh_token,
-        fanvue_token_expires_at: new Date(
-          Date.now() + (tokenData.expires_in || 3600) * 1000
-        ).toISOString(),
-        status: 'active',
-        updated_at: new Date().toISOString(),
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      if (attempt > 1) {
+        const delay = BACKOFF_MS[attempt - 1] || 5000
+        console.log(`   Retry ${attempt}/${MAX_RETRIES} after ${delay}ms...`)
+        await sleep(delay)
+      }
+
+      const tokenData = await refreshAccessToken({
+        refreshToken: connection.fanvue_refresh_token,
+        clientId,
+        clientSecret,
       })
-      .eq('agency_id', agencyId)
 
-    if (updateError) {
-      throw new Error(`Failed to update tokens: ${updateError.message}`)
+      // Update database with new tokens and mark active
+      const { error: updateError } = await adminClient
+        .from('agency_fanvue_connections')
+        .update({
+          fanvue_access_token: tokenData.access_token,
+          fanvue_refresh_token: tokenData.refresh_token || connection.fanvue_refresh_token,
+          fanvue_token_expires_at: new Date(
+            Date.now() + (tokenData.expires_in || 3600) * 1000
+          ).toISOString(),
+          status: 'active',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('agency_id', agencyId)
+
+      if (updateError) {
+        throw new Error(`Failed to update tokens: ${updateError.message}`)
+      }
+
+      console.log(`✅ Agency ${agencyId} token refreshed successfully (attempt ${attempt})`)
+      return // Success -- exit
+    } catch (err: any) {
+      lastError = err
+      console.error(
+        `❌ Refresh attempt ${attempt}/${MAX_RETRIES} failed for agency ${agencyId}:`,
+        err.message
+      )
+
+      // If it's a 400/401 error (invalid refresh token), don't retry -- it won't help
+      if (err.message?.includes('400') || err.message?.includes('401')) {
+        console.error(`   Auth error (${err.message}), skipping remaining retries`)
+        break
+      }
     }
-
-    console.log(`✅ Agency ${agencyId} token refreshed successfully`)
-  } catch (error: any) {
-    console.error(`❌ Token refresh failed for agency ${agencyId}:`, error.message)
-
-    // Mark connection as expired
-    await adminClient
-      .from('agency_fanvue_connections')
-      .update({
-        status: 'expired',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('agency_id', agencyId)
-
-    throw error
   }
+
+  // All retries exhausted -- mark connection as expired
+  console.error(
+    `❌ All ${MAX_RETRIES} refresh attempts failed for agency ${agencyId}. Marking expired.`
+  )
+
+  await adminClient
+    .from('agency_fanvue_connections')
+    .update({
+      status: 'expired',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('agency_id', agencyId)
+
+  throw lastError || new Error('Token refresh failed after all retries')
 }
 
 /**

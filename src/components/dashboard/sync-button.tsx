@@ -10,13 +10,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { RefreshCcw, ChevronDown, Database, Users } from 'lucide-react'
+import { RefreshCcw, ChevronDown, Database, Users, Link2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 
 export function SyncButton() {
   const router = useRouter()
   const [isSyncing, setIsSyncing] = useState(false)
+  const [showReconnect, setShowReconnect] = useState(false)
 
   /**
    * PHASE 59: Agency SaaS Loop
@@ -49,20 +50,27 @@ export function SyncButton() {
         })
         router.refresh()
       } else {
-        // Provide actionable error for connection issues
+        // Detect connection issues and show reconnect action
         const isConnectionIssue =
           result.error?.includes('NO_AGENCY_FANVUE_CONNECTION') ||
-          result.error?.includes('token') ||
+          result.error?.includes('token refresh failed') ||
           result.error?.includes('expired') ||
           result.error?.includes('reconnect')
 
-        toast.error('Agency sync failed', {
-          id: 'sync-toast',
-          description: isConnectionIssue
-            ? 'Fanvue connection expired. Go to Agency Settings to reconnect.'
-            : result.error || 'Please try again',
-          duration: 8000,
-        })
+        if (isConnectionIssue) {
+          setShowReconnect(true)
+          toast.error('Fanvue connection expired', {
+            id: 'sync-toast',
+            description: 'Click "Reconnect Fanvue" to re-authorize your account.',
+            duration: 10000,
+          })
+        } else {
+          toast.error('Agency sync failed', {
+            id: 'sync-toast',
+            description: result.error || 'Please try again',
+            duration: 8000,
+          })
+        }
       }
     } catch (error) {
       toast.error('Failed to sync agency', {
@@ -159,11 +167,26 @@ export function SyncButton() {
 
   return (
     <div className="flex gap-1">
+      {/* Reconnect button -- shown when connection is expired */}
+      {showReconnect && (
+        <Button
+          asChild
+          variant="destructive"
+          className="gap-2"
+          title="Re-authorize your Fanvue account"
+        >
+          <a href="/api/oauth/agency/login">
+            <Link2 className="w-4 h-4" />
+            Reconnect Fanvue
+          </a>
+        </Button>
+      )}
+
       {/* PHASE 59: Agency Sync Button - The main CTA */}
       <Button
         onClick={handleAgencySync}
         disabled={isSyncing}
-        variant="default"
+        variant={showReconnect ? 'outline' : 'default'}
         className="gap-2"
         title="Auto-discover and sync all agency creators"
       >
